@@ -2193,6 +2193,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen-c-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "heck",
+ "test-helpers",
+ "wasm-encoder 0.31.1",
+ "wasm-metadata",
+ "wit-bindgen-c",
+ "wit-bindgen-core",
+ "wit-component",
+]
+
+[[package]]
 name = "wit-bindgen-cli"
 version = "0.14.0"
 dependencies = [
@@ -2204,8 +2219,11 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wit-bindgen-c",
+ "wit-bindgen-c-host",
  "wit-bindgen-core",
  "wit-bindgen-csharp",
+ "wit-bindgen-cpp",
+ "wit-bindgen-cpp-host",
  "wit-bindgen-go",
  "wit-bindgen-markdown",
  "wit-bindgen-rust",
@@ -2233,6 +2251,38 @@ dependencies = [
  "test-helpers",
  "wasm-encoder 0.38.0",
  "wasm-metadata",
+ "wit-bindgen-core",
+ "wit-component",
+]
+
+[[package]]
+name = "wit-bindgen-cpp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "heck",
+ "test-helpers",
+ "wasm-encoder 0.31.1",
+ "wasm-metadata",
+ "wit-bindgen-c",
+ "wit-bindgen-core",
+ "wit-bindgen-cpp-host",
+ "wit-bindgen-rust-lib",
+ "wit-component",
+]
+
+[[package]]
+name = "wit-bindgen-cpp-host"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "heck",
+ "test-helpers",
+ "wasm-encoder 0.31.1",
+ "wasm-metadata",
+ "wit-bindgen-c",
  "wit-bindgen-core",
  "wit-component",
 ]

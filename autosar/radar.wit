@@ -1,0 +1,94 @@
+// package autosar:fusion
+
+interface radar {
+    use types.{error-code}
+    use core.{instance-specifier}
+    use poll.{pollable}
+
+    record position {
+        x: s32,
+        y: s32,
+        z: s32,
+    }
+    record radar-objects {
+        active: bool,
+        object-vector: list<u8>,
+    }
+
+    record adjust-output {
+        success: bool, 
+        effective-position: position,
+    }
+
+    enum fusion-variant {
+        china, usa, europe, russia,
+    }
+    record calibrate-output {
+        call-result: bool
+    }
+
+    resource proxy-handle
+
+    resource future-result-adjust-output-error-code {
+        subscribe: func() -> pollable
+        value: func() -> result<adjust-output, error-code>
+    }
+    resource future-result-calibrate-output-error-code {
+        subscribe: func() -> pollable
+        value: func() -> result<calibrate-output, error-code>
+    }
+    resource future-u32 {
+        subscribe: func() -> pollable
+        value: func() -> u32
+    }
+    resource stream-u32 {
+        subscribe: func() -> pollable
+        value: func() -> option<u32>
+    }
+    resource future-u16 {
+        subscribe: func() -> pollable
+        value: func() -> u16
+    }
+    resource stream-u16 {
+        subscribe: func() -> pollable
+        value: func() -> option<u16>
+    }
+    resource stream-proxy-handle {
+        subscribe: func() -> pollable
+        value: func() -> option<proxy-handle>
+    }
+    resource stream-radar-objects {
+        subscribe: func() -> pollable
+        value: func() -> option<radar-objects>
+    }
+
+    resource proxy {
+        constructor(handle: proxy-handle)
+
+        adjust: func (target-position: position) -> future-result-adjust-output-error-code
+        calibrate: func (configuration: string, fusion-variant: fusion-variant) -> future-result-calibrate-output-error-code
+        echo: func (text: string)
+    
+        subscribe-brake-event: func (max-sample-count: u32) -> result<stream-radar-objects>
+        subscribe-parking-brake-event: func (max-sample-count: u32) -> stream-radar-objects
+    
+        // field
+        get-update-rate: func() -> future-u32
+        set-update-rate: func(value: u32) -> future-u32
+        subscribe-update-rate: func(max-sample-count: u32) -> result<stream-u32>
+        subscribe-front-object-distance: func(max-sample-count: u32) -> stream-u16
+        get-rear-object-distance: func() -> future-u16
+        set-object-detection-limit: func(value: u16) -> future-u16
+    }
+
+    start-find-service: func(spec: instance-specifier) -> stream-proxy-handle
+}
+
+world fusion {
+    import radar
+    
+    import core
+    import log
+    import com
+    import exec
+}

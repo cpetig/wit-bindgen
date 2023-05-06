@@ -43,6 +43,9 @@ wit-bindgen-markdown = { path = 'crates/markdown', version = '0.12.0' }
 wit-bindgen-rust-lib = { path = 'crates/rust-lib', version = '0.12.0' }
 wit-bindgen = { path = 'crates/guest-rust', version = '0.12.0', default-features = false }
 wit-bindgen-rust-macro-shared = { path = 'crates/rust-macro-shared', version = '0.3.0' }
+wit-bindgen-c-host = { path = 'crates/c-host', version = '0.1.0' }
+wit-bindgen-cpp = { path = 'crates/cpp', version = '0.1.0' }
+wit-bindgen-cpp-host = { path = 'crates/cpp-host', version = '0.1.0' }
 
 [[bin]]
 name = "wit-bindgen"
@@ -53,6 +56,9 @@ clap = { workspace = true }
 wit-bindgen-core = { workspace = true }
 wit-bindgen-rust = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-c = { workspace = true, features = ['clap'], optional = true }
+wit-bindgen-c-host = { workspace = true, features = ['clap'], optional = true }
+wit-bindgen-cpp = { workspace = true, features = ['clap'], optional = true }
+wit-bindgen-cpp-host = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-markdown = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-teavm-java = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-go = { workspace = true, features = ['clap'], optional = true }
@@ -66,8 +72,13 @@ default = [
   'markdown',
   'teavm-java',
   'go',
+  'cpp',
+  'cpp-host',
 ]
 c = ['dep:wit-bindgen-c']
+c-host = ['dep:wit-bindgen-c-host']
+cpp = ['dep:wit-bindgen-cpp']
+cpp-host = ['dep:wit-bindgen-cpp-host']
 rust = ['dep:wit-bindgen-rust']
 markdown = ['dep:wit-bindgen-markdown']
 teavm-java = ['dep:wit-bindgen-teavm-java']

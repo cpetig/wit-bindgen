@@ -4,7 +4,7 @@ use heck::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::mem;
-use wit_bindgen_core::wit_parser::abi::{AbiVariant, Bindgen};
+use wit_bindgen_core::wit_parser::abi::{AbiVariant, Bindgen, WasmSignature};
 use wit_bindgen_core::{
     uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, WorldGenerator,
 };
@@ -1077,6 +1077,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
 #[derive(Debug)]
 struct WamrSig {
+    wasm: WasmSignature,
     c_args: Vec<(String, String)>, // name, type
     wamr_types: String,
     c_result: String,
@@ -1086,6 +1087,7 @@ struct WamrSig {
 impl Default for WamrSig {
     fn default() -> Self {
         Self {
+            wasm: Default::default(),
             c_args: Default::default(),
             wamr_types: Default::default(),
             c_result: "void".into(),
@@ -1377,7 +1379,9 @@ impl InterfaceGenerator<'_> {
     }
 
     fn wamr_signature(&mut self, variant: AbiVariant, func: &Function) -> WamrSig {
+        let wasm_sig = self.resolve.wasm_signature(variant, func);
         let mut result = WamrSig::default();
+        result.wasm = wasm_sig;
         // let mut params = Vec::new();
         // let mut params_str = String::new();
         // let mut result = String::from("void");

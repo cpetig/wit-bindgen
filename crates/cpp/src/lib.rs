@@ -1725,12 +1725,13 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 
     fn wasm_type_cpp(ty: WasmType) -> &'static str {
-        match ty {
-            WasmType::I32 => "int32_t",
-            WasmType::I64 => "int64_t",
-            WasmType::F32 => "float",
-            WasmType::F64 => "double",
-        }
+        wit_bindgen_c::wasm_type(ty)
+        // match ty {
+        //     WasmType::I32 => "int32_t",
+        //     WasmType::I64 => "int64_t",
+        //     WasmType::F32 => "float",
+        //     WasmType::F64 => "double",
+        // }
     }
 
     fn declare_import(

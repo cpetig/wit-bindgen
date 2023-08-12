@@ -3,7 +3,9 @@
 interface radar {
     use types.{error-code}
     use core.{instance-specifier}
-    use poll.{pollable}
+    use com.{instance-identifier}
+    use wasi:poll/poll.{pollable}
+    use com.{profile-check-status}
 
     record position {
         x: s32,
@@ -27,7 +29,14 @@ interface radar {
         call-result: bool
     }
 
-    resource proxy-handle
+    resource proxy-handle {
+        get-instance-id: func() -> instance-identifier
+    }
+
+    resource sample-ptr {
+        get: func() -> s32
+        get-profile-check-status: func() -> profile-check-status
+    }
 
     resource future-result-adjust-output-error-code {
         subscribe: func() -> pollable
@@ -41,42 +50,35 @@ interface radar {
         subscribe: func() -> pollable
         value: func() -> u32
     }
-    resource stream-u32 {
-        subscribe: func() -> pollable
-        value: func() -> option<u32>
-    }
     resource future-u16 {
         subscribe: func() -> pollable
         value: func() -> u16
-    }
-    resource stream-u16 {
-        subscribe: func() -> pollable
-        value: func() -> option<u16>
     }
     resource stream-proxy-handle {
         subscribe: func() -> pollable
         value: func() -> option<proxy-handle>
     }
-    resource stream-radar-objects {
+
+    resource stream-sample-ptr {
         subscribe: func() -> pollable
-        value: func() -> option<radar-objects>
+        value: func() -> option<sample-ptr>
     }
 
     resource proxy {
         constructor(handle: proxy-handle)
 
         adjust: func (target-position: position) -> future-result-adjust-output-error-code
-        calibrate: func (configuration: string, fusion-variant: fusion-variant) -> future-result-calibrate-output-error-code
+        calibrate: func (configuration: string, radar-variant: fusion-variant) -> future-result-calibrate-output-error-code
         echo: func (text: string)
     
-        subscribe-brake-event: func (max-sample-count: u32) -> result<stream-radar-objects>
-        subscribe-parking-brake-event: func (max-sample-count: u32) -> stream-radar-objects
+        subscribe-brake-event: func (max-sample-count: u32) -> result<stream-sample-ptr, error-code>
+        subscribe-parking-brake-event: func (max-sample-count: u32) -> result<stream-sample-ptr, error-code>
     
         // field
         get-update-rate: func() -> future-u32
         set-update-rate: func(value: u32) -> future-u32
-        subscribe-update-rate: func(max-sample-count: u32) -> result<stream-u32>
-        subscribe-front-object-distance: func(max-sample-count: u32) -> stream-u16
+        subscribe-update-rate: func(max-sample-count: u32) -> result<stream-sample-ptr, error-code>
+        subscribe-front-object-distance: func(max-sample-count: u32) -> result<stream-sample-ptr, error-code>
         get-rear-object-distance: func() -> future-u16
         set-object-detection-limit: func(value: u16) -> future-u16
     }

@@ -2284,6 +2284,7 @@ dependencies = [
  "wasm-metadata",
  "wit-bindgen-c",
  "wit-bindgen-core",
+ "wit-bindgen-rust-lib",
  "wit-component",
 ]
 

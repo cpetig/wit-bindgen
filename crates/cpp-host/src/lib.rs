@@ -4,10 +4,13 @@ use heck::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::mem;
-use wit_bindgen_core::wit_parser::abi::{AbiVariant, Bindgen, WasmSignature};
-use wit_bindgen_core::{
-    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, WorldGenerator,
+use wit_bindgen_core::wit_parser::abi::{
+    AbiVariant, Bindgen, Instruction, LiftLower, WasmSignature, WasmType,
 };
+use wit_bindgen_core::{
+    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, TypeInfo, WorldGenerator,
+};
+use wit_bindgen_rust_lib::{Ownership, RustFunctionGenerator, RustGenerator, TypeMode};
 use wit_component::StringEncoding;
 
 pub const RESOURCE_BASE_CLASS_NAME: &str = "ResourceBase";
@@ -185,7 +188,7 @@ impl WorldGenerator for CppHost {
         // }
         let prev = self.interface_names.insert(id, name.clone());
         assert!(prev.is_none());
-        let mut gen = self.interface(resolve, true);
+        let mut gen = self.interface(resolve, true, Identifier::Interface(id, name));
         gen.interface = Some(id);
         // uwriteln!(gen.src.h_defs, "namespace {name} {{");
         // uwriteln!(gen.src.h_helpers, "namespace {name} {{");
@@ -237,7 +240,7 @@ impl WorldGenerator for CppHost {
         _files: &mut Files,
     ) {
         let name = &resolve.worlds[world].name;
-        let mut gen = self.interface(resolve, true);
+        let mut gen = self.interface(resolve, true, Identifier::World(world));
 
         for (i, (_name, func)) in funcs.iter().enumerate() {
             if i == 0 {
@@ -257,7 +260,7 @@ impl WorldGenerator for CppHost {
         _files: &mut Files,
     ) -> std::result::Result<(), anyhow::Error> {
         self.interface_names.insert(id, name.clone());
-        let mut gen = self.interface(resolve, false);
+        let mut gen = self.interface(resolve, false, Identifier::Interface(id, name));
         gen.interface = Some(id);
         if gen.gen.interfaces_with_types_printed.insert(id) {
             gen.types(id);
@@ -283,7 +286,7 @@ impl WorldGenerator for CppHost {
         _files: &mut Files,
     ) -> std::result::Result<(), anyhow::Error> {
         let name = &resolve.worlds[world].name;
-        let mut gen = self.interface(resolve, false);
+        let mut gen = self.interface(resolve, false, Identifier::World(world));
 
         for (i, (_name, func)) in funcs.iter().enumerate() {
             if i == 0 {
@@ -495,12 +498,15 @@ impl CppHost {
         &'a mut self,
         resolve: &'a Resolve,
         _in_import: bool,
+        //        world: WorldId,
+        identifier: Identifier<'a>,
     ) -> InterfaceGenerator<'a> {
         InterfaceGenerator {
             src: Source::default(),
             gen: self,
             resolve,
             interface: None,
+            identifier,
             // in_import,
         }
     }
@@ -750,8 +756,15 @@ fn group_by_resource<'a>(
     by_resource
 }
 
+#[derive(Clone)]
+enum Identifier<'a> {
+    World(WorldId),
+    Interface(InterfaceId, &'a WorldKey),
+}
+
 struct InterfaceGenerator<'a> {
     src: Source,
+    identifier: Identifier<'a>,
     // in_import: bool,
     gen: &'a mut CppHost,
     resolve: &'a Resolve,
@@ -1087,7 +1100,12 @@ struct WamrSig {
 impl Default for WamrSig {
     fn default() -> Self {
         Self {
-            wasm: Default::default(),
+            wasm: WasmSignature {
+                params: Default::default(),
+                results: Default::default(),
+                indirect_params: Default::default(),
+                retptr: Default::default(),
+            },
             c_args: Default::default(),
             wamr_types: Default::default(),
             c_result: "void".into(),
@@ -1981,9 +1999,416 @@ impl InterfaceGenerator<'_> {
     }
 }
 
+impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
+    fn resolve(&self) -> &'a Resolve {
+        self.resolve
+    }
+
+    fn ownership(&self) -> Ownership {
+        Ownership::Owning
+    }
+
+    fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
+        let mut path = String::new();
+        if let Identifier::Interface(cur, name) = self.identifier {
+            if cur == interface {
+                return None;
+            }
+            if !self.in_import {
+                //path.push_str("super::");
+            }
+            match name {
+                WorldKey::Name(_) => {
+                    //path.push_str("super::");
+                }
+                WorldKey::Interface(_) => {
+                    //path.push_str("super::super::super::");
+                }
+            }
+        }
+        let name = &self.gen.interface_names[&interface];
+        path.push_str(&name);
+        Some(path)
+    }
+
+    fn is_exported_resource(&self, ty: TypeId) -> bool {
+        matches!(
+            self.gen
+                .resources
+                .get(&dealias(self.resolve, ty))
+                .map(|info| info.direction),
+            Some(Direction::Export)
+        )
+    }
+
+    // fn add_own(&mut self, resource: TypeId, handle: TypeId) {
+    //     self.gen
+    //         .resources
+    //         .entry(dealias(self.resolve, resource))
+    //         .or_default()
+    //         .own = Some(handle);
+    // }
+
+    fn push_str(&mut self, s: &str) {
+        self.src.push_str(s);
+    }
+
+    fn info(&self, ty: TypeId) -> TypeInfo {
+        self.gen.types.get(&ty)
+    }
+
+    fn types_mut(&mut self) -> &mut Types {
+        &mut self.gen.types
+    }
+
+    fn print_borrowed_slice(
+        &mut self,
+        mutbl: bool,
+        ty: &Type,
+        lifetime: &'static str,
+        mode: TypeMode,
+    ) {
+        self.print_rust_slice(mutbl, ty, lifetime, mode);
+    }
+
+    fn print_borrowed_str(&mut self, _lifetime: &'static str) {
+        self.push_str("&");
+        // if self.gen.opts.raw_strings {
+        //     self.push_str("[u8]");
+        // } else {
+        self.push_str("str");
+        // }
+    }
+
+    fn push_vec_name(&mut self) {
+        self.push_str("std::vector");
+    }
+
+    fn push_string_name(&mut self) {
+        self.push_str("std::string");
+    }
+
+    fn mark_resource_owned(&mut self, resource: TypeId) {
+        self.gen
+            .resources
+            .entry(dealias(self.resolve, resource))
+            .or_default()
+            .owned = true;
+    }
+
+    fn print_signature(
+        &mut self,
+        func: &Function,
+        param_mode: TypeMode,
+        sig: &FnSig,
+    ) -> Vec<String> {
+        if !matches!(func.kind, FunctionKind::Constructor(_)) {
+            self.print_results(&func.results, TypeMode::Owned);
+            self.push_str(" ");
+        }
+        let params = self.print_docs_and_params(func, param_mode, &sig);
+        params
+    }
+
+    fn print_docs_and_params(
+        &mut self,
+        func: &Function,
+        param_mode: TypeMode,
+        sig: &FnSig,
+    ) -> Vec<String> {
+        // self.rustdoc(&func.docs);
+        // self.rustdoc_params(&func.params, "Parameters");
+        // TODO: re-add this when docs are back
+        // self.rustdoc_params(&func.results, "Return");
+
+        let object = match &func.kind {
+            FunctionKind::Freestanding => None,
+            FunctionKind::Method(i) => Some(i),
+            FunctionKind::Static(i) => Some(i),
+            FunctionKind::Constructor(i) => Some(i),
+        }
+        .map(|i| {
+            self.resolve.types[*i]
+                .name
+                .as_ref()
+                .unwrap()
+                .to_pascal_case()
+        })
+        .unwrap_or_default();
+        let func_name = if sig.use_item_name {
+            if let FunctionKind::Constructor(_i) = &func.kind {
+                format!("{object}::{object}")
+            } else {
+                format!("{object}::{}", func.item_name().to_pascal_case())
+            }
+        } else {
+            func.name.to_pascal_case()
+        };
+        self.push_str(&func_name);
+        if let Some(generics) = &sig.generics {
+            self.push_str(generics);
+        }
+        self.push_str("(");
+        if let Some(arg) = &sig.self_arg {
+            self.push_str(arg);
+            self.push_str(",");
+        }
+        let mut params = Vec::new();
+        for (i, (name, param)) in func.params.iter().enumerate() {
+            params.push(to_rust_ident(name));
+            if i == 0 && sig.self_is_first_param {
+                // params.push("self".to_string());
+                continue;
+            }
+            if i == 0 && name == "self" {
+                continue;
+            }
+            let name = to_rust_ident(name);
+            self.print_ty(param, param_mode, None, Context::Argument);
+            self.push_str(" ");
+            self.push_str(&name);
+            if i + 1 != func.params.len() {
+                self.push_str(",");
+            }
+        }
+        self.push_str(")");
+        params
+    }
+
+    fn print_tyid(&mut self, id: TypeId, mode: TypeMode) {
+        let info = self.info(id);
+        let lt = self.lifetime_for(&info, mode);
+        let ty = &RustGenerator::resolve(self).types[id];
+        if ty.name.is_some() {
+            // If this type has a list internally, no lifetime is being printed,
+            // but we're in a borrowed mode, then that means we're in a borrowed
+            // context and don't want ownership of the type but we're using an
+            // owned type definition. Inject a `&` in front to indicate that, at
+            // the API level, ownership isn't required.
+            if info.has_list && lt.is_none() {
+                if let TypeMode::AllBorrowed(lt) | TypeMode::LeafBorrowed(lt) = mode {
+                    self.push_str("&");
+                    if lt != "'_" {
+                        self.push_str(lt);
+                        self.push_str(" ");
+                    }
+                }
+            }
+            let name = self.type_path(id, lt.is_none());
+            self.push_str(&name);
+
+            // If the type recursively owns data and it's a
+            // variant/record/list, then we need to place the
+            // lifetime parameter on the type as well.
+            if info.has_list && needs_generics(RustGenerator::resolve(self), &ty.kind) {
+                self.print_generics(lt);
+            }
+
+            return;
+
+            fn needs_generics(resolve: &Resolve, ty: &TypeDefKind) -> bool {
+                match ty {
+                    TypeDefKind::Variant(_)
+                    | TypeDefKind::Record(_)
+                    | TypeDefKind::Option(_)
+                    | TypeDefKind::Result(_)
+                    | TypeDefKind::Future(_)
+                    | TypeDefKind::Stream(_)
+                    | TypeDefKind::List(_)
+                    | TypeDefKind::Flags(_)
+                    | TypeDefKind::Enum(_)
+                    | TypeDefKind::Tuple(_)
+                    | TypeDefKind::Union(_) => true,
+                    TypeDefKind::Type(Type::Id(t)) => {
+                        needs_generics(resolve, &resolve.types[*t].kind)
+                    }
+                    TypeDefKind::Type(Type::String) => true,
+                    TypeDefKind::Resource | TypeDefKind::Handle(_) | TypeDefKind::Type(_) => false,
+                    TypeDefKind::Unknown => unreachable!(),
+                }
+            }
+        }
+
+        match &ty.kind {
+            TypeDefKind::List(t) => self.print_list(t, mode),
+
+            TypeDefKind::Option(t) => {
+                self.push_str("std::option<");
+                self.print_ty(t, mode, None, Context::Argument);
+                self.push_str(">");
+            }
+
+            TypeDefKind::Result(r) => {
+                self.push_str("std::expected<");
+                self.print_optional_ty(r.ok.as_ref(), mode);
+                self.push_str(",");
+                self.print_optional_ty(r.err.as_ref(), mode);
+                self.push_str(">");
+            }
+
+            TypeDefKind::Variant(_) => panic!("unsupported anonymous variant"),
+
+            // Tuple-like records are mapped directly to Rust tuples of
+            // types. Note the trailing comma after each member to
+            // appropriately handle 1-tuples.
+            TypeDefKind::Tuple(t) => {
+                self.push_str("(");
+                for ty in t.types.iter() {
+                    self.print_ty(ty, mode, None, Context::Argument);
+                    self.push_str(",");
+                }
+                self.push_str(")");
+            }
+            TypeDefKind::Resource => {
+                panic!("unsupported anonymous type reference: resource")
+            }
+            TypeDefKind::Record(_) => {
+                panic!("unsupported anonymous type reference: record")
+            }
+            TypeDefKind::Flags(_) => {
+                panic!("unsupported anonymous type reference: flags")
+            }
+            TypeDefKind::Enum(_) => {
+                panic!("unsupported anonymous type reference: enum")
+            }
+            TypeDefKind::Union(_) => {
+                panic!("unsupported anonymous type reference: union")
+            }
+            TypeDefKind::Future(ty) => {
+                self.push_str("Future<");
+                self.print_optional_ty(ty.as_ref(), mode);
+                self.push_str(">");
+            }
+            TypeDefKind::Stream(stream) => {
+                self.push_str("Stream<");
+                self.print_optional_ty(stream.element.as_ref(), mode);
+                self.push_str(",");
+                self.print_optional_ty(stream.end.as_ref(), mode);
+                self.push_str(">");
+            }
+
+            TypeDefKind::Handle(Handle::Own(ty)) => {
+                self.mark_resource_owned(*ty);
+                self.print_ty(&Type::Id(*ty), mode, None, Context::Argument);
+            }
+
+            TypeDefKind::Handle(Handle::Borrow(ty)) => {
+                self.push_str("&");
+                self.print_ty(&Type::Id(*ty), mode, None, Context::Argument);
+            }
+
+            TypeDefKind::Type(t) => self.print_ty(t, mode, None, Context::Argument),
+
+            // TypeDefKind::Resource => {
+            //     todo!("implement resources")
+            // }
+            TypeDefKind::Unknown => unreachable!(),
+        }
+    }
+
+    fn print_ty(&mut self, ty: &Type, mode: TypeMode) {
+        match ty {
+            Type::Id(t) => self.print_tyid(*t, mode),
+            Type::Bool => self.push_str("bool"),
+            Type::U8 => self.push_str("uint8_t"),
+            Type::U16 => self.push_str("uint16_t"),
+            Type::U32 => self.push_str("uint32_t"),
+            Type::U64 => self.push_str("uint64_t"),
+            Type::S8 => self.push_str("int8_t"),
+            Type::S16 => self.push_str("int16_t"),
+            Type::S32 => self.push_str("int32_t"),
+            Type::S64 => self.push_str("int64_t"),
+            Type::Float32 => self.push_str("float"),
+            Type::Float64 => self.push_str("double"),
+            Type::Char => self.push_str("int32_t"),
+            Type::String => match mode {
+                TypeMode::AllBorrowed(_lt) | TypeMode::LeafBorrowed(_lt) => {
+                    self.push_str("std::string_view");
+                }
+                TypeMode::Owned => {
+                    self.push_str("std::string");
+                }
+                TypeMode::HandlesBorrowed(_) => todo!(),
+            },
+        }
+    }
+
+    fn print_optional_ty(&mut self, ty: Option<&Type>, mode: TypeMode) {
+        match ty {
+            Some(ty) => self.print_ty(ty, mode, None, Context::Argument),
+            None => self.push_str("void"),
+        }
+    }
+
+    fn print_results(&mut self, results: &Results, mode: TypeMode) {
+        match results.len() {
+            0 | 1 => self.print_optional_ty(results.iter_types().next(), mode),
+            _ => todo!(),
+        }
+    }
+
+    fn wasm_type(&mut self, ty: WasmType) {
+        self.push_str(wasm_type(ty));
+    }
+
+    fn print_list(&mut self, ty: &Type, mode: TypeMode) {
+        let next_mode = if matches!(self.ownership(), Ownership::Owning) {
+            TypeMode::Owned
+        } else {
+            mode
+        };
+        match mode {
+            TypeMode::AllBorrowed(lt) => {
+                self.print_borrowed_slice(false, ty, lt, next_mode);
+            }
+            TypeMode::LeafBorrowed(lt) => {
+                if RustGenerator::resolve(self).all_bits_valid(ty) {
+                    self.print_borrowed_slice(false, ty, lt, next_mode);
+                } else {
+                    self.push_vec_name();
+                    self.push_str("<");
+                    self.print_ty(ty, next_mode, None, Context::Argument);
+                    self.push_str(">");
+                }
+            }
+            TypeMode::Owned => {
+                self.push_vec_name();
+                self.push_str("<");
+                self.print_ty(ty, next_mode, None, Context::Argument);
+                self.push_str(">");
+            }
+            TypeMode::HandlesBorrowed(_) => todo!(),
+        }
+    }
+
+    fn print_rust_slice(
+        &mut self,
+        mutbl: bool,
+        ty: &Type,
+        _lifetime: &'static str,
+        mode: TypeMode,
+    ) {
+        self.push_str("std::vector<");
+        self.print_ty(ty, mode, None, Context::Argument);
+        self.push_str(">");
+        if !mutbl {
+            self.push_str(" const ");
+        }
+        self.push_str("&");
+    }
+}
+
 struct FunctionBindgen<'a, 'b> {
     gen: &'a mut InterfaceGenerator<'b>,
     func: &'a Function,
+    src: Source,
+    blocks: Vec<String>,
+    block_storage: Vec<(Source, Vec<(String, String)>)>,
+    tmp: usize,
+    needs_cleanup_list: bool,
+    cleanup: Vec<(String, String)>,
+    import_return_pointer_area_size: usize,
+    import_return_pointer_area_align: usize,
     //    size: &'a SizeAlign,
 }
 
@@ -1993,117 +2418,918 @@ struct FunctionBindgen<'a, 'b> {
 //     }
 // }
 
+impl RustFunctionGenerator for FunctionBindgen<'_, '_> {
+    fn push_str(&mut self, s: &str) {
+        self.src.push_str(s);
+    }
+
+    fn tmp(&mut self) -> usize {
+        let ret = self.tmp;
+        self.tmp += 1;
+        ret
+    }
+
+    fn rust_gen(&self) -> &dyn RustGenerator {
+        self.gen
+    }
+
+    fn lift_lower(&self) -> LiftLower {
+        if self.gen.in_import {
+            LiftLower::LowerArgsLiftResults
+        } else {
+            LiftLower::LiftArgsLowerResults
+        }
+    }
+}
+
 impl Bindgen for FunctionBindgen<'_, '_> {
     type Operand = String;
 
-    fn emit(
-        &mut self,
-        _resolve: &Resolve,
-        inst: &abi::Instruction<'_>,
-        operands: &mut Vec<Self::Operand>,
-        results: &mut Vec<Self::Operand>,
-    ) {
-        println!("{inst:?}({operands:?}) -> {results:?}");
-        match inst {
-            abi::Instruction::GetArg { nth } => results.push(self.func.params[*nth].0.clone()),
-            abi::Instruction::I32Const { .. } => todo!(),
-            abi::Instruction::Bitcasts { .. } => todo!(),
-            abi::Instruction::ConstZero { .. } => todo!(),
-            abi::Instruction::I32Load { .. } => todo!(),
-            abi::Instruction::I32Load8U { .. } => todo!(),
-            abi::Instruction::I32Load8S { .. } => todo!(),
-            abi::Instruction::I32Load16U { .. } => todo!(),
-            abi::Instruction::I32Load16S { .. } => todo!(),
-            abi::Instruction::I64Load { .. } => todo!(),
-            abi::Instruction::F32Load { .. } => todo!(),
-            abi::Instruction::F64Load { .. } => todo!(),
-            abi::Instruction::I32Store { .. } => todo!(),
-            abi::Instruction::I32Store8 { .. } => todo!(),
-            abi::Instruction::I32Store16 { .. } => todo!(),
-            abi::Instruction::I64Store { .. } => todo!(),
-            abi::Instruction::F32Store { .. } => todo!(),
-            abi::Instruction::F64Store { .. } => todo!(),
-            abi::Instruction::I32FromChar => todo!(),
-            abi::Instruction::I64FromU64 => todo!(),
-            abi::Instruction::I64FromS64 => todo!(),
-            abi::Instruction::I32FromU32 => todo!(),
-            abi::Instruction::I32FromS32 => results.push(format!("(int32_t)({})", operands[0])),
-            abi::Instruction::I32FromU16 => todo!(),
-            abi::Instruction::I32FromS16 => todo!(),
-            abi::Instruction::I32FromU8 => todo!(),
-            abi::Instruction::I32FromS8 => todo!(),
-            abi::Instruction::F32FromFloat32 => todo!(),
-            abi::Instruction::F64FromFloat64 => todo!(),
-            abi::Instruction::S8FromI32 => todo!(),
-            abi::Instruction::U8FromI32 => todo!(),
-            abi::Instruction::S16FromI32 => todo!(),
-            abi::Instruction::U16FromI32 => todo!(),
-            abi::Instruction::S32FromI32 => todo!(),
-            abi::Instruction::U32FromI32 => todo!(),
-            abi::Instruction::S64FromI64 => todo!(),
-            abi::Instruction::U64FromI64 => todo!(),
-            abi::Instruction::CharFromI32 => todo!(),
-            abi::Instruction::Float32FromF32 => todo!(),
-            abi::Instruction::Float64FromF64 => todo!(),
-            abi::Instruction::BoolFromI32 => todo!(),
-            abi::Instruction::I32FromBool => todo!(),
-            abi::Instruction::ListCanonLower { .. } => todo!(),
-            abi::Instruction::StringLower { .. } => todo!(),
-            abi::Instruction::ListLower { .. } => todo!(),
-            abi::Instruction::ListCanonLift { .. } => todo!(),
-            abi::Instruction::StringLift => todo!(),
-            abi::Instruction::ListLift { .. } => todo!(),
-            abi::Instruction::IterElem { .. } => todo!(),
-            abi::Instruction::IterBasePointer => todo!(),
-            abi::Instruction::RecordLower { .. } => todo!(),
-            abi::Instruction::RecordLift { .. } => todo!(),
-            abi::Instruction::TupleLower { .. } => todo!(),
-            abi::Instruction::TupleLift { .. } => todo!(),
-            abi::Instruction::FlagsLower { .. } => todo!(),
-            abi::Instruction::FlagsLift { .. } => todo!(),
-            abi::Instruction::VariantPayloadName => todo!(),
-            abi::Instruction::VariantLower { .. } => todo!(),
-            abi::Instruction::VariantLift { .. } => todo!(),
-            abi::Instruction::UnionLower { .. } => todo!(),
-            abi::Instruction::UnionLift { .. } => todo!(),
-            abi::Instruction::EnumLower { .. } => todo!(),
-            abi::Instruction::EnumLift { .. } => todo!(),
-            abi::Instruction::OptionLower { .. } => todo!(),
-            abi::Instruction::OptionLift { .. } => todo!(),
-            abi::Instruction::ResultLower { .. } => todo!(),
-            abi::Instruction::ResultLift { .. } => todo!(),
-            abi::Instruction::CallWasm { .. } => todo!(),
-            abi::Instruction::CallInterface { .. } => todo!(),
-            abi::Instruction::Return { .. } => todo!(),
-            abi::Instruction::Malloc { .. } => todo!(),
-            abi::Instruction::GuestDeallocate { .. } => todo!(),
-            abi::Instruction::GuestDeallocateString => todo!(),
-            abi::Instruction::GuestDeallocateList { .. } => todo!(),
-            abi::Instruction::GuestDeallocateVariant { .. } => todo!(),
-            abi::Instruction::HandleLower { .. } => todo!(),
-            abi::Instruction::HandleLift { .. } => todo!(),
+    fn push_block(&mut self) {
+        let prev_src = mem::take(&mut self.src);
+        let prev_cleanup = mem::take(&mut self.cleanup);
+        self.block_storage.push((prev_src, prev_cleanup));
+    }
+
+    fn finish_block(&mut self, operands: &mut Vec<String>) {
+        if self.cleanup.len() > 0 {
+            self.needs_cleanup_list = true;
+            self.push_str("cleanup_list.extend_from_slice(&[");
+            for (ptr, layout) in mem::take(&mut self.cleanup) {
+                self.push_str("(");
+                self.push_str(&ptr);
+                self.push_str(", ");
+                self.push_str(&layout);
+                self.push_str("),");
+            }
+            self.push_str("]);\n");
+        }
+        let (prev_src, prev_cleanup) = self.block_storage.pop().unwrap();
+        let src = mem::replace(&mut self.src, prev_src);
+        self.cleanup = prev_cleanup;
+        let expr = match operands.len() {
+            0 => "()".to_string(),
+            1 => operands[0].clone(),
+            _ => format!("({})", operands.join(", ")),
+        };
+        if src.is_empty() {
+            self.blocks.push(expr);
+        } else if operands.is_empty() {
+            self.blocks.push(format!("{{\n{}\n}}", &src[..]));
+        } else {
+            self.blocks.push(format!("{{\n{}\n{}\n}}", &src[..], expr));
         }
     }
 
-    fn return_pointer(&mut self, _size: usize, _align: usize) -> Self::Operand {
-        //println!("")
-        todo!()
-    }
+    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+        let tmp = self.tmp();
 
-    fn push_block(&mut self) {
-        todo!()
-    }
-
-    fn finish_block(&mut self, _operand: &mut Vec<Self::Operand>) {
-        todo!()
+        // Imports get a per-function return area to facilitate using the
+        // stack whereas exports use a per-module return area to cut down on
+        // stack usage. Note that for imports this also facilitates "adapter
+        // modules" for components to not have data segments.
+        if self.gen.in_import {
+            self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
+            self.import_return_pointer_area_align =
+                self.import_return_pointer_area_align.max(align);
+            uwriteln!(self.src, "auto ptr{tmp} = (int32_t)&ret_area;");
+        } else {
+            todo!();
+            // self.gen.return_pointer_area_size = self.gen.return_pointer_area_size.max(size);
+            // self.gen.return_pointer_area_align = self.gen.return_pointer_area_align.max(align);
+            // uwriteln!(self.src, "auto ptr{tmp} = _RET_AREA.0.as_mut_ptr() as i32;");
+        }
+        format!("ptr{}", tmp)
     }
 
     fn sizes(&self) -> &SizeAlign {
-        &self.gen.gen.sizes
+        &self.gen.sizes
     }
 
-    fn is_list_canonical(&self, _resolve: &Resolve, _element: &Type) -> bool {
-        todo!()
+    fn is_list_canonical(&self, resolve: &Resolve, ty: &Type) -> bool {
+        resolve.all_bits_valid(ty)
+    }
+
+    fn emit(
+        &mut self,
+        resolve: &Resolve,
+        inst: &Instruction<'_>,
+        operands: &mut Vec<String>,
+        results: &mut Vec<String>,
+    ) {
+        let mut top_as = |cvt: &str| {
+            results.push(format!("({cvt})({})", operands.pop().unwrap()));
+        };
+
+        // work around the fact that some functions only push
+        fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut InterfaceGenerator<'a>)>(
+            slf: &'a mut FunctionBindgen<'b, 'c>,
+            resolve: &'a Resolve,
+            f: T,
+        ) -> String {
+            let mut sizes = SizeAlign::default();
+            sizes.fill(resolve);
+            let mut gen = InterfaceGenerator {
+                identifier: slf.gen.identifier.clone(),
+                wasm_import_module: slf.gen.wasm_import_module.clone(),
+                src: Source::default(),
+                in_import: slf.gen.in_import.clone(),
+                gen: slf.gen.gen,
+                sizes,
+                resolve,
+                return_pointer_area_size: 0,
+                return_pointer_area_align: 0,
+            };
+            f(&mut gen);
+            //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
+            let mut ok_type = String::default();
+            std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
+            ok_type
+        }
+
+        match inst {
+            Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
+            Instruction::I32Const { val } => results.push(format!("(int32_t){}", val)),
+            Instruction::ConstZero { tys } => {
+                for ty in tys.iter() {
+                    match ty {
+                        WasmType::I32 => results.push("(int32_t)0".to_string()),
+                        WasmType::I64 => results.push("(int64_t)0".to_string()),
+                        WasmType::F32 => results.push("0.0f".to_string()),
+                        WasmType::F64 => results.push("0.0".to_string()),
+                    }
+                }
+            }
+
+            Instruction::I64FromU64 | Instruction::I64FromS64 => {
+                let s = operands.pop().unwrap();
+                results.push(format!("(int64_t)({})", s));
+            }
+            Instruction::I32FromChar
+            | Instruction::I32FromU8
+            | Instruction::I32FromS8
+            | Instruction::I32FromU16
+            | Instruction::I32FromS16
+            | Instruction::I32FromU32
+            | Instruction::I32FromS32 => {
+                let s = operands.pop().unwrap();
+                results.push(format!("(int32_t)({})", s));
+            }
+
+            Instruction::F32FromFloat32 => {
+                let s = operands.pop().unwrap();
+                results.push(format!("(float)({})", s));
+            }
+            Instruction::F64FromFloat64 => {
+                let s = operands.pop().unwrap();
+                results.push(format!("(double)({})", s));
+            }
+            Instruction::Float32FromF32
+            | Instruction::Float64FromF64
+            | Instruction::S32FromI32
+            | Instruction::S64FromI64 => {
+                results.push(operands.pop().unwrap());
+            }
+            Instruction::S8FromI32 => top_as("int8_t"),
+            Instruction::U8FromI32 => top_as("uint8_t"),
+            Instruction::S16FromI32 => top_as("int16_t"),
+            Instruction::U16FromI32 => top_as("uint16_t"),
+            Instruction::U32FromI32 => top_as("uint32_t"),
+            Instruction::U64FromI64 => top_as("uint64_t"),
+            Instruction::CharFromI32 => {
+                todo!();
+                // results.push(format!(
+                //     "{{
+                //         #[cfg(not(debug_assertions))]
+                //         {{ ::core::char::from_u32_unchecked({} as u32) }}
+                //         #[cfg(debug_assertions)]
+                //         {{ ::core::char::from_u32({} as u32).unwrap() }}
+                //     }}",
+                //     operands[0], operands[0]
+                // ));
+            }
+
+            Instruction::Bitcasts { casts } => {
+                wit_bindgen_rust_lib::bitcast(casts, operands, results)
+            }
+
+            Instruction::I32FromBool => {
+                results.push(format!("(int32_t)({})", operands[0]));
+            }
+            Instruction::BoolFromI32 => {
+                results.push(format!("{}!=0", operands[0]));
+            }
+
+            Instruction::FlagsLower { flags, .. } => {
+                let tmp = self.tmp();
+                self.push_str(&format!("auto flags{} = {};\n", tmp, operands[0]));
+                for i in 0..flags.repr().count() {
+                    results.push(format!("(flags{}.bits() >> {}) as i32", tmp, i * 32));
+                }
+            }
+            Instruction::FlagsLift { flags, ty, .. } => {
+                let repr = RustFlagsRepr::new(flags);
+                let name = self.gen.type_path(*ty, true);
+                let mut result = format!("{name}::empty()");
+                for (i, op) in operands.iter().enumerate() {
+                    result.push_str(&format!(
+                        " | {name}::from_bits_retain((({op} as {repr}) << {}) as _)",
+                        i * 32
+                    ));
+                }
+                results.push(result);
+            }
+
+            Instruction::HandleLower {
+                handle: Handle::Own(_),
+                ..
+            } => {
+                let op = &operands[0];
+                results.push(format!("({op}).into_handle()"))
+            }
+
+            Instruction::HandleLower {
+                handle: Handle::Borrow(_),
+                ..
+            } => {
+                let op = &operands[0];
+                if op == "self" {
+                    results.push("this->handle".into());
+                } else {
+                    results.push(format!("({op}).handle"));
+                }
+            }
+
+            Instruction::HandleLift { handle, .. } => {
+                let op = &operands[0];
+                let (prefix, resource, owned) = match handle {
+                    Handle::Borrow(resource) => ("&", resource, false),
+                    Handle::Own(resource) => ("", resource, true),
+                };
+                let resource = dealias(resolve, *resource);
+
+                results.push(
+                    if let Direction::Export = self.gen.gen.resources[&resource].direction {
+                        match handle {
+                            Handle::Borrow(_) => {
+                                let name = resolve.types[resource]
+                                    .name
+                                    .as_deref()
+                                    .unwrap()
+                                    .to_upper_camel_case();
+                                format!(
+                                    "::core::mem::transmute::<isize, &Rep{name}>\
+                                     ({op}.try_into().unwrap())"
+                                )
+                            }
+                            Handle::Own(_) => {
+                                let name = self.gen.type_path(resource, true);
+                                format!("{name}::from_handle({op})")
+                            }
+                        }
+                    } else {
+                        let name = self.gen.type_path(resource, true);
+                        let world = self.gen.gen.world.map(|w| &resolve.worlds[w].name).unwrap();
+                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}, {owned}))}}")
+                    },
+                );
+            }
+
+            Instruction::RecordLower { ty, record, .. } => {
+                self.record_lower(*ty, record, &operands[0], results);
+            }
+            Instruction::RecordLift { ty, record, .. } => {
+                let mut result = self.typename_lift(*ty);
+                result.push_str("{");
+                for (_field, val) in record.fields.iter().zip(operands) {
+                    // result.push_str(&to_rust_ident(&field.name));
+                    // result.push_str(":");
+                    result.push_str(&val);
+                    result.push_str(", ");
+                }
+                result.push_str("}");
+                results.push(result);
+            }
+
+            Instruction::TupleLower { tuple, .. } => {
+                self.tuple_lower(tuple, &operands[0], results);
+            }
+            Instruction::TupleLift { .. } => {
+                self.tuple_lift(operands, results);
+            }
+
+            Instruction::VariantPayloadName => results.push("e".to_string()),
+
+            Instruction::VariantLower {
+                variant,
+                results: result_types,
+                ty,
+                ..
+            } => {
+                let blocks = self
+                    .blocks
+                    .drain(self.blocks.len() - variant.cases.len()..)
+                    .collect::<Vec<_>>();
+                self.let_results(result_types.len(), results);
+                let op0 = &operands[0];
+                self.push_str(&format!("match {op0} {{\n"));
+                let name = self.typename_lower(*ty);
+                for (case, block) in variant.cases.iter().zip(blocks) {
+                    let case_name = case.name.to_upper_camel_case();
+                    self.push_str(&format!("{name}::{case_name}"));
+                    if case.ty.is_some() {
+                        self.push_str(&format!("(e) => {block},\n"));
+                    } else {
+                        self.push_str(&format!(" => {{\n{block}\n}}\n"));
+                    }
+                }
+                self.push_str("};\n");
+            }
+
+            Instruction::VariantLift { variant, ty, .. } => {
+                let mut result = String::new();
+                result.push_str("{");
+
+                let named_enum = variant.cases.iter().all(|c| c.ty.is_none());
+                let blocks = self
+                    .blocks
+                    .drain(self.blocks.len() - variant.cases.len()..)
+                    .collect::<Vec<_>>();
+                let op0 = &operands[0];
+
+                if named_enum {
+                    // In unchecked mode when this type is a named enum then we know we
+                    // defined the type so we can transmute directly into it.
+                    // result.push_str("#[cfg(not(debug_assertions))]");
+                    // result.push_str("{");
+                    // result.push_str("::core::mem::transmute::<_, ");
+                    // result.push_str(&name.to_upper_camel_case());
+                    // result.push_str(">(");
+                    // result.push_str(op0);
+                    // result.push_str(" as ");
+                    // result.push_str(int_repr(variant.tag()));
+                    // result.push_str(")");
+                    // result.push_str("}");
+                }
+
+                // if named_enum {
+                //     result.push_str("#[cfg(debug_assertions)]");
+                // }
+                result.push_str("{");
+                result.push_str(&format!("match {op0} {{\n"));
+                let name = self.typename_lift(*ty);
+                for (i, (case, block)) in variant.cases.iter().zip(blocks).enumerate() {
+                    let pat = i.to_string();
+                    let block = if case.ty.is_some() {
+                        format!("({block})")
+                    } else {
+                        String::new()
+                    };
+                    let case = case.name.to_upper_camel_case();
+                    // if i == variant.cases.len() - 1 {
+                    //     result.push_str("#[cfg(debug_assertions)]");
+                    //     result.push_str(&format!("{pat} => {name}::{case}{block},\n"));
+                    //     result.push_str("#[cfg(not(debug_assertions))]");
+                    //     result.push_str(&format!("_ => {name}::{case}{block},\n"));
+                    // } else {
+                    result.push_str(&format!("{pat} => {name}::{case}{block},\n"));
+                    // }
+                }
+                // result.push_str("#[cfg(debug_assertions)]");
+                // result.push_str("_ => panic!(\"invalid enum discriminant\"),\n");
+                result.push_str("}");
+                result.push_str("}");
+
+                result.push_str("}");
+                results.push(result);
+            }
+
+            Instruction::UnionLower {
+                union,
+                results: result_types,
+                ty,
+                ..
+            } => {
+                let blocks = self
+                    .blocks
+                    .drain(self.blocks.len() - union.cases.len()..)
+                    .collect::<Vec<_>>();
+                self.let_results(result_types.len(), results);
+                let op0 = &operands[0];
+                self.push_str(&format!("match {op0} {{\n"));
+                let name = self.typename_lower(*ty);
+                for (case_name, block) in self.gen.union_case_names(union).into_iter().zip(blocks) {
+                    self.push_str(&format!("{name}::{case_name}(e) => {block},\n"));
+                }
+                self.push_str("};\n");
+            }
+
+            Instruction::UnionLift { union, ty, .. } => {
+                let blocks = self
+                    .blocks
+                    .drain(self.blocks.len() - union.cases.len()..)
+                    .collect::<Vec<_>>();
+                let op0 = &operands[0];
+                let mut result = format!("match {op0} {{\n");
+                for (i, (case_name, block)) in self
+                    .gen
+                    .union_case_names(union)
+                    .into_iter()
+                    .zip(blocks)
+                    .enumerate()
+                {
+                    let pat = i.to_string();
+                    let name = self.typename_lift(*ty);
+                    // if i == union.cases.len() - 1 {
+                    //     result.push_str("#[cfg(debug_assertions)]");
+                    //     result.push_str(&format!("{pat} => {name}::{case_name}({block}),\n"));
+                    //     result.push_str("#[cfg(not(debug_assertions))]");
+                    //     result.push_str(&format!("_ => {name}::{case_name}({block}),\n"));
+                    // } else {
+                    result.push_str(&format!("{pat} => {name}::{case_name}({block}),\n"));
+                    // }
+                }
+                // result.push_str("#[cfg(debug_assertions)]");
+                // result.push_str("_ => panic!(\"invalid union discriminant\"),\n");
+                result.push_str("}");
+                results.push(result);
+            }
+
+            Instruction::OptionLower {
+                results: _result_types,
+                ..
+            } => {
+                todo!();
+                // let some = self.blocks.pop().unwrap();
+                // let none = self.blocks.pop().unwrap();
+                // self.let_results(result_types.len(), results);
+                // let operand = &operands[0];
+                // self.push_str(&format!(
+                //     "match {operand} {{
+                //         Some(e) => {some},
+                //         None => {{\n{none}\n}},
+                //     }};"
+                // ));
+            }
+
+            Instruction::OptionLift { .. } => {
+                let some = self.blocks.pop().unwrap();
+                let none = self.blocks.pop().unwrap();
+                assert_eq!(none, "()");
+                let operand = &operands[0];
+                results.push(format!(
+                    "{operand}==1 ? std::optional<>(std::move({some})) : std::optional()"
+                ));
+            }
+
+            Instruction::ResultLower {
+                results: _result_types,
+                // result,
+                ..
+            } => {
+                todo!();
+                // let err = self.blocks.pop().unwrap();
+                // let ok = self.blocks.pop().unwrap();
+                // self.let_results(result_types.len(), results);
+                // let operand = &operands[0];
+                // let ok_binding = if result.ok.is_some() { "e" } else { "_" };
+                // let err_binding = if result.err.is_some() { "e" } else { "_" };
+                // self.push_str(&format!(
+                //     "match {operand} {{
+                //         Ok({ok_binding}) => {{ {ok} }},
+                //         Err({err_binding}) => {{ {err} }},
+                //     }};"
+                // ));
+            }
+
+            Instruction::ResultLift { result, .. } => {
+                let mut err = self.blocks.pop().unwrap();
+                let mut ok = self.blocks.pop().unwrap();
+                if result.ok.is_none() {
+                    ok.clear();
+                } else {
+                    ok = format!("std::move({ok})");
+                }
+                if result.err.is_none() {
+                    err.clear();
+                } else {
+                    err = format!("std::move({err})");
+                }
+                let ok_type = print_to_result(self, resolve, |gen| {
+                    gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned)
+                });
+                let err_type = print_to_result(self, resolve, |gen| {
+                    gen.print_optional_ty(result.err.as_ref(), TypeMode::Owned)
+                });
+                let type_name = format!("std::expected<{ok_type}, {err_type}>",);
+                let err_type = "std::unexpected";
+                let operand = &operands[0];
+                results.push(format!(
+                    "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
+                ));
+            }
+
+            Instruction::EnumLower { enum_, ty, .. } => {
+                let mut result = format!("match {} {{\n", operands[0]);
+                let name = self.gen.type_path(*ty, true);
+                for (i, case) in enum_.cases.iter().enumerate() {
+                    let case = case.name.to_upper_camel_case();
+                    result.push_str(&format!("{name}::{case} => {i},\n"));
+                }
+                result.push_str("}");
+                results.push(result);
+            }
+
+            Instruction::EnumLift { .. } => {
+                todo!();
+                // let mut result = String::new();
+                // result.push_str("{");
+
+                // // In checked mode do a `match`.
+                // result.push_str("#[cfg(debug_assertions)]");
+                // result.push_str("{");
+                // result.push_str("match ");
+                // result.push_str(&operands[0]);
+                // result.push_str(" {\n");
+                // let name = self.gen.type_path(*ty, true);
+                // for (i, case) in enum_.cases.iter().enumerate() {
+                //     let case = case.name.to_upper_camel_case();
+                //     result.push_str(&format!("{i} => {name}::{case},\n"));
+                // }
+                // result.push_str("_ => panic!(\"invalid enum discriminant\"),\n");
+                // result.push_str("}");
+                // result.push_str("}");
+
+                // // In unchecked mode when this type is a named enum then we know we
+                // // defined the type so we can transmute directly into it.
+                // result.push_str("#[cfg(not(debug_assertions))]");
+                // result.push_str("{");
+                // result.push_str("::core::mem::transmute::<_, ");
+                // result.push_str(&self.gen.type_path(*ty, true));
+                // result.push_str(">(");
+                // result.push_str(&operands[0]);
+                // result.push_str(" as ");
+                // result.push_str(int_repr(enum_.tag()));
+                // result.push_str(")");
+                // result.push_str("}");
+
+                // result.push_str("}");
+                // results.push(result);
+            }
+
+            Instruction::ListCanonLower { realloc, .. } => {
+                let tmp = self.tmp();
+                let val = format!("vec{}", tmp);
+                let ptr = format!("ptr{}", tmp);
+                let len = format!("len{}", tmp);
+                //                if realloc.is_none() {
+                self.push_str(&format!("auto& {} = {};\n", val, operands[0]));
+                // } else {
+                //     let op0 = operands.pop().unwrap();
+                //     self.push_str(&format!("auto {} = ({}).into_boxed_slice();\n", val, op0));
+                // }
+                self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
+                self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
+                if realloc.is_some() {
+                    todo!();
+                    // self.push_str(&format!("::core::mem::forget({});\n", val));
+                }
+                results.push(ptr);
+                results.push(len);
+            }
+
+            Instruction::ListCanonLift { .. } => {
+                let tmp = self.tmp();
+                let len = format!("len{}", tmp);
+                self.push_str(&format!("auto {} = {};\n", len, operands[1]));
+                let result = format!("std::vector((?*)({}), {len})", operands[0]);
+                results.push(result);
+            }
+
+            Instruction::StringLower { realloc } => {
+                let tmp = self.tmp();
+                let val = format!("vec{}", tmp);
+                let ptr = format!("ptr{}", tmp);
+                let len = format!("len{}", tmp);
+                if realloc.is_none() {
+                    self.push_str(&format!("auto {} = {};\n", val, operands[0]));
+                } else {
+                    todo!();
+                    // let op0 = format!("{}.into_bytes()", operands[0]);
+                    // self.push_str(&format!("let {} = ({}).into_boxed_slice();\n", val, op0));
+                }
+                self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
+                self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
+                if realloc.is_some() {
+                    todo!();
+                    //                    self.push_str(&format!("::core::mem::forget({});\n", val));
+                }
+                results.push(ptr);
+                results.push(len);
+            }
+
+            Instruction::StringLift => {
+                let tmp = self.tmp();
+                let len = format!("len{}", tmp);
+                self.push_str(&format!("auto {} = {};\n", len, operands[1]));
+                let result = format!("std::string((char const*)({}), {len})", operands[0]);
+                results.push(result);
+            }
+
+            Instruction::ListLower { element, realloc } => {
+                let body = self.blocks.pop().unwrap();
+                let tmp = self.tmp();
+                let vec = format!("vec{tmp}");
+                let result = format!("result{tmp}");
+                let layout = format!("layout{tmp}");
+                let len = format!("len{tmp}");
+                self.push_str(&format!(
+                    "let {vec} = {operand0};\n",
+                    operand0 = operands[0]
+                ));
+                self.push_str(&format!("let {len} = {vec}.len() as i32;\n"));
+                let size = self.gen.sizes.size(element);
+                let align = self.gen.sizes.align(element);
+                self.push_str(&format!(
+                    "let {layout} = alloc::Layout::from_size_align_unchecked({vec}.len() * {size}, {align});\n",
+                ));
+                self.push_str(&format!(
+                    "let {result} = if {layout}.size() != 0\n{{\nlet ptr = alloc::alloc({layout});\n",
+                ));
+                self.push_str(&format!(
+                    "if ptr.is_null()\n{{\nalloc::handle_alloc_error({layout});\n}}\nptr\n}}",
+                ));
+                self.push_str(&format!("else {{\n::core::ptr::null_mut()\n}};\n",));
+                self.push_str(&format!("for (i, e) in {vec}.into_iter().enumerate() {{\n",));
+                self.push_str(&format!(
+                    "let base = {result} as i32 + (i as i32) * {size};\n",
+                ));
+                self.push_str(&body);
+                self.push_str("}\n");
+                results.push(format!("{result} as i32"));
+                results.push(len);
+
+                if realloc.is_none() {
+                    // If an allocator isn't requested then we must clean up the
+                    // allocation ourselves since our callee isn't taking
+                    // ownership.
+                    self.cleanup.push((result, layout));
+                }
+            }
+
+            Instruction::ListLift { element, .. } => {
+                let body = self.blocks.pop().unwrap();
+                let tmp = self.tmp();
+                let size = self.gen.sizes.size(element);
+                let _align = self.gen.sizes.align(element);
+                let len = format!("len{tmp}");
+                let base = format!("base{tmp}");
+                let result = format!("result{tmp}");
+                self.push_str(&format!(
+                    "auto {base} = {operand0};\n",
+                    operand0 = operands[0]
+                ));
+                self.push_str(&format!(
+                    "auto {len} = {operand1};\n",
+                    operand1 = operands[1]
+                ));
+                let elemtype = print_to_result(self, resolve, |gen| {
+                    gen.print_ty(element, TypeMode::Owned, None, Context::Argument)
+                });
+                self.push_str(&format!("auto {result} = std::vector<{elemtype}>();\n"));
+                self.push_str(&format!("{result}.reserve({len});\n"));
+                self.push_str(&format!("for (unsigned i=0;i<{len};++i) {{\n"));
+                self.push_str(&format!("auto base = {base} + i * {size};\n"));
+                self.push_str(&format!("{result}.push_back({body});\n"));
+                self.push_str("}\n");
+                results.push(result);
+                self.push_str(&format!("free((void*){base});\n"));
+            }
+
+            Instruction::IterElem { .. } => results.push("e".to_string()),
+
+            Instruction::IterBasePointer => results.push("base".to_string()),
+
+            Instruction::CallWasm { name, sig, .. } => {
+                let func = self.declare_import(
+                    self.gen.wasm_import_module.unwrap(),
+                    name,
+                    &sig.params,
+                    &sig.results,
+                );
+
+                // ... then call the function with all our operands
+                if sig.results.len() > 0 {
+                    self.push_str("auto ret = ");
+                    results.push("ret".to_string());
+                }
+                self.push_str(&func);
+                self.push_str("(");
+                self.push_str(&operands.join(", "));
+                self.push_str(");\n");
+            }
+
+            Instruction::CallInterface { func, .. } => {
+                self.let_results(func.results.len(), results);
+                match &func.kind {
+                    FunctionKind::Freestanding => {
+                        self.push_str(&format!(
+                            "<{0}Impl as {0}>::{1}",
+                            self.trait_name.unwrap(),
+                            to_rust_ident(&func.name)
+                        ));
+                    }
+                    FunctionKind::Method(ty) | FunctionKind::Static(ty) => {
+                        self.push_str(&format!(
+                            "<Rep{0} as {0}>::{1}",
+                            resolve.types[*ty]
+                                .name
+                                .as_deref()
+                                .unwrap()
+                                .to_upper_camel_case(),
+                            to_rust_ident(func.item_name())
+                        ));
+                    }
+                    FunctionKind::Constructor(ty) => {
+                        self.push_str(&format!(
+                            "Own{0}::new(<Rep{0} as {0}>::new",
+                            resolve.types[*ty]
+                                .name
+                                .as_deref()
+                                .unwrap()
+                                .to_upper_camel_case()
+                        ));
+                    }
+                }
+                self.push_str("(");
+                self.push_str(&operands.join(", "));
+                self.push_str(")");
+                if let FunctionKind::Constructor(_) = &func.kind {
+                    self.push_str(")");
+                }
+                self.push_str(";\n");
+            }
+
+            Instruction::Return { amt, func, .. } => {
+                self.emit_cleanup();
+                match amt {
+                    0 => {}
+                    1 => {
+                        match &func.kind {
+                            FunctionKind::Constructor(_) => {
+                                // strange but works
+                                self.push_str("*this = ");
+                            }
+                            _ => self.push_str("return "),
+                        }
+                        self.push_str(&operands[0]);
+                        self.push_str(";\n");
+                    }
+                    _ => todo!(),
+                }
+            }
+
+            Instruction::I32Load { offset } => {
+                results.push(format!("*((int32_t const*)({} + {}))", operands[0], offset));
+            }
+            Instruction::I32Load8U { offset } => {
+                results.push(format!(
+                    "(int32_t)(*((uint8_t const*)({} + {})))",
+                    operands[0], offset
+                ));
+            }
+            Instruction::I32Load8S { offset } => {
+                results.push(format!(
+                    "(int32_t)(*((int8_t const*)({} + {})))",
+                    operands[0], offset
+                ));
+            }
+            Instruction::I32Load16U { offset } => {
+                results.push(format!(
+                    "(int32_t)(*((uint16_t const*)({} + {})))",
+                    operands[0], offset
+                ));
+            }
+            Instruction::I32Load16S { offset } => {
+                results.push(format!(
+                    "(int32_t)(*((int16_t const*)({} + {})))",
+                    operands[0], offset
+                ));
+            }
+            Instruction::I64Load { offset } => {
+                results.push(format!("*((int64_t const*)({} + {}))", operands[0], offset));
+            }
+            Instruction::F32Load { offset } => {
+                results.push(format!("*((float const*)({} + {}))", operands[0], offset));
+            }
+            Instruction::F64Load { offset } => {
+                results.push(format!("*((double const*)({} + {}))", operands[0], offset));
+            }
+            Instruction::I32Store { offset } => {
+                self.push_str(&format!(
+                    "*((int32_t*)({} + {})) = {};\n",
+                    operands[1], offset, operands[0]
+                ));
+            }
+            Instruction::I32Store8 { offset } => {
+                self.push_str(&format!(
+                    "*((int8_t*)({} + {})) = int8_t({});\n",
+                    operands[1], offset, operands[0]
+                ));
+            }
+            Instruction::I32Store16 { offset } => {
+                self.push_str(&format!(
+                    "*((uint16_t*)({} + {})) = uint16_t({});\n",
+                    operands[1], offset, operands[0]
+                ));
+            }
+            Instruction::I64Store { offset } => {
+                self.push_str(&format!(
+                    "*((int64_t*)({} + {})) = {};\n",
+                    operands[1], offset, operands[0]
+                ));
+            }
+            Instruction::F32Store { offset } => {
+                self.push_str(&format!(
+                    "*((float*)({} + {})) = {};\n",
+                    operands[1], offset, operands[0]
+                ));
+            }
+            Instruction::F64Store { offset } => {
+                self.push_str(&format!(
+                    "*((double*)({} + {})) = {};\n",
+                    operands[1], offset, operands[0]
+                ));
+            }
+
+            Instruction::Malloc { .. } => unimplemented!(),
+
+            Instruction::GuestDeallocate { size, align } => {
+                self.push_str(&format!(
+                    "wit_bindgen::rt::dealloc({}, {}, {});\n",
+                    operands[0], size, align
+                ));
+            }
+
+            Instruction::GuestDeallocateString => {
+                self.push_str(&format!(
+                    "wit_bindgen::rt::dealloc({}, ({}) as usize, 1);\n",
+                    operands[0], operands[1],
+                ));
+            }
+
+            Instruction::GuestDeallocateVariant { blocks } => {
+                let max = blocks - 1;
+                let blocks = self
+                    .blocks
+                    .drain(self.blocks.len() - blocks..)
+                    .collect::<Vec<_>>();
+                let op0 = &operands[0];
+                self.src.push_str(&format!("match {op0} {{\n"));
+                for (i, block) in blocks.into_iter().enumerate() {
+                    let pat = if i == max {
+                        String::from("_")
+                    } else {
+                        i.to_string()
+                    };
+                    self.src.push_str(&format!("{pat} => {block},\n"));
+                }
+                self.src.push_str("}\n");
+            }
+
+            Instruction::GuestDeallocateList { element } => {
+                let body = self.blocks.pop().unwrap();
+                let tmp = self.tmp();
+                let size = self.gen.sizes.size(element);
+                let align = self.gen.sizes.align(element);
+                let len = format!("len{tmp}");
+                let base = format!("base{tmp}");
+                self.push_str(&format!(
+                    "let {base} = {operand0};\n",
+                    operand0 = operands[0]
+                ));
+                self.push_str(&format!(
+                    "let {len} = {operand1};\n",
+                    operand1 = operands[1]
+                ));
+
+                if body != "()" {
+                    self.push_str("for i in 0..");
+                    self.push_str(&len);
+                    self.push_str(" {\n");
+                    self.push_str("let base = ");
+                    self.push_str(&base);
+                    self.push_str(" + i *");
+                    self.push_str(&size.to_string());
+                    self.push_str(";\n");
+                    self.push_str(&body);
+                    self.push_str("\n}\n");
+                }
+                self.push_str(&format!(
+                    "wit_bindgen::rt::dealloc({base}, ({len} as usize) * {size}, {align});\n",
+                ));
+            }
+        }
     }
 }
 
@@ -2131,6 +3357,10 @@ struct Source {
 }
 
 impl Source {
+    fn push_str(&mut self, src: &str) {
+        self.c_fns.push_str(str);
+    }
+
     fn src(&mut self, stype: SourceType) -> &mut wit_bindgen_core::Source {
         match stype {
             SourceType::HDefs => &mut self.h_defs,

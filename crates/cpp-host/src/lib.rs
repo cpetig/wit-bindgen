@@ -527,6 +527,7 @@ impl CppHost {
             interface: None,
             identifier,
             in_import,
+            wasm_import_module: None,
         }
     }
 
@@ -789,6 +790,7 @@ struct InterfaceGenerator<'a> {
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
     in_import: bool,
+    wasm_import_module: Option<&'a str>,
 }
 
 impl CppHost {
@@ -2461,6 +2463,7 @@ struct FunctionBindgen<'a, 'b> {
     import_return_pointer_area_size: usize,
     import_return_pointer_area_align: usize,
     params: Vec<String>,
+    trait_name: Option<&'b str>,
     //    size: &'a SizeAlign,
 }
 
@@ -2468,6 +2471,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     //     fn new(gen: &'a mut InterfaceGenerator<'b>, func: &'a Function) -> Self {
     //         Self { gen, func }
     //     }
+
+    fn emit_cleanup(&mut self) {}
 
     fn wasm_type_cpp(ty: WasmType) -> &'static str {
         wit_bindgen_c::wasm_type(ty)
@@ -2648,6 +2653,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // sizes,
                 resolve,
                 interface: slf.gen.interface,
+                wasm_import_module: slf.gen.wasm_import_module,
                 // return_pointer_area_size: 0,
                 // return_pointer_area_align: 0,
             };

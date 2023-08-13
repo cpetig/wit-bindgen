@@ -8,9 +8,12 @@ use wit_bindgen_core::wit_parser::abi::{
     AbiVariant, Bindgen, Instruction, LiftLower, WasmSignature, WasmType,
 };
 use wit_bindgen_core::{
-    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, TypeInfo, WorldGenerator,
+    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, TypeInfo, Types,
+    WorldGenerator,
 };
-use wit_bindgen_rust_lib::{Ownership, RustFunctionGenerator, RustGenerator, TypeMode};
+use wit_bindgen_rust_lib::{
+    dealias, FnSig, Ownership, RustFlagsRepr, RustFunctionGenerator, RustGenerator, TypeMode,
+};
 use wit_component::StringEncoding;
 
 pub const RESOURCE_BASE_CLASS_NAME: &str = "ResourceBase";
@@ -41,6 +44,20 @@ enum Context {
     Argument,
     ReturnValue,
     InStruct,
+}
+
+#[derive(Default, Copy, Clone, PartialEq, Eq)]
+enum Direction {
+    #[default]
+    Import,
+    Export,
+}
+
+#[derive(Default)]
+struct ResourceInfo {
+    direction: Direction,
+    owned: bool,
+    docs: Docs,
 }
 
 #[derive(Default)]
@@ -85,6 +102,8 @@ struct CppHost {
     // implementation of functions. These types go in the implementation file,
     // not the header file.
     private_anonymous_types: BTreeSet<TypeId>,
+
+    resources: HashMap<TypeId, ResourceInfo>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -497,7 +516,7 @@ impl CppHost {
     fn interface<'a>(
         &'a mut self,
         resolve: &'a Resolve,
-        _in_import: bool,
+        in_import: bool,
         //        world: WorldId,
         identifier: Identifier<'a>,
     ) -> InterfaceGenerator<'a> {
@@ -507,7 +526,7 @@ impl CppHost {
             resolve,
             interface: None,
             identifier,
-            // in_import,
+            in_import,
         }
     }
 
@@ -769,6 +788,7 @@ struct InterfaceGenerator<'a> {
     gen: &'a mut CppHost,
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
+    in_import: bool,
 }
 
 impl CppHost {
@@ -1997,6 +2017,34 @@ impl InterfaceGenerator<'_> {
             .insert(id, mem::replace(&mut self.src.h_defs, orig_h_defs));
         assert!(prev.is_none());
     }
+
+    fn make_export_name(input: &str) -> String {
+        input
+            .chars()
+            .map(|c| match c {
+                'A'..='Z' | 'a'..='z' | '0'..='9' => c,
+                _ => '_',
+            })
+            .collect()
+    }
+
+    fn export_name2(module_name: &str, name: &str) -> String {
+        let mut res = Self::make_export_name(module_name);
+        res.push('_');
+        res.push_str(&Self::make_export_name(name));
+        res
+    }
+
+    fn declare_import2(
+        module_name: &str,
+        name: &str,
+        args: &str,
+        result: &str,
+    ) -> (String, String) {
+        let extern_name = Self::export_name2(module_name, name);
+        let import = format!("extern __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n");
+        (extern_name, import)
+    }
 }
 
 impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
@@ -2014,9 +2062,9 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
             if cur == interface {
                 return None;
             }
-            if !self.in_import {
-                //path.push_str("super::");
-            }
+            // if !self.in_import {
+            //path.push_str("super::");
+            // }
             match name {
                 WorldKey::Name(_) => {
                     //path.push_str("super::");
@@ -2027,7 +2075,10 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
             }
         }
         let name = &self.gen.interface_names[&interface];
-        path.push_str(&name);
+        match name {
+            WorldKey::Name(n) => path.push_str(n),
+            WorldKey::Interface(i) => todo!(),
+        }
         Some(path)
     }
 
@@ -2409,14 +2460,72 @@ struct FunctionBindgen<'a, 'b> {
     cleanup: Vec<(String, String)>,
     import_return_pointer_area_size: usize,
     import_return_pointer_area_align: usize,
+    params: Vec<String>,
     //    size: &'a SizeAlign,
 }
 
-// impl<'a, 'b> FunctionBindgen<'a, 'b> {
-//     fn new(gen: &'a mut InterfaceGenerator<'b>, func: &'a Function) -> Self {
-//         Self { gen, func }
-//     }
-// }
+impl<'a, 'b> FunctionBindgen<'a, 'b> {
+    //     fn new(gen: &'a mut InterfaceGenerator<'b>, func: &'a Function) -> Self {
+    //         Self { gen, func }
+    //     }
+
+    fn wasm_type_cpp(ty: WasmType) -> &'static str {
+        wit_bindgen_c::wasm_type(ty)
+    }
+
+    fn declare_import(
+        &mut self,
+        module_name: &str,
+        name: &str,
+        params: &[WasmType],
+        results: &[WasmType],
+    ) -> String {
+        let mut args = String::default();
+        for (n, param) in params.iter().enumerate() {
+            args.push_str(Self::wasm_type_cpp(*param));
+            if n + 1 != params.len() {
+                args.push_str(", ");
+            }
+        }
+        let result = if results.is_empty() {
+            "void"
+        } else {
+            Self::wasm_type_cpp(results[0])
+        };
+        let (name, code) = InterfaceGenerator::declare_import2(module_name, name, &args, result);
+        self.src.push_str(&code);
+        name
+        // Define the actual function we're calling inline
+        //todo!();
+        // let mut sig = "(".to_owned();
+        // for param in params.iter() {
+        //     sig.push_str("_: ");
+        //     sig.push_str(wasm_type(*param));
+        //     sig.push_str(", ");
+        // }
+        // sig.push_str(")");
+        // assert!(results.len() < 2);
+        // for result in results.iter() {
+        //     sig.push_str(" -> ");
+        //     sig.push_str(wasm_type(*result));
+        // }
+        // uwriteln!(
+        //     self.src,
+        //     "
+        //         #[cfg(target_arch = \"wasm32\")]
+        //         #[link(wasm_import_module = \"{module_name}\")]
+        //         extern \"C\" {{
+        //             #[link_name = \"{name}\"]
+        //             fn wit_import{sig};
+        //         }}
+
+        //         #[cfg(not(target_arch = \"wasm32\"))]
+        //         fn wit_import{sig} {{ unreachable!() }}
+        //     "
+        // );
+        // "wit_import".to_string()
+    }
+}
 
 impl RustFunctionGenerator for FunctionBindgen<'_, '_> {
     fn push_str(&mut self, s: &str) {
@@ -2488,7 +2597,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         // stack whereas exports use a per-module return area to cut down on
         // stack usage. Note that for imports this also facilitates "adapter
         // modules" for components to not have data segments.
-        if self.gen.in_import {
+        if true {
+            //self.gen.in_import {
             self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
             self.import_return_pointer_area_align =
                 self.import_return_pointer_area_align.max(align);
@@ -2503,7 +2613,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
     }
 
     fn sizes(&self) -> &SizeAlign {
-        &self.gen.sizes
+        &self.gen.gen.sizes
     }
 
     fn is_list_canonical(&self, resolve: &Resolve, ty: &Type) -> bool {
@@ -2531,14 +2641,15 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             sizes.fill(resolve);
             let mut gen = InterfaceGenerator {
                 identifier: slf.gen.identifier.clone(),
-                wasm_import_module: slf.gen.wasm_import_module.clone(),
+                // wasm_import_module: slf.gen.wasm_import_module.clone(),
                 src: Source::default(),
                 in_import: slf.gen.in_import.clone(),
                 gen: slf.gen.gen,
-                sizes,
+                // sizes,
                 resolve,
-                return_pointer_area_size: 0,
-                return_pointer_area_align: 0,
+                interface: slf.gen.interface,
+                // return_pointer_area_size: 0,
+                // return_pointer_area_align: 0,
             };
             f(&mut gen);
             //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
@@ -3048,8 +3159,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     operand0 = operands[0]
                 ));
                 self.push_str(&format!("let {len} = {vec}.len() as i32;\n"));
-                let size = self.gen.sizes.size(element);
-                let align = self.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element);
+                let align = self.gen.gen.sizes.align(element);
                 self.push_str(&format!(
                     "let {layout} = alloc::Layout::from_size_align_unchecked({vec}.len() * {size}, {align});\n",
                 ));
@@ -3080,8 +3191,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::ListLift { element, .. } => {
                 let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
-                let size = self.gen.sizes.size(element);
-                let _align = self.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element);
+                let _align = self.gen.gen.sizes.align(element);
                 let len = format!("len{tmp}");
                 let base = format!("base{tmp}");
                 let result = format!("result{tmp}");
@@ -3300,8 +3411,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::GuestDeallocateList { element } => {
                 let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
-                let size = self.gen.sizes.size(element);
-                let align = self.gen.sizes.align(element);
+                let size = self.gen.gen.sizes.size(element);
+                let align = self.gen.gen.sizes.align(element);
                 let len = format!("len{tmp}");
                 let base = format!("base{tmp}");
                 self.push_str(&format!(
@@ -3358,7 +3469,7 @@ struct Source {
 
 impl Source {
     fn push_str(&mut self, src: &str) {
-        self.c_fns.push_str(str);
+        self.c_fns.push_str(src);
     }
 
     fn src(&mut self, stype: SourceType) -> &mut wit_bindgen_core::Source {
@@ -3653,4 +3764,22 @@ pub fn optional_owns_anything(
 
 pub fn to_c_ident(name: &str) -> String {
     wit_bindgen_c::to_c_ident(name)
+}
+
+fn to_rust_ident(name: &str) -> String {
+    match name {
+        // Escape C++ keywords.
+        // Source: https://doc.rust-lang.org/reference/keywords.html
+        "this" => "this_".into(),
+        _ => wit_bindgen_c::to_c_ident(name),
+    }
+}
+
+fn wasm_type(ty: WasmType) -> &'static str {
+    match ty {
+        WasmType::I32 => "int32_t",
+        WasmType::I64 => "int64_t",
+        WasmType::F32 => "float",
+        WasmType::F64 => "double",
+    }
 }

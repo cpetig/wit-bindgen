@@ -1380,7 +1380,11 @@ impl InterfaceGenerator<'_> {
                 TypeDefKind::Flags(_) => todo!(),
                 TypeDefKind::Tuple(_) => todo!(),
                 TypeDefKind::Variant(_) => todo!(),
-                TypeDefKind::Enum(_) => todo!(),
+                TypeDefKind::Enum(e) => {
+                    sig.c_args
+                        .push((Self::RESULT_NAME.into(), "/* enum */".into()));
+                    sig.wamr_types.push('*');
+                }
                 TypeDefKind::Option(_o) => {
                     sig.c_args
                         .push((Self::RESULT_NAME.into(), "/* option */".into()));
@@ -1623,7 +1627,9 @@ impl InterfaceGenerator<'_> {
             TypeDefKind::Flags(_) => todo!(),
             TypeDefKind::Tuple(_) => todo!(),
             TypeDefKind::Variant(_) => todo!(),
-            TypeDefKind::Enum(_) => todo!(),
+            TypeDefKind::Enum(e) => {
+                self.src.c_adapters("  /* TODO enum */\n");
+            }
             TypeDefKind::Option(_) => {
                 self.src.c_adapters("  /* TODO option */\n");
             }

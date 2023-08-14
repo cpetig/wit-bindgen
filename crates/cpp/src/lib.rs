@@ -2310,41 +2310,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(result);
             }
 
-            Instruction::EnumLift { .. } => {
-                todo!();
-                // let mut result = String::new();
-                // result.push_str("{");
-
-                // // In checked mode do a `match`.
-                // result.push_str("#[cfg(debug_assertions)]");
-                // result.push_str("{");
-                // result.push_str("match ");
-                // result.push_str(&operands[0]);
-                // result.push_str(" {\n");
-                // let name = self.gen.type_path(*ty, true);
-                // for (i, case) in enum_.cases.iter().enumerate() {
-                //     let case = case.name.to_upper_camel_case();
-                //     result.push_str(&format!("{i} => {name}::{case},\n"));
-                // }
-                // result.push_str("_ => panic!(\"invalid enum discriminant\"),\n");
-                // result.push_str("}");
-                // result.push_str("}");
-
-                // // In unchecked mode when this type is a named enum then we know we
-                // // defined the type so we can transmute directly into it.
-                // result.push_str("#[cfg(not(debug_assertions))]");
-                // result.push_str("{");
-                // result.push_str("::core::mem::transmute::<_, ");
-                // result.push_str(&self.gen.type_path(*ty, true));
-                // result.push_str(">(");
-                // result.push_str(&operands[0]);
-                // result.push_str(" as ");
-                // result.push_str(int_repr(enum_.tag()));
-                // result.push_str(")");
-                // result.push_str("}");
-
-                // result.push_str("}");
-                // results.push(result);
+            Instruction::EnumLift { enum_, ty, name } => {
+                results.push(format!("({name}){}", &operands[0]));
             }
 
             Instruction::ListCanonLower { realloc, .. } => {

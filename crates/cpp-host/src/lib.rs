@@ -90,7 +90,8 @@ struct CppHost {
 
     // Type definitions for the given `TypeId`. This is printed topologically
     // at the end.
-    types: HashMap<TypeId, wit_bindgen_core::Source>,
+    typedefs: HashMap<TypeId, wit_bindgen_core::Source>,
+    types: Types,
 
     // The set of types that are considered public (aka need to be in the
     // header file) which are anonymous and we're effectively monomorphizing.
@@ -537,7 +538,7 @@ impl CppHost {
 
     fn finish_types(&mut self, resolve: &Resolve) {
         for (id, _) in resolve.types.iter() {
-            if let Some(ty) = self.types.get(&id) {
+            if let Some(ty) = self.typedefs.get(&id) {
                 self.src.h_defs(ty);
             }
         }
@@ -2015,7 +2016,7 @@ impl InterfaceGenerator<'_> {
     fn finish_ty(&mut self, id: TypeId, orig_h_defs: wit_bindgen_core::Source) {
         let prev = self
             .gen
-            .types
+            .typedefs
             .insert(id, mem::replace(&mut self.src.h_defs, orig_h_defs));
         assert!(prev.is_none());
     }
@@ -2107,7 +2108,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
     }
 
     fn info(&self, ty: TypeId) -> TypeInfo {
-        self.gen.types.get(&ty)
+        self.gen.types.get(ty)
     }
 
     fn types_mut(&mut self) -> &mut Types {
@@ -2217,7 +2218,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
                 continue;
             }
             let name = to_rust_ident(name);
-            self.print_ty(param, param_mode, None, Context::Argument);
+            self.print_ty(SourceType::HDefs, param, None, Context::Argument);
             self.push_str(" ");
             self.push_str(&name);
             if i + 1 != func.params.len() {
@@ -2287,7 +2288,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
 
             TypeDefKind::Option(t) => {
                 self.push_str("std::option<");
-                self.print_ty(t, mode, None, Context::Argument);
+                self.print_ty(SourceType::HDefs, t, None, Context::Argument);
                 self.push_str(">");
             }
 
@@ -2307,7 +2308,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
             TypeDefKind::Tuple(t) => {
                 self.push_str("(");
                 for ty in t.types.iter() {
-                    self.print_ty(ty, mode, None, Context::Argument);
+                    self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
                     self.push_str(",");
                 }
                 self.push_str(")");
@@ -2342,15 +2343,15 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
 
             TypeDefKind::Handle(Handle::Own(ty)) => {
                 self.mark_resource_owned(*ty);
-                self.print_ty(&Type::Id(*ty), mode, None, Context::Argument);
+                self.print_ty(SourceType::HDefs, &Type::Id(*ty),  None, Context::Argument);
             }
 
             TypeDefKind::Handle(Handle::Borrow(ty)) => {
                 self.push_str("&");
-                self.print_ty(&Type::Id(*ty), mode, None, Context::Argument);
+                self.print_ty(SourceType::HDefs, &Type::Id(*ty),  None, Context::Argument);
             }
 
-            TypeDefKind::Type(t) => self.print_ty(t, mode, None, Context::Argument),
+            TypeDefKind::Type(t) => self.print_ty(SourceType::HDefs, t, None, Context::Argument),
 
             // TypeDefKind::Resource => {
             //     todo!("implement resources")
@@ -2388,7 +2389,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
 
     fn print_optional_ty(&mut self, ty: Option<&Type>, mode: TypeMode) {
         match ty {
-            Some(ty) => self.print_ty(ty, mode, None, Context::Argument),
+            Some(ty) => self.print_ty(SourceType::HDefs, ty, None, Context::Argument),
             None => self.push_str("void"),
         }
     }
@@ -2420,14 +2421,14 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
                 } else {
                     self.push_vec_name();
                     self.push_str("<");
-                    self.print_ty(ty, next_mode, None, Context::Argument);
+                    self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
                     self.push_str(">");
                 }
             }
             TypeMode::Owned => {
                 self.push_vec_name();
                 self.push_str("<");
-                self.print_ty(ty, next_mode, None, Context::Argument);
+                self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
                 self.push_str(">");
             }
             TypeMode::HandlesBorrowed(_) => todo!(),
@@ -2442,7 +2443,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
         mode: TypeMode,
     ) {
         self.push_str("std::vector<");
-        self.print_ty(ty, mode, None, Context::Argument);
+        self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
         self.push_str(">");
         if !mutbl {
             self.push_str(" const ");
@@ -2586,12 +2587,12 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             1 => operands[0].clone(),
             _ => format!("({})", operands.join(", ")),
         };
-        if src.is_empty() {
+        if src.c_defs.is_empty() {
             self.blocks.push(expr);
         } else if operands.is_empty() {
-            self.blocks.push(format!("{{\n{}\n}}", &src[..]));
+            self.blocks.push(format!("{{\n{}\n}}", &src.c_defs[..]));
         } else {
-            self.blocks.push(format!("{{\n{}\n{}\n}}", &src[..], expr));
+            self.blocks.push(format!("{{\n{}\n{}\n}}", &src.c_defs[..], expr));
         }
     }
 
@@ -2607,7 +2608,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
             self.import_return_pointer_area_align =
                 self.import_return_pointer_area_align.max(align);
-            uwriteln!(self.src, "auto ptr{tmp} = (int32_t)&ret_area;");
+            uwriteln!(self.src.c_defs, "auto ptr{tmp} = (int32_t)&ret_area;");
         } else {
             todo!();
             // self.gen.return_pointer_area_size = self.gen.return_pointer_area_size.max(size);
@@ -2660,7 +2661,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             f(&mut gen);
             //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
             let mut ok_type = String::default();
-            std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
+            std::mem::swap(gen.src.c_defs.as_mut_string(), &mut ok_type);
             ok_type
         }
 
@@ -2806,7 +2807,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         }
                     } else {
                         let name = self.gen.type_path(resource, true);
-                        let world = self.gen.gen.world.map(|w| &resolve.worlds[w].name).unwrap();
+                        let world = &self.gen.gen.world; // .map(|w| &resolve.worlds[w].name).unwrap();
                         format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}, {owned}))}}")
                     },
                 );
@@ -3211,7 +3212,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     operand1 = operands[1]
                 ));
                 let elemtype = print_to_result(self, resolve, |gen| {
-                    gen.print_ty(element, TypeMode::Owned, None, Context::Argument)
+                    gen.print_ty(SourceType::HDefs, element, None, Context::Argument)
                 });
                 self.push_str(&format!("auto {result} = std::vector<{elemtype}>();\n"));
                 self.push_str(&format!("{result}.reserve({len});\n"));

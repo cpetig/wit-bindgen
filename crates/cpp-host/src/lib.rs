@@ -417,11 +417,10 @@ impl WorldGenerator for CppHost {
                     uwriteln!(
                         h_str,
                         "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
-                        int32_t id;
                         public:
-                        virtual ~{RESOURCE_BASE_CLASS_NAME}() {{}}
-                        {RESOURCE_BASE_CLASS_NAME}() : id() {{}}
-                        void register_resource();
+                        int32_t id;
+                        virtual ~{RESOURCE_BASE_CLASS_NAME}();
+                        {RESOURCE_BASE_CLASS_NAME}();
                         static {RESOURCE_BASE_CLASS_NAME}* lookup_resource(int32_t id);
                       }}; 
                       template <typename T> struct {OWNED_CLASS_NAME} {{

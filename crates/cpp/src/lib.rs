@@ -598,15 +598,9 @@ impl InterfaceGenerator<'_> {
 
                 let camel = name.to_upper_camel_case();
 
-                let (name_o, code_o) = Self::declare_import2(
+                let (name_drop, code) = Self::declare_import2(
                     wasm_import_module,
-                    &format!("[resource-drop-own]{name}"),
-                    "int32_t",
-                    "void",
-                );
-                let (name_b, code_b) = Self::declare_import2(
-                    wasm_import_module,
-                    &format!("[resource-drop-borrow]{name}"),
+                    &format!("[resource-drop]{name}"),
                     "int32_t",
                     "void",
                 );
@@ -614,13 +608,8 @@ impl InterfaceGenerator<'_> {
                 uwriteln!(
                     self.src,
                     r#"{camel}::~{camel}() {{
-                        if (owned) {{
-                            {code_o}
-                            {name_o}(handle);
-                        }} else {{
-                            {code_b}
-                            {name_b}(handle);
-                        }}
+                            {code}
+                            {name_drop}(handle);
                     }}
                     "#
                 );
@@ -2060,7 +2049,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     } else {
                         let name = self.gen.type_path(resource, true);
                         let world = self.gen.gen.world.map(|w| &resolve.worlds[w].name).unwrap();
-                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}, {owned}))}}")
+                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}))}}")
                     },
                 );
             }

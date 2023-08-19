@@ -433,10 +433,9 @@ impl WorldGenerator for CppHost {
                         "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
                         protected:
                         int32_t handle;
-                        bool owned;
                         public:
-                        {RESOURCE_BASE_CLASS_NAME}() : handle(), owned() {{}}
-                        void set_handle(int32_t h, bool o) {{ handle=h; owned=o; }}
+                        {RESOURCE_BASE_CLASS_NAME}() : handle() {{}}
+                        void set_handle(int32_t h) {{ handle=h; }}
                         int32_t get_handle() const {{ return handle; }}
                       }}; {ns_leave}"
                     );
@@ -2813,7 +2812,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     } else {
                         let name = self.gen.type_path(resource, true);
                         let world = &self.gen.gen.world; // .map(|w| &resolve.worlds[w].name).unwrap();
-                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}, {owned}))}}")
+                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}))}}")
                     },
                 );
             }

@@ -4,9 +4,7 @@ use heck::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::mem;
-use wit_bindgen_core::wit_parser::abi::{
-    AbiVariant, Bindgen, Instruction, LiftLower, WasmSignature, WasmType,
-};
+use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmSignature, WasmType};
 use wit_bindgen_core::{
     uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, TypeInfo, Types,
     WorldGenerator,
@@ -2347,12 +2345,12 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
 
             TypeDefKind::Handle(Handle::Own(ty)) => {
                 self.mark_resource_owned(*ty);
-                self.print_ty(SourceType::HDefs, &Type::Id(*ty),  None, Context::Argument);
+                self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
             }
 
             TypeDefKind::Handle(Handle::Borrow(ty)) => {
                 self.push_str("&");
-                self.print_ty(SourceType::HDefs, &Type::Id(*ty),  None, Context::Argument);
+                self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
             }
 
             TypeDefKind::Type(t) => self.print_ty(SourceType::HDefs, t, None, Context::Argument),
@@ -2596,7 +2594,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         } else if operands.is_empty() {
             self.blocks.push(format!("{{\n{}\n}}", &src.c_defs[..]));
         } else {
-            self.blocks.push(format!("{{\n{}\n{}\n}}", &src.c_defs[..], expr));
+            self.blocks
+                .push(format!("{{\n{}\n{}\n}}", &src.c_defs[..], expr));
         }
     }
 

@@ -5,7 +5,7 @@ use wit_bindgen_cpp_host::RESOURCE_BASE_CLASS_NAME;
 // use std::io::{Read, Write};
 use std::mem;
 // use std::process::{Stdio};
-use wit_bindgen_core::wit_parser::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
+use wit_bindgen_core::abi::{self, AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
 use wit_bindgen_core::{
     uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Source, TypeInfo, Types,
     WorldGenerator,
@@ -995,7 +995,8 @@ impl InterfaceGenerator<'_> {
         self.src.push_str("{\n");
 
         let mut f = FunctionBindgen::new(self, params, None);
-        f.gen.resolve.call(
+        abi::call(
+            f.gen.resolve,
             AbiVariant::GuestImport,
             LiftLower::LowerArgsLiftResults,
             func,

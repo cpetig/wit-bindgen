@@ -741,12 +741,12 @@ impl CppHost {
                     );
                 }
                 gen.src.h_defs(&format!("public:\n"));
+                // destructor
+                gen.src.h_defs(&format!("~{pascal}();\n"));
                 for func in funcs {
                     gen.import(Some(name), func);
                 }
                 if gen.gen.opts.guest_header {
-                    // destructor
-                    gen.src.h_defs(&format!("~{pascal}();\n"));
                     // consuming constructor from handle (bindings)
                     gen.src.h_defs(&format!(
                         "{pascal}({world_name}{RESOURCE_BASE_CLASS_NAME}&&);\n"

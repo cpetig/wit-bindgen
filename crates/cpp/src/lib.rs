@@ -2086,24 +2086,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ty,
                 ..
             } => {
-                let blocks = self
-                    .blocks
-                    .drain(self.blocks.len() - variant.cases.len()..)
-                    .collect::<Vec<_>>();
-                self.let_results(result_types.len(), results);
-                let op0 = &operands[0];
-                self.push_str(&format!("match {op0} {{\n"));
                 let name = self.typename_lower(*ty);
-                for (case, block) in variant.cases.iter().zip(blocks) {
-                    let case_name = case.name.to_upper_camel_case();
-                    self.push_str(&format!("{name}::{case_name}"));
-                    if case.ty.is_some() {
-                        self.push_str(&format!("(e) => {block},\n"));
-                    } else {
-                        self.push_str(&format!(" => {{\n{block}\n}}\n"));
-                    }
-                }
-                self.push_str("};\n");
+                let op0 = &operands[0];
+                self.push_str(&format!("({name}){op0}"));
             }
 
             Instruction::VariantLift { variant, ty, .. } => {
@@ -2290,13 +2275,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::EnumLower { enum_, ty, .. } => {
-                let mut result = format!("match {} {{\n", operands[0]);
-                let name = self.gen.type_path(*ty, true);
-                for (i, case) in enum_.cases.iter().enumerate() {
-                    let case = case.name.to_upper_camel_case();
-                    result.push_str(&format!("{name}::{case} => {i},\n"));
-                }
-                result.push_str("}");
+                let name = self.typename_lower(*ty);
+                let op0 = &operands[0];
+                let result = format!("({name}){op0}");
                 results.push(result);
             }
 

@@ -1,15 +1,13 @@
 use heck::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
-use wit_bindgen_cpp_host::RESOURCE_BASE_CLASS_NAME;
-// use std::io::{Read, Write};
 use std::mem;
-// use std::process::{Stdio};
 use wit_bindgen_core::abi::{self, AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
 use wit_bindgen_core::{
     uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Source, TypeInfo, Types,
     WorldGenerator,
 };
+use wit_bindgen_cpp_host::RESOURCE_BASE_CLASS_NAME;
 use wit_bindgen_rust_lib::{
     dealias, FnSig, Ownership, RustFlagsRepr, RustFunctionGenerator, RustGenerator, TypeMode,
 };
@@ -184,7 +182,21 @@ impl WorldGenerator for Cpp {
         );
         uwriteln!(
             self.src,
-            "#include \"{}_cpp.h\"",
+            r#"#include "{}_cpp.h"
+            #include <utility>
+
+            extern "C" void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size);
+
+            __attribute__((__weak__, __export_name__("cabi_realloc")))
+            void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {{
+                (void) old_size;
+                if (new_size == 0) return (void*) align;
+                void *ret = realloc(ptr, new_size);
+                if (!ret) abort();
+                return ret;
+            }}
+
+            "#,
             resolve.worlds[world].name.to_snake_case(),
         );
         self.types.analyze(resolve);
@@ -618,7 +630,8 @@ impl InterfaceGenerator<'_> {
                     .gen
                     .world
                     .map(|w| &self.resolve.worlds[w].name)
-                    .unwrap();
+                    .unwrap()
+                    .to_snake_case();
                 let base_name = format!("{world}::{RESOURCE_BASE_CLASS_NAME}");
                 uwriteln!(
                     self.src,
@@ -2040,9 +2053,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                             }
                         }
                     } else {
-                        let name = self.gen.type_path(resource, true);
-                        let world = self.gen.gen.world.map(|w| &resolve.worlds[w].name).unwrap();
-                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}))}}")
+                        op.clone()
+                        // let name = self.gen.type_path(resource, true);
+                        // let world = self.gen.gen.world.map(|w| &resolve.worlds[w].name).unwrap();
+                        // format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}))}}")
                     },
                 );
             }
@@ -2430,7 +2444,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         match &func.kind {
                             FunctionKind::Constructor(_) => {
                                 // strange but works
-                                self.push_str("*this = ");
+                                self.push_str("this->handle = ");
                             }
                             _ => self.push_str("return "),
                         }

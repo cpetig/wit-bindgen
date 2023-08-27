@@ -746,6 +746,9 @@ impl CppHost {
                 for func in funcs {
                     gen.import(Some(name), func);
                 }
+                // register drop function
+                gen.src.c_fns.push_str("/* TODO drop */");
+
                 if gen.gen.opts.guest_header {
                     // consuming constructor from handle (bindings)
                     gen.src.h_defs(&format!(
@@ -1511,7 +1514,12 @@ impl InterfaceGenerator<'_> {
 
     fn create_parameters(&mut self, func: &Function) -> String {
         let mut result = String::new();
-        for (nm, ty) in func.params.iter() {
+        let skip = if matches!(func.kind, FunctionKind::Method(_)) {
+            1
+        } else {
+            0
+        };
+        for (nm, ty) in func.params.iter().skip(skip) {
             self.add_parameter(&mut result, nm, ty);
         }
         result
@@ -1807,7 +1815,7 @@ impl InterfaceGenerator<'_> {
                 }
                 let func_name = func.name.rsplit_once(".").unwrap().1.to_pascal_case();
                 self.src.c_adapters(&format!(
-                    "dynamic_cast<::{func_ns}>({world_name}::{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self))->{func_name}({param}));\n"
+                    "dynamic_cast<::{func_ns}*>({world_name}::{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self))->{func_name}({param});\n"
                 ));
                 if func.results.len() > 0 {
                     self.store_or_return_result("call_result", &func.results);

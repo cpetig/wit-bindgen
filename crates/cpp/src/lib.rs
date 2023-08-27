@@ -1396,8 +1396,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
                     | TypeDefKind::List(_)
                     | TypeDefKind::Flags(_)
                     | TypeDefKind::Enum(_)
-                    | TypeDefKind::Tuple(_)
-                    | TypeDefKind::Union(_) => true,
+                    | TypeDefKind::Tuple(_) => true,
                     TypeDefKind::Type(Type::Id(t)) => {
                         needs_generics(resolve, &resolve.types[*t].kind)
                     }
@@ -1449,9 +1448,6 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
             }
             TypeDefKind::Enum(_) => {
                 panic!("unsupported anonymous type reference: enum")
-            }
-            TypeDefKind::Union(_) => {
-                panic!("unsupported anonymous type reference: union")
             }
             TypeDefKind::Future(ty) => {
                 self.push_str("Future<");
@@ -1633,10 +1629,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
     fn type_variant(&mut self, _id: TypeId, _name: &str, _variant: &Variant, _docs: &Docs) {
         //self.print_typedef_variant(id, variant, docs, false);
-    }
-
-    fn type_union(&mut self, _id: TypeId, _name: &str, _union: &Union, _docs: &Docs) {
-        //self.print_typedef_union(id, union, docs, false);
     }
 
     fn type_option(&mut self, _id: TypeId, _name: &str, _payload: &Type, _docs: &Docs) {
@@ -2022,7 +2014,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::HandleLift { handle, .. } => {
                 let op = &operands[0];
-                let (prefix, resource, owned) = match handle {
+                let (prefix, resource, _owned) = match handle {
                     Handle::Borrow(resource) => ("&", resource, false),
                     Handle::Own(resource) => ("", resource, true),
                 };
@@ -2081,8 +2073,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::VariantPayloadName => results.push("e".to_string()),
 
             Instruction::VariantLower {
-                variant,
-                results: result_types,
+                variant: _,
+                results: _,
                 ty,
                 ..
             } => {
@@ -2145,57 +2137,6 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 result.push_str("}");
                 result.push_str("}");
 
-                result.push_str("}");
-                results.push(result);
-            }
-
-            Instruction::UnionLower {
-                union,
-                results: result_types,
-                ty,
-                ..
-            } => {
-                let blocks = self
-                    .blocks
-                    .drain(self.blocks.len() - union.cases.len()..)
-                    .collect::<Vec<_>>();
-                self.let_results(result_types.len(), results);
-                let op0 = &operands[0];
-                self.push_str(&format!("match {op0} {{\n"));
-                let name = self.typename_lower(*ty);
-                for (case_name, block) in self.gen.union_case_names(union).into_iter().zip(blocks) {
-                    self.push_str(&format!("{name}::{case_name}(e) => {block},\n"));
-                }
-                self.push_str("};\n");
-            }
-
-            Instruction::UnionLift { union, ty, .. } => {
-                let blocks = self
-                    .blocks
-                    .drain(self.blocks.len() - union.cases.len()..)
-                    .collect::<Vec<_>>();
-                let op0 = &operands[0];
-                let mut result = format!("match {op0} {{\n");
-                for (i, (case_name, block)) in self
-                    .gen
-                    .union_case_names(union)
-                    .into_iter()
-                    .zip(blocks)
-                    .enumerate()
-                {
-                    let pat = i.to_string();
-                    let name = self.typename_lift(*ty);
-                    // if i == union.cases.len() - 1 {
-                    //     result.push_str("#[cfg(debug_assertions)]");
-                    //     result.push_str(&format!("{pat} => {name}::{case_name}({block}),\n"));
-                    //     result.push_str("#[cfg(not(debug_assertions))]");
-                    //     result.push_str(&format!("_ => {name}::{case_name}({block}),\n"));
-                    // } else {
-                    result.push_str(&format!("{pat} => {name}::{case_name}({block}),\n"));
-                    // }
-                }
-                // result.push_str("#[cfg(debug_assertions)]");
-                // result.push_str("_ => panic!(\"invalid union discriminant\"),\n");
                 result.push_str("}");
                 results.push(result);
             }
@@ -2274,14 +2215,18 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ));
             }
 
-            Instruction::EnumLower { enum_, ty, .. } => {
+            Instruction::EnumLower { enum_: _, ty, .. } => {
                 let name = self.typename_lower(*ty);
                 let op0 = &operands[0];
                 let result = format!("({name}){op0}");
                 results.push(result);
             }
 
-            Instruction::EnumLift { enum_, ty, name } => {
+            Instruction::EnumLift {
+                enum_: _,
+                ty: _,
+                name,
+            } => {
                 results.push(format!("({name}){}", &operands[0]));
             }
 

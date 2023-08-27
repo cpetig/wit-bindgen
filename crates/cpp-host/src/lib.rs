@@ -731,7 +731,7 @@ impl CppHost {
                     .as_deref()
                     .unwrap()
                     .to_pascal_case();
-                let derive = format!(" : {world_name}{RESOURCE_BASE_CLASS_NAME}");
+                let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
                 gen.src.h_defs(&format!("class {pascal}{derive} {{\n"));
                 if gen.gen.opts.guest_header {
                     //gen.src.h_defs("  int32_t handle;\nbool owned;\n");
@@ -1128,7 +1128,23 @@ impl InterfaceGenerator<'_> {
             None => self.gen.world.to_snake_case(),
         };
         // let ns = interface_name.unwrap_or(&self.gen.world);
-        format!("{}::{}", ns, func.name.to_pascal_case())
+        match func.kind {
+            FunctionKind::Constructor(_) => {
+                // skip "[constructor]"
+                format!("{}::{}", ns, func.name[13..].to_pascal_case())
+            }
+            FunctionKind::Method(_) => {
+                // skip "[method]"
+                format!(
+                    "{}::{}",
+                    ns,
+                    func.name[8..].rsplit_once(".").unwrap().0.to_pascal_case()
+                )
+            }
+            _ => {
+                format!("{}::{}", ns, func.name.to_pascal_case())
+            }
+        }
     }
 
     fn c_func_name(&self, interface_name: Option<&WorldKey>, func: &Function) -> String {
@@ -1146,8 +1162,9 @@ impl InterfaceGenerator<'_> {
             }
             None => self.gen.world.to_snake_case(),
         };
+        let name = func.name.replace(".", "_");
         // let ns = interface_name.unwrap_or(&self.gen.world);
-        format!("{}_{}", ns, func.name.to_snake_case())
+        format!("{}_{}", ns, name.to_snake_case())
     }
 
     fn push_wamr(
@@ -1776,12 +1793,35 @@ impl InterfaceGenerator<'_> {
         self.src.c_adapters(") {\n");
         let param = self.create_parameters(func);
         let func_ns = self.cpp_func_name(interface_name, func);
-        if func.results.len() > 0 {
-            self.src
-                .c_adapters(&format!("  auto call_result = ::{func_ns}({param});\n"));
-            self.store_or_return_result("call_result", &func.results);
-        } else {
-            self.src.c_adapters(&format!("  ::{func_ns}({param});\n"));
+        match func.kind {
+            FunctionKind::Constructor(_) => {
+                self.src
+                    .c_adapters(&format!("  return (new ::{func_ns}({param}))->id;\n"));
+            }
+            FunctionKind::Method(_) => {
+                let mut world_name = self.gen.world.to_snake_case();
+                if func.results.len() > 0 {
+                    self.src.c_adapters("  auto call_result = ");
+                } else {
+                    self.src.c_adapters("  ");
+                }
+                let func_name = func.name.rsplit_once(".").unwrap().1.to_pascal_case();
+                self.src.c_adapters(&format!(
+                    "dynamic_cast<::{func_ns}>({world_name}::{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self))->{func_name}({param}));\n"
+                ));
+                if func.results.len() > 0 {
+                    self.store_or_return_result("call_result", &func.results);
+                }
+            }
+            _ => {
+                if func.results.len() > 0 {
+                    self.src
+                        .c_adapters(&format!("  auto call_result = ::{func_ns}({param});\n"));
+                    self.store_or_return_result("call_result", &func.results);
+                } else {
+                    self.src.c_adapters(&format!("  ::{func_ns}({param});\n"));
+                }
+            }
         }
         self.src.c_adapters("}\n");
 
@@ -1818,7 +1858,7 @@ impl InterfaceGenerator<'_> {
     }
 
     fn print_sig(&mut self, interface_name: Option<&WorldKey>, func: &Function) -> CSig {
-        let name = self.cpp_func_name(interface_name, func);
+        let name = self.c_func_name(interface_name, func);
         self.gen.names.insert(&name).expect("duplicate symbols");
 
         let result_rets = false;
@@ -3623,16 +3663,18 @@ fn push_ty_name(
                 TypeDefKind::Unknown => unreachable!(),
                 TypeDefKind::Resource => todo!(),
                 TypeDefKind::Handle(h) => {
-                    let (id, ownership, closing) = match h {
-                        Handle::Own(id) if opts.guest_header => (id, "".into(), " "),
-                        Handle::Borrow(id) if opts.guest_header => (id, "".into(), " "),
-                        Handle::Own(id) => (id, format!("{world}::{OWNED_CLASS_NAME}<"), ">"),
-                        Handle::Borrow(id) => (id, "".into(), "*"),
-                    };
-                    let ty: &TypeDef = &resolve.types[*id];
-                    let ns = owner_namespace(resolve, *id, world);
-                    let name = ty.name.as_ref().map_or("?".into(), |n| n.to_pascal_case());
-                    src.push_str(&format!("{ownership}{ns}::{name}{closing}"));
+                    if !opts.guest_header {
+                        src.push_str("int32_t");
+                    } else {
+                        // let (id, ownership, closing) = match h {
+                        //     Handle::Own(id) => (id, "".into(), " "),
+                        //     Handle::Borrow(id) => (id, "".into(), " "),
+                        // };
+                        let ty: &TypeDef = &resolve.types[*id];
+                        let ns = owner_namespace(resolve, *id, world);
+                        let name = ty.name.as_ref().map_or("?".into(), |n| n.to_pascal_case());
+                        src.push_str(&format!("{ns}::{name} "));
+                    }
                 }
             }
         }

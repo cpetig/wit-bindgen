@@ -835,8 +835,7 @@ impl Return {
             TypeDefKind::Tuple(_)
             | TypeDefKind::Record(_)
             | TypeDefKind::List(_)
-            | TypeDefKind::Variant(_)
-            | TypeDefKind::Union(_) => {
+            | TypeDefKind::Variant(_) => {
                 self.scalar = Some(Scalar::Type(*orig_ty));
                 return;
             }
@@ -965,27 +964,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
         //         case.name.to_shouty_snake_case(),
         //     );
         // }
-
-        // self.finish_ty(id, prev);
-    }
-
-    fn type_union(&mut self, _id: TypeId, _name: &str, _union: &Union, _docs: &Docs) {
-        todo!();
-        // let prev = mem::take(&mut self.src.h_defs);
-        // self.src.h_defs("\n");
-        // self.docs(docs, SourceType::HDefs);
-        // self.src.h_defs("typedef struct {\n");
-        // self.src.h_defs(int_repr(union.tag()));
-        // self.src.h_defs(" tag;\n");
-        // self.src.h_defs("union {\n");
-        // for (i, case) in union.cases.iter().enumerate() {
-        //     self.docs(&case.docs, SourceType::HDefs);
-        //     self.print_ty(SourceType::HDefs, &case.ty, None, Context::InStruct);
-        //     uwriteln!(self.src.h_defs, " f{i};");
-        // }
-        // self.src.h_defs("} val;\n");
-        // self.src.h_defs("} ");
-        // self.print_typedef_target(id, name);
 
         // self.finish_ty(id, prev);
     }
@@ -1270,7 +1248,6 @@ impl InterfaceGenerator<'_> {
                 }
                 TypeDefKind::Option(_) => todo!(),
                 TypeDefKind::Result(_) => todo!(),
-                TypeDefKind::Union(_) => todo!(),
                 TypeDefKind::List(_t) => {
                     let mut res = String::default();
                     push_ty_name(
@@ -1302,7 +1279,7 @@ impl InterfaceGenerator<'_> {
         }
     }
 
-    const RESULT_NAME: &str = "result_out";
+    const RESULT_NAME: &'static str = "result_out";
 
     fn wamr_add_result(&mut self, sig: &mut WamrSig, name: &str, ty: &Type) {
         let mut dummy = Includes::default();
@@ -1376,7 +1353,7 @@ impl InterfaceGenerator<'_> {
                 TypeDefKind::Flags(_) => todo!(),
                 TypeDefKind::Tuple(_) => todo!(),
                 TypeDefKind::Variant(_) => todo!(),
-                TypeDefKind::Enum(e) => {
+                TypeDefKind::Enum(_e) => {
                     sig.c_args
                         .push((Self::RESULT_NAME.into(), "/* enum */".into()));
                     sig.wamr_types.push('*');
@@ -1391,7 +1368,6 @@ impl InterfaceGenerator<'_> {
                         .push((Self::RESULT_NAME.into(), "uint8_t *".into()));
                     sig.wamr_types.push('*');
                 }
-                TypeDefKind::Union(_) => todo!(),
                 TypeDefKind::List(_) => {
                     sig.c_args
                         .push((Self::RESULT_NAME.into(), "uint32_t *".into()));
@@ -1502,7 +1478,6 @@ impl InterfaceGenerator<'_> {
                     }
                     TypeDefKind::Option(_) => todo!(),
                     TypeDefKind::Result(_) => todo!(),
-                    TypeDefKind::Union(_) => todo!(),
                     TypeDefKind::List(_l) => result.push_str("/* TODO list 1245 */"),
                     TypeDefKind::Future(_) => todo!(),
                     TypeDefKind::Stream(_) => todo!(),
@@ -1623,7 +1598,7 @@ impl InterfaceGenerator<'_> {
             TypeDefKind::Flags(_) => todo!(),
             TypeDefKind::Tuple(_) => todo!(),
             TypeDefKind::Variant(_) => todo!(),
-            TypeDefKind::Enum(e) => {
+            TypeDefKind::Enum(_e) => {
                 self.src.c_adapters("  /* TODO enum */\n");
             }
             TypeDefKind::Option(_) => {
@@ -1653,7 +1628,6 @@ impl InterfaceGenerator<'_> {
                 }
                 self.src.c_adapters("  }\n");
             }
-            TypeDefKind::Union(_) => todo!(),
             TypeDefKind::List(l) => {
                 self.gen.dependencies.needs_guest_alloc = true;
                 self.src.c_adapters("  {\n");
@@ -2082,7 +2056,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
         let name = &self.gen.interface_names[&interface];
         match name {
             WorldKey::Name(n) => path.push_str(n),
-            WorldKey::Interface(i) => todo!(),
+            WorldKey::Interface(_i) => todo!(),
         }
         Some(path)
     }
@@ -2169,7 +2143,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
     fn print_docs_and_params(
         &mut self,
         func: &Function,
-        param_mode: TypeMode,
+        _param_mode: TypeMode,
         sig: &FnSig,
     ) -> Vec<String> {
         // self.rustdoc(&func.docs);
@@ -2273,8 +2247,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
                     | TypeDefKind::List(_)
                     | TypeDefKind::Flags(_)
                     | TypeDefKind::Enum(_)
-                    | TypeDefKind::Tuple(_)
-                    | TypeDefKind::Union(_) => true,
+                    | TypeDefKind::Tuple(_) => true,
                     TypeDefKind::Type(Type::Id(t)) => {
                         needs_generics(resolve, &resolve.types[*t].kind)
                     }
@@ -2326,9 +2299,6 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
             }
             TypeDefKind::Enum(_) => {
                 panic!("unsupported anonymous type reference: enum")
-            }
-            TypeDefKind::Union(_) => {
-                panic!("unsupported anonymous type reference: union")
             }
             TypeDefKind::Future(ty) => {
                 self.push_str("Future<");
@@ -2389,7 +2359,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
         }
     }
 
-    fn print_optional_ty(&mut self, ty: Option<&Type>, mode: TypeMode) {
+    fn print_optional_ty(&mut self, ty: Option<&Type>, _mode: TypeMode) {
         match ty {
             Some(ty) => self.print_ty(SourceType::HDefs, ty, None, Context::Argument),
             None => self.push_str("void"),
@@ -2442,7 +2412,7 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
         mutbl: bool,
         ty: &Type,
         _lifetime: &'static str,
-        mode: TypeMode,
+        _mode: TypeMode,
     ) {
         self.push_str("std::vector<");
         self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
@@ -2783,7 +2753,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::HandleLift { handle, .. } => {
                 let op = &operands[0];
-                let (prefix, resource, owned) = match handle {
+                let (prefix, resource, _owned) = match handle {
                     Handle::Borrow(resource) => ("&", resource, false),
                     Handle::Own(resource) => ("", resource, true),
                 };
@@ -2921,57 +2891,6 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 result.push_str("}");
                 result.push_str("}");
 
-                result.push_str("}");
-                results.push(result);
-            }
-
-            Instruction::UnionLower {
-                union,
-                results: result_types,
-                ty,
-                ..
-            } => {
-                let blocks = self
-                    .blocks
-                    .drain(self.blocks.len() - union.cases.len()..)
-                    .collect::<Vec<_>>();
-                self.let_results(result_types.len(), results);
-                let op0 = &operands[0];
-                self.push_str(&format!("match {op0} {{\n"));
-                let name = self.typename_lower(*ty);
-                for (case_name, block) in self.gen.union_case_names(union).into_iter().zip(blocks) {
-                    self.push_str(&format!("{name}::{case_name}(e) => {block},\n"));
-                }
-                self.push_str("};\n");
-            }
-
-            Instruction::UnionLift { union, ty, .. } => {
-                let blocks = self
-                    .blocks
-                    .drain(self.blocks.len() - union.cases.len()..)
-                    .collect::<Vec<_>>();
-                let op0 = &operands[0];
-                let mut result = format!("match {op0} {{\n");
-                for (i, (case_name, block)) in self
-                    .gen
-                    .union_case_names(union)
-                    .into_iter()
-                    .zip(blocks)
-                    .enumerate()
-                {
-                    let pat = i.to_string();
-                    let name = self.typename_lift(*ty);
-                    // if i == union.cases.len() - 1 {
-                    //     result.push_str("#[cfg(debug_assertions)]");
-                    //     result.push_str(&format!("{pat} => {name}::{case_name}({block}),\n"));
-                    //     result.push_str("#[cfg(not(debug_assertions))]");
-                    //     result.push_str(&format!("_ => {name}::{case_name}({block}),\n"));
-                    // } else {
-                    result.push_str(&format!("{pat} => {name}::{case_name}({block}),\n"));
-                    // }
-                }
-                // result.push_str("#[cfg(debug_assertions)]");
-                // result.push_str("_ => panic!(\"invalid union discriminant\"),\n");
                 result.push_str("}");
                 results.push(result);
             }
@@ -3616,8 +3535,7 @@ fn push_ty_name(
                 TypeDefKind::Record(_)
                 | TypeDefKind::Flags(_)
                 | TypeDefKind::Enum(_)
-                | TypeDefKind::Variant(_)
-                | TypeDefKind::Union(_) => {
+                | TypeDefKind::Variant(_) => {
                     unimplemented!()
                 }
                 TypeDefKind::Tuple(t) => {

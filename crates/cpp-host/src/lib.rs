@@ -746,8 +746,6 @@ impl CppHost {
                 for func in funcs {
                     gen.import(Some(name), func);
                 }
-                // register drop function
-                gen.src.c_fns.push_str("/* TODO drop */");
 
                 if gen.gen.opts.guest_header {
                     // consuming constructor from handle (bindings)
@@ -756,6 +754,30 @@ impl CppHost {
                     ));
                 }
                 gen.src.h_defs(&format!("}}; {ns_leave}\n"));
+
+                let iface = &resolve.interfaces[id];
+                let pkg = &resolve.packages[iface.package.unwrap()];
+                let mut interface_name = pkg.name.namespace.to_snake_case();
+                interface_name.push_str("_");
+                interface_name.push_str(&pkg.name.name.to_snake_case());
+                interface_name.push_str("_");
+                interface_name.push_str(&iface.name.as_ref().unwrap().to_snake_case());
+                let resource = resolve.types[resource].name.as_deref().unwrap();
+                let resource_snake = resource.to_snake_case();
+                let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
+                let wasm_name = format!("[resource-drop]{resource}");
+                gen.src.c_adapters(&format!("static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", ));
+                let remember = HostFunction {
+                    wasm_name,
+                    wamr_signature: "(i)".into(),
+                    host_name,
+                };
+                let module_name = resolve.name_world_key(name);
+                gen.gen
+                    .host_functions
+                    .entry(module_name)
+                    .and_modify(|v| v.push(remember.clone()))
+                    .or_insert(vec![remember]);
             }
         }
     }

@@ -381,6 +381,9 @@ impl WorldGenerator for CppHost {
         if self.dependencies.needs_cstring {
             self.include("<cstring>");
         }
+        if self.opts.guest_header && self.dependencies.needs_resources {
+            self.include("<cassert>");
+        }
 
         for include in self.includes.iter() {
             uwriteln!(h_str, "#include {include}");
@@ -426,16 +429,37 @@ impl WorldGenerator for CppHost {
                       }}; {ns_leave}"
                     );
                 } else {
+                    // somehow spaces get removed, newlines remain (problem occurs before const&)
                     uwriteln!(
                         h_str,
                         "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
+                        static const int32_t invalid = -1;
                         protected:
                         int32_t handle;
                         public:
-                        {RESOURCE_BASE_CLASS_NAME}() : handle() {{}}
+                        {RESOURCE_BASE_CLASS_NAME}(int32_t h=invalid) : handle(h) {{}}
+                        {RESOURCE_BASE_CLASS_NAME}({RESOURCE_BASE_CLASS_NAME}&&r) 
+                            : handle(r.handle) {{ 
+                                r.handle=invalid; 
+                        }}
+                        {RESOURCE_BASE_CLASS_NAME}({RESOURCE_BASE_CLASS_NAME} 
+                            const&) = delete;
                         void set_handle(int32_t h) {{ handle=h; }}
                         int32_t get_handle() const {{ return handle; }}
-                      }}; {ns_leave}"
+                        int32_t into_raw() {{
+                            int32_t h= handle;
+                            handle= invalid;
+                            return h;
+                        }}
+                        {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME}&&r) {{
+                            assert(handle<0);
+                            handle= r.handle;
+                            r.handle= invalid;
+                            return *this;
+                        }}
+                        {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME} 
+                            const&r) = delete;
+                        }}; {ns_leave}"
                     );
                 }
             }
@@ -751,6 +775,9 @@ impl CppHost {
                     // consuming constructor from handle (bindings)
                     gen.src.h_defs(&format!(
                         "{pascal}({world_name}{RESOURCE_BASE_CLASS_NAME}&&);\n"
+                    ));
+                    gen.src.h_defs(&format!(
+                        "{pascal}({pascal}&&) = default;\n"
                     ));
                 }
                 gen.src.h_defs(&format!("}}; {ns_leave}\n"));
@@ -1998,7 +2025,9 @@ impl InterfaceGenerator<'_> {
             target.push_str("void");
         }
         target.push_str(")");
-
+        if self.gen.opts.guest_header && matches!(func.kind, FunctionKind::Method(_)) {
+            target.push_str("const");
+        }
         target.push_str(";\n");
 
         CSig {

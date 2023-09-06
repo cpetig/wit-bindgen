@@ -621,7 +621,8 @@ impl InterfaceGenerator<'_> {
                     self.src,
                     r#"{camel}::~{camel}() {{
                             {code}
-                            {name_drop}(handle);
+                            if (handle>=0)
+                                {name_drop}(handle);
                     }}
                     "#
                 );
@@ -1005,6 +1006,9 @@ impl InterfaceGenerator<'_> {
         }
         // self.src.push_str("#[allow(clippy::all)]\n");
         let params = self.print_signature(func, param_mode, &sig);
+        if matches!(func.kind, FunctionKind::Method(_)) {
+            self.src.push_str("const");
+        }
         self.src.push_str("{\n");
 
         let mut f = FunctionBindgen::new(self, params, None);

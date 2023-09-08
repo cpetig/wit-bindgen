@@ -31,6 +31,7 @@ interface radar {
 
     resource proxy-handle {
         get-instance-id: func() -> instance-identifier
+        clone: func() -> proxy-handle
     }
 
     resource sample-ptr {
@@ -65,7 +66,7 @@ interface radar {
     }
 
     resource proxy {
-        constructor(handle: proxy-handle)
+        constructor(handle: borrow<proxy-handle>)
 
         adjust: func (target-position: position) -> future-result-adjust-output-error-code
         calibrate: func (configuration: string, radar-variant: fusion-variant) -> future-result-calibrate-output-error-code
@@ -93,4 +94,5 @@ world fusion {
     import log
     import com
     import exec
+    import wasi:threads/threads
 }

@@ -11,7 +11,7 @@ interface types {
         
     record error-code {
         value: error-code-type,
-        domain: borrow<error-domain>,
+        domain: s32, // borrow<error-domain>,
     }
 }
 

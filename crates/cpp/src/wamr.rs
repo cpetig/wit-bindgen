@@ -1,7 +1,4 @@
-use wit_bindgen_core::{
-    abi::AbiVariant,
-    wit_parser::{Function, Resolve, Results, Type, TypeDefKind},
-};
+use wit_bindgen_core::wit_parser::{Function, Resolve, Results, Type, TypeDefKind};
 
 #[derive(Debug, Default)]
 pub struct WamrSig {

@@ -1,4 +1,10 @@
-use wit_bindgen_core::WorldGenerator;
+use heck::ToSnakeCase;
+use wit_bindgen_core::{
+    wit_parser::{Function, InterfaceId, Resolve, TypeId, WorldId, WorldKey},
+    Files, Source, WorldGenerator,
+};
+
+mod wamr;
 
 #[derive(Default)]
 struct Cpp {
@@ -29,60 +35,67 @@ impl Cpp {
 impl WorldGenerator for Cpp {
     fn import_interface(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        name: &wit_bindgen_core::wit_parser::WorldKey,
-        iface: wit_bindgen_core::wit_parser::InterfaceId,
-        files: &mut wit_bindgen_core::Files,
+        resolve: &Resolve,
+        name: &WorldKey,
+        iface: InterfaceId,
+        files: &mut Files,
     ) {
         //todo!()
     }
 
     fn export_interface(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        name: &wit_bindgen_core::wit_parser::WorldKey,
-        iface: wit_bindgen_core::wit_parser::InterfaceId,
-        files: &mut wit_bindgen_core::Files,
+        resolve: &Resolve,
+        name: &WorldKey,
+        iface: InterfaceId,
+        files: &mut Files,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
     fn import_funcs(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        funcs: &[(&str, &wit_bindgen_core::wit_parser::Function)],
-        files: &mut wit_bindgen_core::Files,
+        resolve: &Resolve,
+        world: WorldId,
+        funcs: &[(&str, &Function)],
+        files: &mut Files,
     ) {
         todo!()
     }
 
     fn export_funcs(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        funcs: &[(&str, &wit_bindgen_core::wit_parser::Function)],
-        files: &mut wit_bindgen_core::Files,
+        resolve: &Resolve,
+        world: WorldId,
+        funcs: &[(&str, &Function)],
+        files: &mut Files,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
     fn import_types(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        types: &[(&str, wit_bindgen_core::wit_parser::TypeId)],
-        files: &mut wit_bindgen_core::Files,
+        resolve: &Resolve,
+        world: WorldId,
+        types: &[(&str, TypeId)],
+        files: &mut Files,
     ) {
         todo!()
     }
 
-    fn finish(
-        &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        files: &mut wit_bindgen_core::Files,
-    ) {
+    fn finish(&mut self, resolve: &Resolve, world_id: WorldId, files: &mut Files) {
+        let world = &resolve.worlds[world_id];
+        let snake = world.name.to_snake_case();
+
+        let mut h_str = Source::default();
+        let mut c_str = Source::default();
         // todo!()
+        if !self.opts.host {
+            files.push(&format!("{snake}.cpp"), c_str.as_bytes());
+            files.push(&format!("{snake}_cpp.h"), h_str.as_bytes());
+        } else {
+            files.push(&format!("{snake}_host.cpp"), c_str.as_bytes());
+            files.push(&format!("{snake}_cpp_host.h"), h_str.as_bytes());
+        }
     }
 }

@@ -23,8 +23,8 @@ anyhow = { workspace = true }
 heck = { workspace = true }
 clap = { workspace = true, optional = true }
 # for now 
-wit-bindgen-rust = { workspace = true }
-wit-bindgen-cpp-host = { workspace = true }
+#wit-bindgen-rust = { workspace = true }
+#wit-bindgen-cpp-host = { workspace = true }
 
 [dev-dependencies]
 test-helpers = { path = '../test-helpers' }

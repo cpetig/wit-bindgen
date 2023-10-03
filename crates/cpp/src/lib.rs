@@ -7,7 +7,10 @@ struct Cpp {
 
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
-pub struct Opts {}
+pub struct Opts {
+    #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
+    pub host: bool,
+}
 
 impl Opts {
     pub fn build(self) -> Box<dyn WorldGenerator> {

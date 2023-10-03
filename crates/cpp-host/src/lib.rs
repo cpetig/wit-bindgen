@@ -773,9 +773,8 @@ impl CppHost {
                     gen.src.h_defs(&format!(
                         "{pascal}({world_name}{RESOURCE_BASE_CLASS_NAME}&&);\n"
                     ));
-                    gen.src.h_defs(&format!(
-                        "{pascal}({pascal}&&) = default;\n"
-                    ));
+                    gen.src
+                        .h_defs(&format!("{pascal}({pascal}&&) = default;\n"));
                 }
                 gen.src.h_defs(&format!("}}; {ns_leave}\n"));
 
@@ -2127,406 +2126,406 @@ impl InterfaceGenerator<'_> {
 //         self.resolve
 //     }
 
-    // fn ownership(&self) -> Ownership {
-    //     Ownership::Owning
-    // }
+// fn ownership(&self) -> Ownership {
+//     Ownership::Owning
+// }
 
-    // fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
-    //     let mut path = String::new();
-    //     if let Identifier::Interface(cur, name) = self.identifier {
-    //         if cur == interface {
-    //             return None;
-    //         }
-    //         // if !self.in_import {
-    //         //path.push_str("super::");
-    //         // }
-    //         match name {
-    //             WorldKey::Name(_) => {
-    //                 //path.push_str("super::");
-    //             }
-    //             WorldKey::Interface(_) => {
-    //                 //path.push_str("super::super::super::");
-    //             }
-    //         }
-    //     }
-    //     let name = &self.gen.interface_names[&interface];
-    //     match name {
-    //         WorldKey::Name(n) => path.push_str(n),
-    //         WorldKey::Interface(_i) => todo!(),
-    //     }
-    //     Some(path)
-    // }
+// fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
+//     let mut path = String::new();
+//     if let Identifier::Interface(cur, name) = self.identifier {
+//         if cur == interface {
+//             return None;
+//         }
+//         // if !self.in_import {
+//         //path.push_str("super::");
+//         // }
+//         match name {
+//             WorldKey::Name(_) => {
+//                 //path.push_str("super::");
+//             }
+//             WorldKey::Interface(_) => {
+//                 //path.push_str("super::super::super::");
+//             }
+//         }
+//     }
+//     let name = &self.gen.interface_names[&interface];
+//     match name {
+//         WorldKey::Name(n) => path.push_str(n),
+//         WorldKey::Interface(_i) => todo!(),
+//     }
+//     Some(path)
+// }
 
-    // fn is_exported_resource(&self, mut ty: TypeId) -> bool {
-    //     loop {
-    //         let def = &self.resolve.types[ty];
-    //         if let TypeOwner::World(_) = &def.owner {
-    //             // Worlds cannot export types of any kind as of this writing.
-    //             return false;
-    //         }
-    //         match &def.kind {
-    //             TypeDefKind::Type(Type::Id(id)) => ty = *id,
-    //             _ => break,
-    //         }
-    //     }
+// fn is_exported_resource(&self, mut ty: TypeId) -> bool {
+//     loop {
+//         let def = &self.resolve.types[ty];
+//         if let TypeOwner::World(_) = &def.owner {
+//             // Worlds cannot export types of any kind as of this writing.
+//             return false;
+//         }
+//         match &def.kind {
+//             TypeDefKind::Type(Type::Id(id)) => ty = *id,
+//             _ => break,
+//         }
+//     }
 
-    //     matches!(
-    //         self.gen.resources.get(&ty).map(|info| info.direction),
-    //         Some(Direction::Export)
-    //     )
-    // }
+//     matches!(
+//         self.gen.resources.get(&ty).map(|info| info.direction),
+//         Some(Direction::Export)
+//     )
+// }
 
-    // fn add_own(&mut self, resource: TypeId, handle: TypeId) {
-    //     self.gen
-    //         .resources
-    //         .entry(dealias(self.resolve, resource))
-    //         .or_default()
-    //         .own = Some(handle);
-    // }
+// fn add_own(&mut self, resource: TypeId, handle: TypeId) {
+//     self.gen
+//         .resources
+//         .entry(dealias(self.resolve, resource))
+//         .or_default()
+//         .own = Some(handle);
+// }
 
-    // fn push_str(&mut self, s: &str) {
-    //     self.src.push_str(s);
-    // }
+// fn push_str(&mut self, s: &str) {
+//     self.src.push_str(s);
+// }
 
-    // fn info(&self, ty: TypeId) -> TypeInfo {
-    //     self.gen.types.get(ty)
-    // }
+// fn info(&self, ty: TypeId) -> TypeInfo {
+//     self.gen.types.get(ty)
+// }
 
-    // fn types_mut(&mut self) -> &mut Types {
-    //     &mut self.gen.types
-    // }
+// fn types_mut(&mut self) -> &mut Types {
+//     &mut self.gen.types
+// }
 
-    // fn print_borrowed_slice(
-    //     &mut self,
-    //     mutbl: bool,
-    //     ty: &Type,
-    //     lifetime: &'static str,
-    //     mode: TypeMode,
-    // ) {
-    //     self.print_rust_slice(mutbl, ty, lifetime, mode);
-    // }
+// fn print_borrowed_slice(
+//     &mut self,
+//     mutbl: bool,
+//     ty: &Type,
+//     lifetime: &'static str,
+//     mode: TypeMode,
+// ) {
+//     self.print_rust_slice(mutbl, ty, lifetime, mode);
+// }
 
-    // fn print_borrowed_str(&mut self, _lifetime: &'static str) {
-    //     self.push_str("&");
-    //     // if self.gen.opts.raw_strings {
-    //     //     self.push_str("[u8]");
-    //     // } else {
-    //     self.push_str("str");
-    //     // }
-    // }
+// fn print_borrowed_str(&mut self, _lifetime: &'static str) {
+//     self.push_str("&");
+//     // if self.gen.opts.raw_strings {
+//     //     self.push_str("[u8]");
+//     // } else {
+//     self.push_str("str");
+//     // }
+// }
 
-    // fn push_vec_name(&mut self) {
-    //     self.push_str("std::vector");
-    // }
+// fn push_vec_name(&mut self) {
+//     self.push_str("std::vector");
+// }
 
-    // fn push_string_name(&mut self) {
-    //     self.push_str("std::string");
-    // }
+// fn push_string_name(&mut self) {
+//     self.push_str("std::string");
+// }
 
-    // fn mark_resource_owned(&mut self, resource: TypeId) {
-    //     self.gen
-    //         .resources
-    //         .entry(dealias(self.resolve, resource))
-    //         .or_default()
-    //         .owned = true;
-    // }
+// fn mark_resource_owned(&mut self, resource: TypeId) {
+//     self.gen
+//         .resources
+//         .entry(dealias(self.resolve, resource))
+//         .or_default()
+//         .owned = true;
+// }
 
-    // fn print_signature(
-    //     &mut self,
-    //     func: &Function,
-    //     param_mode: TypeMode,
-    //     sig: &FnSig,
-    // ) -> Vec<String> {
-    //     if !matches!(func.kind, FunctionKind::Constructor(_)) {
-    //         self.print_results(&func.results, TypeMode::Owned);
-    //         self.push_str(" ");
-    //     }
-    //     let params = self.print_docs_and_params(func, param_mode, &sig);
-    //     params
-    // }
+// fn print_signature(
+//     &mut self,
+//     func: &Function,
+//     param_mode: TypeMode,
+//     sig: &FnSig,
+// ) -> Vec<String> {
+//     if !matches!(func.kind, FunctionKind::Constructor(_)) {
+//         self.print_results(&func.results, TypeMode::Owned);
+//         self.push_str(" ");
+//     }
+//     let params = self.print_docs_and_params(func, param_mode, &sig);
+//     params
+// }
 
-    // fn print_docs_and_params(
-    //     &mut self,
-    //     func: &Function,
-    //     _param_mode: TypeMode,
-    //     sig: &FnSig,
-    // ) -> Vec<String> {
-    //     // self.rustdoc(&func.docs);
-    //     // self.rustdoc_params(&func.params, "Parameters");
-    //     // TODO: re-add this when docs are back
-    //     // self.rustdoc_params(&func.results, "Return");
+// fn print_docs_and_params(
+//     &mut self,
+//     func: &Function,
+//     _param_mode: TypeMode,
+//     sig: &FnSig,
+// ) -> Vec<String> {
+//     // self.rustdoc(&func.docs);
+//     // self.rustdoc_params(&func.params, "Parameters");
+//     // TODO: re-add this when docs are back
+//     // self.rustdoc_params(&func.results, "Return");
 
-    //     let object = match &func.kind {
-    //         FunctionKind::Freestanding => None,
-    //         FunctionKind::Method(i) => Some(i),
-    //         FunctionKind::Static(i) => Some(i),
-    //         FunctionKind::Constructor(i) => Some(i),
-    //     }
-    //     .map(|i| {
-    //         self.resolve.types[*i]
-    //             .name
-    //             .as_ref()
-    //             .unwrap()
-    //             .to_pascal_case()
-    //     })
-    //     .unwrap_or_default();
-    //     let func_name = if sig.use_item_name {
-    //         if let FunctionKind::Constructor(_i) = &func.kind {
-    //             format!("{object}::{object}")
-    //         } else {
-    //             format!("{object}::{}", func.item_name().to_pascal_case())
-    //         }
-    //     } else {
-    //         func.name.to_pascal_case()
-    //     };
-    //     self.push_str(&func_name);
-    //     if let Some(generics) = &sig.generics {
-    //         self.push_str(generics);
-    //     }
-    //     self.push_str("(");
-    //     if let Some(arg) = &sig.self_arg {
-    //         self.push_str(arg);
-    //         self.push_str(",");
-    //     }
-    //     let mut params = Vec::new();
-    //     for (i, (name, param)) in func.params.iter().enumerate() {
-    //         params.push(to_rust_ident(name));
-    //         if i == 0 && sig.self_is_first_param {
-    //             // params.push("self".to_string());
-    //             continue;
-    //         }
-    //         if i == 0 && name == "self" {
-    //             continue;
-    //         }
-    //         let name = to_rust_ident(name);
-    //         self.print_ty(SourceType::HDefs, param, None, Context::Argument);
-    //         self.push_str(" ");
-    //         self.push_str(&name);
-    //         if i + 1 != func.params.len() {
-    //             self.push_str(",");
-    //         }
-    //     }
-    //     self.push_str(")");
-    //     params
-    // }
+//     let object = match &func.kind {
+//         FunctionKind::Freestanding => None,
+//         FunctionKind::Method(i) => Some(i),
+//         FunctionKind::Static(i) => Some(i),
+//         FunctionKind::Constructor(i) => Some(i),
+//     }
+//     .map(|i| {
+//         self.resolve.types[*i]
+//             .name
+//             .as_ref()
+//             .unwrap()
+//             .to_pascal_case()
+//     })
+//     .unwrap_or_default();
+//     let func_name = if sig.use_item_name {
+//         if let FunctionKind::Constructor(_i) = &func.kind {
+//             format!("{object}::{object}")
+//         } else {
+//             format!("{object}::{}", func.item_name().to_pascal_case())
+//         }
+//     } else {
+//         func.name.to_pascal_case()
+//     };
+//     self.push_str(&func_name);
+//     if let Some(generics) = &sig.generics {
+//         self.push_str(generics);
+//     }
+//     self.push_str("(");
+//     if let Some(arg) = &sig.self_arg {
+//         self.push_str(arg);
+//         self.push_str(",");
+//     }
+//     let mut params = Vec::new();
+//     for (i, (name, param)) in func.params.iter().enumerate() {
+//         params.push(to_rust_ident(name));
+//         if i == 0 && sig.self_is_first_param {
+//             // params.push("self".to_string());
+//             continue;
+//         }
+//         if i == 0 && name == "self" {
+//             continue;
+//         }
+//         let name = to_rust_ident(name);
+//         self.print_ty(SourceType::HDefs, param, None, Context::Argument);
+//         self.push_str(" ");
+//         self.push_str(&name);
+//         if i + 1 != func.params.len() {
+//             self.push_str(",");
+//         }
+//     }
+//     self.push_str(")");
+//     params
+// }
 
-    // fn print_tyid(&mut self, id: TypeId, mode: TypeMode) {
-    //     let info = self.info(id);
-    //     let lt = self.lifetime_for(&info, mode);
-    //     let ty = &RustGenerator::resolve(self).types[id];
-    //     if ty.name.is_some() {
-    //         // If this type has a list internally, no lifetime is being printed,
-    //         // but we're in a borrowed mode, then that means we're in a borrowed
-    //         // context and don't want ownership of the type but we're using an
-    //         // owned type definition. Inject a `&` in front to indicate that, at
-    //         // the API level, ownership isn't required.
-    //         if info.has_list && lt.is_none() {
-    //             if let TypeMode::AllBorrowed(lt) | TypeMode::LeafBorrowed(lt) = mode {
-    //                 self.push_str("&");
-    //                 if lt != "'_" {
-    //                     self.push_str(lt);
-    //                     self.push_str(" ");
-    //                 }
-    //             }
-    //         }
-    //         let name = self.type_path(id, lt.is_none());
-    //         self.push_str(&name);
+// fn print_tyid(&mut self, id: TypeId, mode: TypeMode) {
+//     let info = self.info(id);
+//     let lt = self.lifetime_for(&info, mode);
+//     let ty = &RustGenerator::resolve(self).types[id];
+//     if ty.name.is_some() {
+//         // If this type has a list internally, no lifetime is being printed,
+//         // but we're in a borrowed mode, then that means we're in a borrowed
+//         // context and don't want ownership of the type but we're using an
+//         // owned type definition. Inject a `&` in front to indicate that, at
+//         // the API level, ownership isn't required.
+//         if info.has_list && lt.is_none() {
+//             if let TypeMode::AllBorrowed(lt) | TypeMode::LeafBorrowed(lt) = mode {
+//                 self.push_str("&");
+//                 if lt != "'_" {
+//                     self.push_str(lt);
+//                     self.push_str(" ");
+//                 }
+//             }
+//         }
+//         let name = self.type_path(id, lt.is_none());
+//         self.push_str(&name);
 
-    //         // If the type recursively owns data and it's a
-    //         // variant/record/list, then we need to place the
-    //         // lifetime parameter on the type as well.
-    //         if info.has_list && needs_generics(RustGenerator::resolve(self), &ty.kind) {
-    //             self.print_generics(lt);
-    //         }
+//         // If the type recursively owns data and it's a
+//         // variant/record/list, then we need to place the
+//         // lifetime parameter on the type as well.
+//         if info.has_list && needs_generics(RustGenerator::resolve(self), &ty.kind) {
+//             self.print_generics(lt);
+//         }
 
-    //         return;
+//         return;
 
-    //         fn needs_generics(resolve: &Resolve, ty: &TypeDefKind) -> bool {
-    //             match ty {
-    //                 TypeDefKind::Variant(_)
-    //                 | TypeDefKind::Record(_)
-    //                 | TypeDefKind::Option(_)
-    //                 | TypeDefKind::Result(_)
-    //                 | TypeDefKind::Future(_)
-    //                 | TypeDefKind::Stream(_)
-    //                 | TypeDefKind::List(_)
-    //                 | TypeDefKind::Flags(_)
-    //                 | TypeDefKind::Enum(_)
-    //                 | TypeDefKind::Tuple(_) => true,
-    //                 TypeDefKind::Type(Type::Id(t)) => {
-    //                     needs_generics(resolve, &resolve.types[*t].kind)
-    //                 }
-    //                 TypeDefKind::Type(Type::String) => true,
-    //                 TypeDefKind::Resource | TypeDefKind::Handle(_) | TypeDefKind::Type(_) => false,
-    //                 TypeDefKind::Unknown => unreachable!(),
-    //             }
-    //         }
-    //     }
+//         fn needs_generics(resolve: &Resolve, ty: &TypeDefKind) -> bool {
+//             match ty {
+//                 TypeDefKind::Variant(_)
+//                 | TypeDefKind::Record(_)
+//                 | TypeDefKind::Option(_)
+//                 | TypeDefKind::Result(_)
+//                 | TypeDefKind::Future(_)
+//                 | TypeDefKind::Stream(_)
+//                 | TypeDefKind::List(_)
+//                 | TypeDefKind::Flags(_)
+//                 | TypeDefKind::Enum(_)
+//                 | TypeDefKind::Tuple(_) => true,
+//                 TypeDefKind::Type(Type::Id(t)) => {
+//                     needs_generics(resolve, &resolve.types[*t].kind)
+//                 }
+//                 TypeDefKind::Type(Type::String) => true,
+//                 TypeDefKind::Resource | TypeDefKind::Handle(_) | TypeDefKind::Type(_) => false,
+//                 TypeDefKind::Unknown => unreachable!(),
+//             }
+//         }
+//     }
 
-    //     match &ty.kind {
-    //         TypeDefKind::List(t) => self.print_list(t, mode),
+//     match &ty.kind {
+//         TypeDefKind::List(t) => self.print_list(t, mode),
 
-    //         TypeDefKind::Option(t) => {
-    //             self.push_str("std::option<");
-    //             self.print_ty(SourceType::HDefs, t, None, Context::Argument);
-    //             self.push_str(">");
-    //         }
+//         TypeDefKind::Option(t) => {
+//             self.push_str("std::option<");
+//             self.print_ty(SourceType::HDefs, t, None, Context::Argument);
+//             self.push_str(">");
+//         }
 
-    //         TypeDefKind::Result(r) => {
-    //             self.push_str("std::expected<");
-    //             self.print_optional_ty(r.ok.as_ref(), mode);
-    //             self.push_str(",");
-    //             self.print_optional_ty(r.err.as_ref(), mode);
-    //             self.push_str(">");
-    //         }
+//         TypeDefKind::Result(r) => {
+//             self.push_str("std::expected<");
+//             self.print_optional_ty(r.ok.as_ref(), mode);
+//             self.push_str(",");
+//             self.print_optional_ty(r.err.as_ref(), mode);
+//             self.push_str(">");
+//         }
 
-    //         TypeDefKind::Variant(_) => panic!("unsupported anonymous variant"),
+//         TypeDefKind::Variant(_) => panic!("unsupported anonymous variant"),
 
-    //         // Tuple-like records are mapped directly to Rust tuples of
-    //         // types. Note the trailing comma after each member to
-    //         // appropriately handle 1-tuples.
-    //         TypeDefKind::Tuple(t) => {
-    //             self.push_str("(");
-    //             for ty in t.types.iter() {
-    //                 self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-    //                 self.push_str(",");
-    //             }
-    //             self.push_str(")");
-    //         }
-    //         TypeDefKind::Resource => {
-    //             panic!("unsupported anonymous type reference: resource")
-    //         }
-    //         TypeDefKind::Record(_) => {
-    //             panic!("unsupported anonymous type reference: record")
-    //         }
-    //         TypeDefKind::Flags(_) => {
-    //             panic!("unsupported anonymous type reference: flags")
-    //         }
-    //         TypeDefKind::Enum(_) => {
-    //             panic!("unsupported anonymous type reference: enum")
-    //         }
-    //         TypeDefKind::Future(ty) => {
-    //             self.push_str("Future<");
-    //             self.print_optional_ty(ty.as_ref(), mode);
-    //             self.push_str(">");
-    //         }
-    //         TypeDefKind::Stream(stream) => {
-    //             self.push_str("Stream<");
-    //             self.print_optional_ty(stream.element.as_ref(), mode);
-    //             self.push_str(",");
-    //             self.print_optional_ty(stream.end.as_ref(), mode);
-    //             self.push_str(">");
-    //         }
+//         // Tuple-like records are mapped directly to Rust tuples of
+//         // types. Note the trailing comma after each member to
+//         // appropriately handle 1-tuples.
+//         TypeDefKind::Tuple(t) => {
+//             self.push_str("(");
+//             for ty in t.types.iter() {
+//                 self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+//                 self.push_str(",");
+//             }
+//             self.push_str(")");
+//         }
+//         TypeDefKind::Resource => {
+//             panic!("unsupported anonymous type reference: resource")
+//         }
+//         TypeDefKind::Record(_) => {
+//             panic!("unsupported anonymous type reference: record")
+//         }
+//         TypeDefKind::Flags(_) => {
+//             panic!("unsupported anonymous type reference: flags")
+//         }
+//         TypeDefKind::Enum(_) => {
+//             panic!("unsupported anonymous type reference: enum")
+//         }
+//         TypeDefKind::Future(ty) => {
+//             self.push_str("Future<");
+//             self.print_optional_ty(ty.as_ref(), mode);
+//             self.push_str(">");
+//         }
+//         TypeDefKind::Stream(stream) => {
+//             self.push_str("Stream<");
+//             self.print_optional_ty(stream.element.as_ref(), mode);
+//             self.push_str(",");
+//             self.print_optional_ty(stream.end.as_ref(), mode);
+//             self.push_str(">");
+//         }
 
-    //         TypeDefKind::Handle(Handle::Own(ty)) => {
-    //             self.mark_resource_owned(*ty);
-    //             self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
-    //         }
+//         TypeDefKind::Handle(Handle::Own(ty)) => {
+//             self.mark_resource_owned(*ty);
+//             self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
+//         }
 
-    //         TypeDefKind::Handle(Handle::Borrow(ty)) => {
-    //             self.push_str("&");
-    //             self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
-    //         }
+//         TypeDefKind::Handle(Handle::Borrow(ty)) => {
+//             self.push_str("&");
+//             self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
+//         }
 
-    //         TypeDefKind::Type(t) => self.print_ty(SourceType::HDefs, t, None, Context::Argument),
+//         TypeDefKind::Type(t) => self.print_ty(SourceType::HDefs, t, None, Context::Argument),
 
-    //         // TypeDefKind::Resource => {
-    //         //     todo!("implement resources")
-    //         // }
-    //         TypeDefKind::Unknown => unreachable!(),
-    //     }
-    // }
+//         // TypeDefKind::Resource => {
+//         //     todo!("implement resources")
+//         // }
+//         TypeDefKind::Unknown => unreachable!(),
+//     }
+// }
 
-    // fn print_ty(&mut self, ty: &Type, mode: TypeMode) {
-    //     match ty {
-    //         Type::Id(t) => self.print_tyid(*t, mode),
-    //         Type::Bool => self.push_str("bool"),
-    //         Type::U8 => self.push_str("uint8_t"),
-    //         Type::U16 => self.push_str("uint16_t"),
-    //         Type::U32 => self.push_str("uint32_t"),
-    //         Type::U64 => self.push_str("uint64_t"),
-    //         Type::S8 => self.push_str("int8_t"),
-    //         Type::S16 => self.push_str("int16_t"),
-    //         Type::S32 => self.push_str("int32_t"),
-    //         Type::S64 => self.push_str("int64_t"),
-    //         Type::Float32 => self.push_str("float"),
-    //         Type::Float64 => self.push_str("double"),
-    //         Type::Char => self.push_str("int32_t"),
-    //         Type::String => match mode {
-    //             TypeMode::AllBorrowed(_lt) | TypeMode::LeafBorrowed(_lt) => {
-    //                 self.push_str("std::string_view");
-    //             }
-    //             TypeMode::Owned => {
-    //                 self.push_str("std::string");
-    //             }
-    //             TypeMode::HandlesBorrowed(_) => todo!(),
-    //         },
-    //     }
-    // }
+// fn print_ty(&mut self, ty: &Type, mode: TypeMode) {
+//     match ty {
+//         Type::Id(t) => self.print_tyid(*t, mode),
+//         Type::Bool => self.push_str("bool"),
+//         Type::U8 => self.push_str("uint8_t"),
+//         Type::U16 => self.push_str("uint16_t"),
+//         Type::U32 => self.push_str("uint32_t"),
+//         Type::U64 => self.push_str("uint64_t"),
+//         Type::S8 => self.push_str("int8_t"),
+//         Type::S16 => self.push_str("int16_t"),
+//         Type::S32 => self.push_str("int32_t"),
+//         Type::S64 => self.push_str("int64_t"),
+//         Type::Float32 => self.push_str("float"),
+//         Type::Float64 => self.push_str("double"),
+//         Type::Char => self.push_str("int32_t"),
+//         Type::String => match mode {
+//             TypeMode::AllBorrowed(_lt) | TypeMode::LeafBorrowed(_lt) => {
+//                 self.push_str("std::string_view");
+//             }
+//             TypeMode::Owned => {
+//                 self.push_str("std::string");
+//             }
+//             TypeMode::HandlesBorrowed(_) => todo!(),
+//         },
+//     }
+// }
 
-    // fn print_optional_ty(&mut self, ty: Option<&Type>, _mode: TypeMode) {
-    //     match ty {
-    //         Some(ty) => self.print_ty(SourceType::HDefs, ty, None, Context::Argument),
-    //         None => self.push_str("void"),
-    //     }
-    // }
+// fn print_optional_ty(&mut self, ty: Option<&Type>, _mode: TypeMode) {
+//     match ty {
+//         Some(ty) => self.print_ty(SourceType::HDefs, ty, None, Context::Argument),
+//         None => self.push_str("void"),
+//     }
+// }
 
-    // fn print_results(&mut self, results: &Results, mode: TypeMode) {
-    //     match results.len() {
-    //         0 | 1 => self.print_optional_ty(results.iter_types().next(), mode),
-    //         _ => todo!(),
-    //     }
-    // }
+// fn print_results(&mut self, results: &Results, mode: TypeMode) {
+//     match results.len() {
+//         0 | 1 => self.print_optional_ty(results.iter_types().next(), mode),
+//         _ => todo!(),
+//     }
+// }
 
-    // fn wasm_type(&mut self, ty: WasmType) {
-    //     self.push_str(wasm_type(ty));
-    // }
+// fn wasm_type(&mut self, ty: WasmType) {
+//     self.push_str(wasm_type(ty));
+// }
 
-    // fn print_list(&mut self, ty: &Type, mode: TypeMode) {
-    //     let next_mode = if matches!(self.ownership(), Ownership::Owning) {
-    //         TypeMode::Owned
-    //     } else {
-    //         mode
-    //     };
-    //     match mode {
-    //         TypeMode::AllBorrowed(lt) => {
-    //             self.print_borrowed_slice(false, ty, lt, next_mode);
-    //         }
-    //         TypeMode::LeafBorrowed(lt) => {
-    //             if RustGenerator::resolve(self).all_bits_valid(ty) {
-    //                 self.print_borrowed_slice(false, ty, lt, next_mode);
-    //             } else {
-    //                 self.push_vec_name();
-    //                 self.push_str("<");
-    //                 self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-    //                 self.push_str(">");
-    //             }
-    //         }
-    //         TypeMode::Owned => {
-    //             self.push_vec_name();
-    //             self.push_str("<");
-    //             self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-    //             self.push_str(">");
-    //         }
-    //         TypeMode::HandlesBorrowed(_) => todo!(),
-    //     }
-    // }
+// fn print_list(&mut self, ty: &Type, mode: TypeMode) {
+//     let next_mode = if matches!(self.ownership(), Ownership::Owning) {
+//         TypeMode::Owned
+//     } else {
+//         mode
+//     };
+//     match mode {
+//         TypeMode::AllBorrowed(lt) => {
+//             self.print_borrowed_slice(false, ty, lt, next_mode);
+//         }
+//         TypeMode::LeafBorrowed(lt) => {
+//             if RustGenerator::resolve(self).all_bits_valid(ty) {
+//                 self.print_borrowed_slice(false, ty, lt, next_mode);
+//             } else {
+//                 self.push_vec_name();
+//                 self.push_str("<");
+//                 self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+//                 self.push_str(">");
+//             }
+//         }
+//         TypeMode::Owned => {
+//             self.push_vec_name();
+//             self.push_str("<");
+//             self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+//             self.push_str(">");
+//         }
+//         TypeMode::HandlesBorrowed(_) => todo!(),
+//     }
+// }
 
-    // fn print_rust_slice(
-    //     &mut self,
-    //     mutbl: bool,
-    //     ty: &Type,
-    //     _lifetime: &'static str,
-    //     _mode: TypeMode,
-    // ) {
-    //     self.push_str("std::vector<");
-    //     self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-    //     self.push_str(">");
-    //     if !mutbl {
-    //         self.push_str(" const ");
-    //     }
-    //     self.push_str("&");
-    // }
+// fn print_rust_slice(
+//     &mut self,
+//     mutbl: bool,
+//     ty: &Type,
+//     _lifetime: &'static str,
+//     _mode: TypeMode,
+// ) {
+//     self.push_str("std::vector<");
+//     self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+//     self.push_str(">");
+//     if !mutbl {
+//         self.push_str(" const ");
+//     }
+//     self.push_str("&");
+// }
 // }
 
 struct FunctionBindgen<'a, 'b> {

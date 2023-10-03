@@ -9,9 +9,6 @@ use wit_bindgen_core::{
     uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, TypeInfo, Types,
     WorldGenerator,
 };
-use wit_bindgen_rust_lib::{
-    dealias, FnSig, Ownership, RustFlagsRepr, RustFunctionGenerator, RustGenerator, TypeMode,
-};
 use wit_component::StringEncoding;
 
 pub const RESOURCE_BASE_CLASS_NAME: &str = "ResourceBase";
@@ -2125,50 +2122,59 @@ impl InterfaceGenerator<'_> {
     }
 }
 
-impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
-    fn resolve(&self) -> &'a Resolve {
-        self.resolve
-    }
+// impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
+//     fn resolve(&self) -> &'a Resolve {
+//         self.resolve
+//     }
 
-    fn ownership(&self) -> Ownership {
-        Ownership::Owning
-    }
+    // fn ownership(&self) -> Ownership {
+    //     Ownership::Owning
+    // }
 
-    fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
-        let mut path = String::new();
-        if let Identifier::Interface(cur, name) = self.identifier {
-            if cur == interface {
-                return None;
-            }
-            // if !self.in_import {
-            //path.push_str("super::");
-            // }
-            match name {
-                WorldKey::Name(_) => {
-                    //path.push_str("super::");
-                }
-                WorldKey::Interface(_) => {
-                    //path.push_str("super::super::super::");
-                }
-            }
-        }
-        let name = &self.gen.interface_names[&interface];
-        match name {
-            WorldKey::Name(n) => path.push_str(n),
-            WorldKey::Interface(_i) => todo!(),
-        }
-        Some(path)
-    }
+    // fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
+    //     let mut path = String::new();
+    //     if let Identifier::Interface(cur, name) = self.identifier {
+    //         if cur == interface {
+    //             return None;
+    //         }
+    //         // if !self.in_import {
+    //         //path.push_str("super::");
+    //         // }
+    //         match name {
+    //             WorldKey::Name(_) => {
+    //                 //path.push_str("super::");
+    //             }
+    //             WorldKey::Interface(_) => {
+    //                 //path.push_str("super::super::super::");
+    //             }
+    //         }
+    //     }
+    //     let name = &self.gen.interface_names[&interface];
+    //     match name {
+    //         WorldKey::Name(n) => path.push_str(n),
+    //         WorldKey::Interface(_i) => todo!(),
+    //     }
+    //     Some(path)
+    // }
 
-    fn is_exported_resource(&self, ty: TypeId) -> bool {
-        matches!(
-            self.gen
-                .resources
-                .get(&dealias(self.resolve, ty))
-                .map(|info| info.direction),
-            Some(Direction::Export)
-        )
-    }
+    // fn is_exported_resource(&self, mut ty: TypeId) -> bool {
+    //     loop {
+    //         let def = &self.resolve.types[ty];
+    //         if let TypeOwner::World(_) = &def.owner {
+    //             // Worlds cannot export types of any kind as of this writing.
+    //             return false;
+    //         }
+    //         match &def.kind {
+    //             TypeDefKind::Type(Type::Id(id)) => ty = *id,
+    //             _ => break,
+    //         }
+    //     }
+
+    //     matches!(
+    //         self.gen.resources.get(&ty).map(|info| info.direction),
+    //         Some(Direction::Export)
+    //     )
+    // }
 
     // fn add_own(&mut self, resource: TypeId, handle: TypeId) {
     //     self.gen
@@ -2178,350 +2184,350 @@ impl<'a> RustGenerator<'a> for InterfaceGenerator<'a> {
     //         .own = Some(handle);
     // }
 
-    fn push_str(&mut self, s: &str) {
-        self.src.push_str(s);
-    }
+    // fn push_str(&mut self, s: &str) {
+    //     self.src.push_str(s);
+    // }
 
-    fn info(&self, ty: TypeId) -> TypeInfo {
-        self.gen.types.get(ty)
-    }
+    // fn info(&self, ty: TypeId) -> TypeInfo {
+    //     self.gen.types.get(ty)
+    // }
 
-    fn types_mut(&mut self) -> &mut Types {
-        &mut self.gen.types
-    }
+    // fn types_mut(&mut self) -> &mut Types {
+    //     &mut self.gen.types
+    // }
 
-    fn print_borrowed_slice(
-        &mut self,
-        mutbl: bool,
-        ty: &Type,
-        lifetime: &'static str,
-        mode: TypeMode,
-    ) {
-        self.print_rust_slice(mutbl, ty, lifetime, mode);
-    }
+    // fn print_borrowed_slice(
+    //     &mut self,
+    //     mutbl: bool,
+    //     ty: &Type,
+    //     lifetime: &'static str,
+    //     mode: TypeMode,
+    // ) {
+    //     self.print_rust_slice(mutbl, ty, lifetime, mode);
+    // }
 
-    fn print_borrowed_str(&mut self, _lifetime: &'static str) {
-        self.push_str("&");
-        // if self.gen.opts.raw_strings {
-        //     self.push_str("[u8]");
-        // } else {
-        self.push_str("str");
-        // }
-    }
+    // fn print_borrowed_str(&mut self, _lifetime: &'static str) {
+    //     self.push_str("&");
+    //     // if self.gen.opts.raw_strings {
+    //     //     self.push_str("[u8]");
+    //     // } else {
+    //     self.push_str("str");
+    //     // }
+    // }
 
-    fn push_vec_name(&mut self) {
-        self.push_str("std::vector");
-    }
+    // fn push_vec_name(&mut self) {
+    //     self.push_str("std::vector");
+    // }
 
-    fn push_string_name(&mut self) {
-        self.push_str("std::string");
-    }
+    // fn push_string_name(&mut self) {
+    //     self.push_str("std::string");
+    // }
 
-    fn mark_resource_owned(&mut self, resource: TypeId) {
-        self.gen
-            .resources
-            .entry(dealias(self.resolve, resource))
-            .or_default()
-            .owned = true;
-    }
+    // fn mark_resource_owned(&mut self, resource: TypeId) {
+    //     self.gen
+    //         .resources
+    //         .entry(dealias(self.resolve, resource))
+    //         .or_default()
+    //         .owned = true;
+    // }
 
-    fn print_signature(
-        &mut self,
-        func: &Function,
-        param_mode: TypeMode,
-        sig: &FnSig,
-    ) -> Vec<String> {
-        if !matches!(func.kind, FunctionKind::Constructor(_)) {
-            self.print_results(&func.results, TypeMode::Owned);
-            self.push_str(" ");
-        }
-        let params = self.print_docs_and_params(func, param_mode, &sig);
-        params
-    }
+    // fn print_signature(
+    //     &mut self,
+    //     func: &Function,
+    //     param_mode: TypeMode,
+    //     sig: &FnSig,
+    // ) -> Vec<String> {
+    //     if !matches!(func.kind, FunctionKind::Constructor(_)) {
+    //         self.print_results(&func.results, TypeMode::Owned);
+    //         self.push_str(" ");
+    //     }
+    //     let params = self.print_docs_and_params(func, param_mode, &sig);
+    //     params
+    // }
 
-    fn print_docs_and_params(
-        &mut self,
-        func: &Function,
-        _param_mode: TypeMode,
-        sig: &FnSig,
-    ) -> Vec<String> {
-        // self.rustdoc(&func.docs);
-        // self.rustdoc_params(&func.params, "Parameters");
-        // TODO: re-add this when docs are back
-        // self.rustdoc_params(&func.results, "Return");
+    // fn print_docs_and_params(
+    //     &mut self,
+    //     func: &Function,
+    //     _param_mode: TypeMode,
+    //     sig: &FnSig,
+    // ) -> Vec<String> {
+    //     // self.rustdoc(&func.docs);
+    //     // self.rustdoc_params(&func.params, "Parameters");
+    //     // TODO: re-add this when docs are back
+    //     // self.rustdoc_params(&func.results, "Return");
 
-        let object = match &func.kind {
-            FunctionKind::Freestanding => None,
-            FunctionKind::Method(i) => Some(i),
-            FunctionKind::Static(i) => Some(i),
-            FunctionKind::Constructor(i) => Some(i),
-        }
-        .map(|i| {
-            self.resolve.types[*i]
-                .name
-                .as_ref()
-                .unwrap()
-                .to_pascal_case()
-        })
-        .unwrap_or_default();
-        let func_name = if sig.use_item_name {
-            if let FunctionKind::Constructor(_i) = &func.kind {
-                format!("{object}::{object}")
-            } else {
-                format!("{object}::{}", func.item_name().to_pascal_case())
-            }
-        } else {
-            func.name.to_pascal_case()
-        };
-        self.push_str(&func_name);
-        if let Some(generics) = &sig.generics {
-            self.push_str(generics);
-        }
-        self.push_str("(");
-        if let Some(arg) = &sig.self_arg {
-            self.push_str(arg);
-            self.push_str(",");
-        }
-        let mut params = Vec::new();
-        for (i, (name, param)) in func.params.iter().enumerate() {
-            params.push(to_rust_ident(name));
-            if i == 0 && sig.self_is_first_param {
-                // params.push("self".to_string());
-                continue;
-            }
-            if i == 0 && name == "self" {
-                continue;
-            }
-            let name = to_rust_ident(name);
-            self.print_ty(SourceType::HDefs, param, None, Context::Argument);
-            self.push_str(" ");
-            self.push_str(&name);
-            if i + 1 != func.params.len() {
-                self.push_str(",");
-            }
-        }
-        self.push_str(")");
-        params
-    }
+    //     let object = match &func.kind {
+    //         FunctionKind::Freestanding => None,
+    //         FunctionKind::Method(i) => Some(i),
+    //         FunctionKind::Static(i) => Some(i),
+    //         FunctionKind::Constructor(i) => Some(i),
+    //     }
+    //     .map(|i| {
+    //         self.resolve.types[*i]
+    //             .name
+    //             .as_ref()
+    //             .unwrap()
+    //             .to_pascal_case()
+    //     })
+    //     .unwrap_or_default();
+    //     let func_name = if sig.use_item_name {
+    //         if let FunctionKind::Constructor(_i) = &func.kind {
+    //             format!("{object}::{object}")
+    //         } else {
+    //             format!("{object}::{}", func.item_name().to_pascal_case())
+    //         }
+    //     } else {
+    //         func.name.to_pascal_case()
+    //     };
+    //     self.push_str(&func_name);
+    //     if let Some(generics) = &sig.generics {
+    //         self.push_str(generics);
+    //     }
+    //     self.push_str("(");
+    //     if let Some(arg) = &sig.self_arg {
+    //         self.push_str(arg);
+    //         self.push_str(",");
+    //     }
+    //     let mut params = Vec::new();
+    //     for (i, (name, param)) in func.params.iter().enumerate() {
+    //         params.push(to_rust_ident(name));
+    //         if i == 0 && sig.self_is_first_param {
+    //             // params.push("self".to_string());
+    //             continue;
+    //         }
+    //         if i == 0 && name == "self" {
+    //             continue;
+    //         }
+    //         let name = to_rust_ident(name);
+    //         self.print_ty(SourceType::HDefs, param, None, Context::Argument);
+    //         self.push_str(" ");
+    //         self.push_str(&name);
+    //         if i + 1 != func.params.len() {
+    //             self.push_str(",");
+    //         }
+    //     }
+    //     self.push_str(")");
+    //     params
+    // }
 
-    fn print_tyid(&mut self, id: TypeId, mode: TypeMode) {
-        let info = self.info(id);
-        let lt = self.lifetime_for(&info, mode);
-        let ty = &RustGenerator::resolve(self).types[id];
-        if ty.name.is_some() {
-            // If this type has a list internally, no lifetime is being printed,
-            // but we're in a borrowed mode, then that means we're in a borrowed
-            // context and don't want ownership of the type but we're using an
-            // owned type definition. Inject a `&` in front to indicate that, at
-            // the API level, ownership isn't required.
-            if info.has_list && lt.is_none() {
-                if let TypeMode::AllBorrowed(lt) | TypeMode::LeafBorrowed(lt) = mode {
-                    self.push_str("&");
-                    if lt != "'_" {
-                        self.push_str(lt);
-                        self.push_str(" ");
-                    }
-                }
-            }
-            let name = self.type_path(id, lt.is_none());
-            self.push_str(&name);
+    // fn print_tyid(&mut self, id: TypeId, mode: TypeMode) {
+    //     let info = self.info(id);
+    //     let lt = self.lifetime_for(&info, mode);
+    //     let ty = &RustGenerator::resolve(self).types[id];
+    //     if ty.name.is_some() {
+    //         // If this type has a list internally, no lifetime is being printed,
+    //         // but we're in a borrowed mode, then that means we're in a borrowed
+    //         // context and don't want ownership of the type but we're using an
+    //         // owned type definition. Inject a `&` in front to indicate that, at
+    //         // the API level, ownership isn't required.
+    //         if info.has_list && lt.is_none() {
+    //             if let TypeMode::AllBorrowed(lt) | TypeMode::LeafBorrowed(lt) = mode {
+    //                 self.push_str("&");
+    //                 if lt != "'_" {
+    //                     self.push_str(lt);
+    //                     self.push_str(" ");
+    //                 }
+    //             }
+    //         }
+    //         let name = self.type_path(id, lt.is_none());
+    //         self.push_str(&name);
 
-            // If the type recursively owns data and it's a
-            // variant/record/list, then we need to place the
-            // lifetime parameter on the type as well.
-            if info.has_list && needs_generics(RustGenerator::resolve(self), &ty.kind) {
-                self.print_generics(lt);
-            }
+    //         // If the type recursively owns data and it's a
+    //         // variant/record/list, then we need to place the
+    //         // lifetime parameter on the type as well.
+    //         if info.has_list && needs_generics(RustGenerator::resolve(self), &ty.kind) {
+    //             self.print_generics(lt);
+    //         }
 
-            return;
+    //         return;
 
-            fn needs_generics(resolve: &Resolve, ty: &TypeDefKind) -> bool {
-                match ty {
-                    TypeDefKind::Variant(_)
-                    | TypeDefKind::Record(_)
-                    | TypeDefKind::Option(_)
-                    | TypeDefKind::Result(_)
-                    | TypeDefKind::Future(_)
-                    | TypeDefKind::Stream(_)
-                    | TypeDefKind::List(_)
-                    | TypeDefKind::Flags(_)
-                    | TypeDefKind::Enum(_)
-                    | TypeDefKind::Tuple(_) => true,
-                    TypeDefKind::Type(Type::Id(t)) => {
-                        needs_generics(resolve, &resolve.types[*t].kind)
-                    }
-                    TypeDefKind::Type(Type::String) => true,
-                    TypeDefKind::Resource | TypeDefKind::Handle(_) | TypeDefKind::Type(_) => false,
-                    TypeDefKind::Unknown => unreachable!(),
-                }
-            }
-        }
+    //         fn needs_generics(resolve: &Resolve, ty: &TypeDefKind) -> bool {
+    //             match ty {
+    //                 TypeDefKind::Variant(_)
+    //                 | TypeDefKind::Record(_)
+    //                 | TypeDefKind::Option(_)
+    //                 | TypeDefKind::Result(_)
+    //                 | TypeDefKind::Future(_)
+    //                 | TypeDefKind::Stream(_)
+    //                 | TypeDefKind::List(_)
+    //                 | TypeDefKind::Flags(_)
+    //                 | TypeDefKind::Enum(_)
+    //                 | TypeDefKind::Tuple(_) => true,
+    //                 TypeDefKind::Type(Type::Id(t)) => {
+    //                     needs_generics(resolve, &resolve.types[*t].kind)
+    //                 }
+    //                 TypeDefKind::Type(Type::String) => true,
+    //                 TypeDefKind::Resource | TypeDefKind::Handle(_) | TypeDefKind::Type(_) => false,
+    //                 TypeDefKind::Unknown => unreachable!(),
+    //             }
+    //         }
+    //     }
 
-        match &ty.kind {
-            TypeDefKind::List(t) => self.print_list(t, mode),
+    //     match &ty.kind {
+    //         TypeDefKind::List(t) => self.print_list(t, mode),
 
-            TypeDefKind::Option(t) => {
-                self.push_str("std::option<");
-                self.print_ty(SourceType::HDefs, t, None, Context::Argument);
-                self.push_str(">");
-            }
+    //         TypeDefKind::Option(t) => {
+    //             self.push_str("std::option<");
+    //             self.print_ty(SourceType::HDefs, t, None, Context::Argument);
+    //             self.push_str(">");
+    //         }
 
-            TypeDefKind::Result(r) => {
-                self.push_str("std::expected<");
-                self.print_optional_ty(r.ok.as_ref(), mode);
-                self.push_str(",");
-                self.print_optional_ty(r.err.as_ref(), mode);
-                self.push_str(">");
-            }
+    //         TypeDefKind::Result(r) => {
+    //             self.push_str("std::expected<");
+    //             self.print_optional_ty(r.ok.as_ref(), mode);
+    //             self.push_str(",");
+    //             self.print_optional_ty(r.err.as_ref(), mode);
+    //             self.push_str(">");
+    //         }
 
-            TypeDefKind::Variant(_) => panic!("unsupported anonymous variant"),
+    //         TypeDefKind::Variant(_) => panic!("unsupported anonymous variant"),
 
-            // Tuple-like records are mapped directly to Rust tuples of
-            // types. Note the trailing comma after each member to
-            // appropriately handle 1-tuples.
-            TypeDefKind::Tuple(t) => {
-                self.push_str("(");
-                for ty in t.types.iter() {
-                    self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-                    self.push_str(",");
-                }
-                self.push_str(")");
-            }
-            TypeDefKind::Resource => {
-                panic!("unsupported anonymous type reference: resource")
-            }
-            TypeDefKind::Record(_) => {
-                panic!("unsupported anonymous type reference: record")
-            }
-            TypeDefKind::Flags(_) => {
-                panic!("unsupported anonymous type reference: flags")
-            }
-            TypeDefKind::Enum(_) => {
-                panic!("unsupported anonymous type reference: enum")
-            }
-            TypeDefKind::Future(ty) => {
-                self.push_str("Future<");
-                self.print_optional_ty(ty.as_ref(), mode);
-                self.push_str(">");
-            }
-            TypeDefKind::Stream(stream) => {
-                self.push_str("Stream<");
-                self.print_optional_ty(stream.element.as_ref(), mode);
-                self.push_str(",");
-                self.print_optional_ty(stream.end.as_ref(), mode);
-                self.push_str(">");
-            }
+    //         // Tuple-like records are mapped directly to Rust tuples of
+    //         // types. Note the trailing comma after each member to
+    //         // appropriately handle 1-tuples.
+    //         TypeDefKind::Tuple(t) => {
+    //             self.push_str("(");
+    //             for ty in t.types.iter() {
+    //                 self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+    //                 self.push_str(",");
+    //             }
+    //             self.push_str(")");
+    //         }
+    //         TypeDefKind::Resource => {
+    //             panic!("unsupported anonymous type reference: resource")
+    //         }
+    //         TypeDefKind::Record(_) => {
+    //             panic!("unsupported anonymous type reference: record")
+    //         }
+    //         TypeDefKind::Flags(_) => {
+    //             panic!("unsupported anonymous type reference: flags")
+    //         }
+    //         TypeDefKind::Enum(_) => {
+    //             panic!("unsupported anonymous type reference: enum")
+    //         }
+    //         TypeDefKind::Future(ty) => {
+    //             self.push_str("Future<");
+    //             self.print_optional_ty(ty.as_ref(), mode);
+    //             self.push_str(">");
+    //         }
+    //         TypeDefKind::Stream(stream) => {
+    //             self.push_str("Stream<");
+    //             self.print_optional_ty(stream.element.as_ref(), mode);
+    //             self.push_str(",");
+    //             self.print_optional_ty(stream.end.as_ref(), mode);
+    //             self.push_str(">");
+    //         }
 
-            TypeDefKind::Handle(Handle::Own(ty)) => {
-                self.mark_resource_owned(*ty);
-                self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
-            }
+    //         TypeDefKind::Handle(Handle::Own(ty)) => {
+    //             self.mark_resource_owned(*ty);
+    //             self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
+    //         }
 
-            TypeDefKind::Handle(Handle::Borrow(ty)) => {
-                self.push_str("&");
-                self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
-            }
+    //         TypeDefKind::Handle(Handle::Borrow(ty)) => {
+    //             self.push_str("&");
+    //             self.print_ty(SourceType::HDefs, &Type::Id(*ty), None, Context::Argument);
+    //         }
 
-            TypeDefKind::Type(t) => self.print_ty(SourceType::HDefs, t, None, Context::Argument),
+    //         TypeDefKind::Type(t) => self.print_ty(SourceType::HDefs, t, None, Context::Argument),
 
-            // TypeDefKind::Resource => {
-            //     todo!("implement resources")
-            // }
-            TypeDefKind::Unknown => unreachable!(),
-        }
-    }
+    //         // TypeDefKind::Resource => {
+    //         //     todo!("implement resources")
+    //         // }
+    //         TypeDefKind::Unknown => unreachable!(),
+    //     }
+    // }
 
-    fn print_ty(&mut self, ty: &Type, mode: TypeMode) {
-        match ty {
-            Type::Id(t) => self.print_tyid(*t, mode),
-            Type::Bool => self.push_str("bool"),
-            Type::U8 => self.push_str("uint8_t"),
-            Type::U16 => self.push_str("uint16_t"),
-            Type::U32 => self.push_str("uint32_t"),
-            Type::U64 => self.push_str("uint64_t"),
-            Type::S8 => self.push_str("int8_t"),
-            Type::S16 => self.push_str("int16_t"),
-            Type::S32 => self.push_str("int32_t"),
-            Type::S64 => self.push_str("int64_t"),
-            Type::Float32 => self.push_str("float"),
-            Type::Float64 => self.push_str("double"),
-            Type::Char => self.push_str("int32_t"),
-            Type::String => match mode {
-                TypeMode::AllBorrowed(_lt) | TypeMode::LeafBorrowed(_lt) => {
-                    self.push_str("std::string_view");
-                }
-                TypeMode::Owned => {
-                    self.push_str("std::string");
-                }
-                TypeMode::HandlesBorrowed(_) => todo!(),
-            },
-        }
-    }
+    // fn print_ty(&mut self, ty: &Type, mode: TypeMode) {
+    //     match ty {
+    //         Type::Id(t) => self.print_tyid(*t, mode),
+    //         Type::Bool => self.push_str("bool"),
+    //         Type::U8 => self.push_str("uint8_t"),
+    //         Type::U16 => self.push_str("uint16_t"),
+    //         Type::U32 => self.push_str("uint32_t"),
+    //         Type::U64 => self.push_str("uint64_t"),
+    //         Type::S8 => self.push_str("int8_t"),
+    //         Type::S16 => self.push_str("int16_t"),
+    //         Type::S32 => self.push_str("int32_t"),
+    //         Type::S64 => self.push_str("int64_t"),
+    //         Type::Float32 => self.push_str("float"),
+    //         Type::Float64 => self.push_str("double"),
+    //         Type::Char => self.push_str("int32_t"),
+    //         Type::String => match mode {
+    //             TypeMode::AllBorrowed(_lt) | TypeMode::LeafBorrowed(_lt) => {
+    //                 self.push_str("std::string_view");
+    //             }
+    //             TypeMode::Owned => {
+    //                 self.push_str("std::string");
+    //             }
+    //             TypeMode::HandlesBorrowed(_) => todo!(),
+    //         },
+    //     }
+    // }
 
-    fn print_optional_ty(&mut self, ty: Option<&Type>, _mode: TypeMode) {
-        match ty {
-            Some(ty) => self.print_ty(SourceType::HDefs, ty, None, Context::Argument),
-            None => self.push_str("void"),
-        }
-    }
+    // fn print_optional_ty(&mut self, ty: Option<&Type>, _mode: TypeMode) {
+    //     match ty {
+    //         Some(ty) => self.print_ty(SourceType::HDefs, ty, None, Context::Argument),
+    //         None => self.push_str("void"),
+    //     }
+    // }
 
-    fn print_results(&mut self, results: &Results, mode: TypeMode) {
-        match results.len() {
-            0 | 1 => self.print_optional_ty(results.iter_types().next(), mode),
-            _ => todo!(),
-        }
-    }
+    // fn print_results(&mut self, results: &Results, mode: TypeMode) {
+    //     match results.len() {
+    //         0 | 1 => self.print_optional_ty(results.iter_types().next(), mode),
+    //         _ => todo!(),
+    //     }
+    // }
 
-    fn wasm_type(&mut self, ty: WasmType) {
-        self.push_str(wasm_type(ty));
-    }
+    // fn wasm_type(&mut self, ty: WasmType) {
+    //     self.push_str(wasm_type(ty));
+    // }
 
-    fn print_list(&mut self, ty: &Type, mode: TypeMode) {
-        let next_mode = if matches!(self.ownership(), Ownership::Owning) {
-            TypeMode::Owned
-        } else {
-            mode
-        };
-        match mode {
-            TypeMode::AllBorrowed(lt) => {
-                self.print_borrowed_slice(false, ty, lt, next_mode);
-            }
-            TypeMode::LeafBorrowed(lt) => {
-                if RustGenerator::resolve(self).all_bits_valid(ty) {
-                    self.print_borrowed_slice(false, ty, lt, next_mode);
-                } else {
-                    self.push_vec_name();
-                    self.push_str("<");
-                    self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-                    self.push_str(">");
-                }
-            }
-            TypeMode::Owned => {
-                self.push_vec_name();
-                self.push_str("<");
-                self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-                self.push_str(">");
-            }
-            TypeMode::HandlesBorrowed(_) => todo!(),
-        }
-    }
+    // fn print_list(&mut self, ty: &Type, mode: TypeMode) {
+    //     let next_mode = if matches!(self.ownership(), Ownership::Owning) {
+    //         TypeMode::Owned
+    //     } else {
+    //         mode
+    //     };
+    //     match mode {
+    //         TypeMode::AllBorrowed(lt) => {
+    //             self.print_borrowed_slice(false, ty, lt, next_mode);
+    //         }
+    //         TypeMode::LeafBorrowed(lt) => {
+    //             if RustGenerator::resolve(self).all_bits_valid(ty) {
+    //                 self.print_borrowed_slice(false, ty, lt, next_mode);
+    //             } else {
+    //                 self.push_vec_name();
+    //                 self.push_str("<");
+    //                 self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+    //                 self.push_str(">");
+    //             }
+    //         }
+    //         TypeMode::Owned => {
+    //             self.push_vec_name();
+    //             self.push_str("<");
+    //             self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+    //             self.push_str(">");
+    //         }
+    //         TypeMode::HandlesBorrowed(_) => todo!(),
+    //     }
+    // }
 
-    fn print_rust_slice(
-        &mut self,
-        mutbl: bool,
-        ty: &Type,
-        _lifetime: &'static str,
-        _mode: TypeMode,
-    ) {
-        self.push_str("std::vector<");
-        self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
-        self.push_str(">");
-        if !mutbl {
-            self.push_str(" const ");
-        }
-        self.push_str("&");
-    }
-}
+    // fn print_rust_slice(
+    //     &mut self,
+    //     mutbl: bool,
+    //     ty: &Type,
+    //     _lifetime: &'static str,
+    //     _mode: TypeMode,
+    // ) {
+    //     self.push_str("std::vector<");
+    //     self.print_ty(SourceType::HDefs, ty, None, Context::Argument);
+    //     self.push_str(">");
+    //     if !mutbl {
+    //         self.push_str(" const ");
+    //     }
+    //     self.push_str("&");
+    // }
+// }
 
 struct FunctionBindgen<'a, 'b> {
     gen: &'a mut InterfaceGenerator<'b>,
@@ -2604,29 +2610,29 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 }
 
-impl RustFunctionGenerator for FunctionBindgen<'_, '_> {
-    fn push_str(&mut self, s: &str) {
-        self.src.push_str(s);
-    }
+// impl RustFunctionGenerator for FunctionBindgen<'_, '_> {
+//     fn push_str(&mut self, s: &str) {
+//         self.src.push_str(s);
+//     }
 
-    fn tmp(&mut self) -> usize {
-        let ret = self.tmp;
-        self.tmp += 1;
-        ret
-    }
+//     fn tmp(&mut self) -> usize {
+//         let ret = self.tmp;
+//         self.tmp += 1;
+//         ret
+//     }
 
-    fn rust_gen(&self) -> &dyn RustGenerator {
-        self.gen
-    }
+//     fn rust_gen(&self) -> &dyn RustGenerator {
+//         self.gen
+//     }
 
-    fn lift_lower(&self) -> LiftLower {
-        if self.gen.in_import {
-            LiftLower::LowerArgsLiftResults
-        } else {
-            LiftLower::LiftArgsLowerResults
-        }
-    }
-}
+//     fn lift_lower(&self) -> LiftLower {
+//         if self.gen.in_import {
+//             LiftLower::LowerArgsLiftResults
+//         } else {
+//             LiftLower::LiftArgsLowerResults
+//         }
+//     }
+// }
 
 impl Bindgen for FunctionBindgen<'_, '_> {
     type Operand = String;
@@ -2638,18 +2644,18 @@ impl Bindgen for FunctionBindgen<'_, '_> {
     }
 
     fn finish_block(&mut self, operands: &mut Vec<String>) {
-        if self.cleanup.len() > 0 {
-            self.needs_cleanup_list = true;
-            self.push_str("cleanup_list.extend_from_slice(&[");
-            for (ptr, layout) in mem::take(&mut self.cleanup) {
-                self.push_str("(");
-                self.push_str(&ptr);
-                self.push_str(", ");
-                self.push_str(&layout);
-                self.push_str("),");
-            }
-            self.push_str("]);\n");
-        }
+        // if self.cleanup.len() > 0 {
+        //     self.needs_cleanup_list = true;
+        //     self.push_str("cleanup_list.extend_from_slice(&[");
+        //     for (ptr, layout) in mem::take(&mut self.cleanup) {
+        //         self.push_str("(");
+        //         self.push_str(&ptr);
+        //         self.push_str(", ");
+        //         self.push_str(&layout);
+        //         self.push_str("),");
+        //     }
+        //     self.push_str("]);\n");
+        // }
         let (prev_src, prev_cleanup) = self.block_storage.pop().unwrap();
         let src = mem::replace(&mut self.src, prev_src);
         self.cleanup = prev_cleanup;
@@ -2669,25 +2675,26 @@ impl Bindgen for FunctionBindgen<'_, '_> {
     }
 
     fn return_pointer(&mut self, size: usize, align: usize) -> String {
-        let tmp = self.tmp();
+        todo!()
+        // let tmp = self.tmp();
 
         // Imports get a per-function return area to facilitate using the
         // stack whereas exports use a per-module return area to cut down on
         // stack usage. Note that for imports this also facilitates "adapter
         // modules" for components to not have data segments.
-        if true {
-            //self.gen.in_import {
-            self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
-            self.import_return_pointer_area_align =
-                self.import_return_pointer_area_align.max(align);
-            uwriteln!(self.src.c_defs, "auto ptr{tmp} = (int32_t)&ret_area;");
-        } else {
-            todo!();
-            // self.gen.return_pointer_area_size = self.gen.return_pointer_area_size.max(size);
-            // self.gen.return_pointer_area_align = self.gen.return_pointer_area_align.max(align);
-            // uwriteln!(self.src, "auto ptr{tmp} = _RET_AREA.0.as_mut_ptr() as i32;");
-        }
-        format!("ptr{}", tmp)
+        // if true {
+        //     //self.gen.in_import {
+        //     self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
+        //     self.import_return_pointer_area_align =
+        //         self.import_return_pointer_area_align.max(align);
+        //     uwriteln!(self.src.c_defs, "auto ptr{tmp} = (int32_t)&ret_area;");
+        // } else {
+        //     todo!();
+        //     // self.gen.return_pointer_area_size = self.gen.return_pointer_area_size.max(size);
+        //     // self.gen.return_pointer_area_align = self.gen.return_pointer_area_align.max(align);
+        //     // uwriteln!(self.src, "auto ptr{tmp} = _RET_AREA.0.as_mut_ptr() as i32;");
+        // }
+        // format!("ptr{}", tmp)
     }
 
     fn sizes(&self) -> &SizeAlign {
@@ -2800,7 +2807,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::Bitcasts { casts } => {
-                wit_bindgen_rust_lib::bitcast(casts, operands, results)
+                // wit_bindgen_rust::bitcast(casts, operands, results)
             }
 
             Instruction::I32FromBool => {
@@ -2811,23 +2818,23 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::FlagsLower { flags, .. } => {
-                let tmp = self.tmp();
-                self.push_str(&format!("auto flags{} = {};\n", tmp, operands[0]));
-                for i in 0..flags.repr().count() {
-                    results.push(format!("(flags{}.bits() >> {}) as i32", tmp, i * 32));
-                }
+                // let tmp = self.tmp();
+                // self.push_str(&format!("auto flags{} = {};\n", tmp, operands[0]));
+                // for i in 0..flags.repr().count() {
+                //     results.push(format!("(flags{}.bits() >> {}) as i32", tmp, i * 32));
+                // }
             }
             Instruction::FlagsLift { flags, ty, .. } => {
-                let repr = RustFlagsRepr::new(flags);
-                let name = self.gen.type_path(*ty, true);
-                let mut result = format!("{name}::empty()");
-                for (i, op) in operands.iter().enumerate() {
-                    result.push_str(&format!(
-                        " | {name}::from_bits_retain((({op} as {repr}) << {}) as _)",
-                        i * 32
-                    ));
-                }
-                results.push(result);
+                // let repr = RustFlagsRepr::new(flags);
+                // let name = self.gen.type_path(*ty, true);
+                // let mut result = format!("{name}::empty()");
+                // for (i, op) in operands.iter().enumerate() {
+                //     result.push_str(&format!(
+                //         " | {name}::from_bits_retain((({op} as {repr}) << {}) as _)",
+                //         i * 32
+                //     ));
+                // }
+                // results.push(result);
             }
 
             Instruction::HandleLower {
@@ -2856,56 +2863,56 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     Handle::Borrow(resource) => ("&", resource, false),
                     Handle::Own(resource) => ("", resource, true),
                 };
-                let resource = dealias(resolve, *resource);
+                // let resource = dealias(resolve, *resource);
 
-                results.push(
-                    if let Direction::Export = self.gen.gen.resources[&resource].direction {
-                        match handle {
-                            Handle::Borrow(_) => {
-                                let name = resolve.types[resource]
-                                    .name
-                                    .as_deref()
-                                    .unwrap()
-                                    .to_upper_camel_case();
-                                format!(
-                                    "::core::mem::transmute::<isize, &Rep{name}>\
-                                     ({op}.try_into().unwrap())"
-                                )
-                            }
-                            Handle::Own(_) => {
-                                let name = self.gen.type_path(resource, true);
-                                format!("{name}::from_handle({op})")
-                            }
-                        }
-                    } else {
-                        let name = self.gen.type_path(resource, true);
-                        let world = &self.gen.gen.world; // .map(|w| &resolve.worlds[w].name).unwrap();
-                        format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}))}}")
-                    },
-                );
+                // results.push(
+                //     if let Direction::Export = self.gen.gen.resources[&resource].direction {
+                //         match handle {
+                //             Handle::Borrow(_) => {
+                //                 // let name = resolve.types[resource]
+                //                 //     .name
+                //                 //     .as_deref()
+                //                 //     .unwrap()
+                //                 //     .to_upper_camel_case();
+                //                 // format!(
+                //                 //     "::core::mem::transmute::<isize, &Rep{name}>\
+                //                 //      ({op}.try_into().unwrap())"
+                //                 // )
+                //             }
+                //             Handle::Own(_) => {
+                //                 let name = self.gen.type_path(resource, true);
+                //                 format!("{name}::from_handle({op})")
+                //             }
+                //         }
+                //     } else {
+                //         let name = self.gen.type_path(resource, true);
+                //         let world = &self.gen.gen.world; // .map(|w| &resolve.worlds[w].name).unwrap();
+                //         format!("{prefix}{name}{{std::move({world}::{RESOURCE_BASE_CLASS_NAME}({op}))}}")
+                //     },
+                // );
             }
 
             Instruction::RecordLower { ty, record, .. } => {
-                self.record_lower(*ty, record, &operands[0], results);
+                // self.record_lower(*ty, record, &operands[0], results);
             }
             Instruction::RecordLift { ty, record, .. } => {
-                let mut result = self.typename_lift(*ty);
-                result.push_str("{");
-                for (_field, val) in record.fields.iter().zip(operands) {
-                    // result.push_str(&to_rust_ident(&field.name));
-                    // result.push_str(":");
-                    result.push_str(&val);
-                    result.push_str(", ");
-                }
-                result.push_str("}");
-                results.push(result);
+                // let mut result = self.typename_lift(*ty);
+                // result.push_str("{");
+                // for (_field, val) in record.fields.iter().zip(operands) {
+                //     // result.push_str(&to_rust_ident(&field.name));
+                //     // result.push_str(":");
+                //     result.push_str(&val);
+                //     result.push_str(", ");
+                // }
+                // result.push_str("}");
+                // results.push(result);
             }
 
             Instruction::TupleLower { tuple, .. } => {
-                self.tuple_lower(tuple, &operands[0], results);
+                // self.tuple_lower(tuple, &operands[0], results);
             }
             Instruction::TupleLift { .. } => {
-                self.tuple_lift(operands, results);
+                // self.tuple_lift(operands, results);
             }
 
             Instruction::VariantPayloadName => results.push("e".to_string()),
@@ -2916,24 +2923,24 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ty,
                 ..
             } => {
-                let blocks = self
-                    .blocks
-                    .drain(self.blocks.len() - variant.cases.len()..)
-                    .collect::<Vec<_>>();
-                self.let_results(result_types.len(), results);
-                let op0 = &operands[0];
-                self.push_str(&format!("match {op0} {{\n"));
-                let name = self.typename_lower(*ty);
-                for (case, block) in variant.cases.iter().zip(blocks) {
-                    let case_name = case.name.to_upper_camel_case();
-                    self.push_str(&format!("{name}::{case_name}"));
-                    if case.ty.is_some() {
-                        self.push_str(&format!("(e) => {block},\n"));
-                    } else {
-                        self.push_str(&format!(" => {{\n{block}\n}}\n"));
-                    }
-                }
-                self.push_str("};\n");
+                // let blocks = self
+                //     .blocks
+                //     .drain(self.blocks.len() - variant.cases.len()..)
+                //     .collect::<Vec<_>>();
+                // self.let_results(result_types.len(), results);
+                // let op0 = &operands[0];
+                // self.push_str(&format!("match {op0} {{\n"));
+                // let name = self.typename_lower(*ty);
+                // for (case, block) in variant.cases.iter().zip(blocks) {
+                //     let case_name = case.name.to_upper_camel_case();
+                //     self.push_str(&format!("{name}::{case_name}"));
+                //     if case.ty.is_some() {
+                //         self.push_str(&format!("(e) => {block},\n"));
+                //     } else {
+                //         self.push_str(&format!(" => {{\n{block}\n}}\n"));
+                //     }
+                // }
+                // self.push_str("};\n");
             }
 
             Instruction::VariantLift { variant, ty, .. } => {
@@ -2967,24 +2974,24 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // }
                 result.push_str("{");
                 result.push_str(&format!("match {op0} {{\n"));
-                let name = self.typename_lift(*ty);
-                for (i, (case, block)) in variant.cases.iter().zip(blocks).enumerate() {
-                    let pat = i.to_string();
-                    let block = if case.ty.is_some() {
-                        format!("({block})")
-                    } else {
-                        String::new()
-                    };
-                    let case = case.name.to_upper_camel_case();
-                    // if i == variant.cases.len() - 1 {
-                    //     result.push_str("#[cfg(debug_assertions)]");
-                    //     result.push_str(&format!("{pat} => {name}::{case}{block},\n"));
-                    //     result.push_str("#[cfg(not(debug_assertions))]");
-                    //     result.push_str(&format!("_ => {name}::{case}{block},\n"));
-                    // } else {
-                    result.push_str(&format!("{pat} => {name}::{case}{block},\n"));
-                    // }
-                }
+                // let name = self.typename_lift(*ty);
+                // for (i, (case, block)) in variant.cases.iter().zip(blocks).enumerate() {
+                //     let pat = i.to_string();
+                //     let block = if case.ty.is_some() {
+                //         format!("({block})")
+                //     } else {
+                //         String::new()
+                //     };
+                //     let case = case.name.to_upper_camel_case();
+                //     // if i == variant.cases.len() - 1 {
+                //     //     result.push_str("#[cfg(debug_assertions)]");
+                //     //     result.push_str(&format!("{pat} => {name}::{case}{block},\n"));
+                //     //     result.push_str("#[cfg(not(debug_assertions))]");
+                //     //     result.push_str(&format!("_ => {name}::{case}{block},\n"));
+                //     // } else {
+                //     result.push_str(&format!("{pat} => {name}::{case}{block},\n"));
+                //     // }
+                // }
                 // result.push_str("#[cfg(debug_assertions)]");
                 // result.push_str("_ => panic!(\"invalid enum discriminant\"),\n");
                 result.push_str("}");
@@ -3054,29 +3061,29 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 } else {
                     err = format!("std::move({err})");
                 }
-                let ok_type = print_to_result(self, resolve, |gen| {
-                    gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned)
-                });
-                let err_type = print_to_result(self, resolve, |gen| {
-                    gen.print_optional_ty(result.err.as_ref(), TypeMode::Owned)
-                });
-                let type_name = format!("std::expected<{ok_type}, {err_type}>",);
-                let err_type = "std::unexpected";
-                let operand = &operands[0];
-                results.push(format!(
-                    "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
-                ));
+                // let ok_type = print_to_result(self, resolve, |gen| {
+                //     gen.print_optional_ty(result.ok.as_ref()) //, TypeMode::Owned)
+                // });
+                // let err_type = print_to_result(self, resolve, |gen| {
+                //     gen.print_optional_ty(result.err.as_ref()) //, TypeMode::Owned)
+                // });
+                // let type_name = format!("std::expected<{ok_type}, {err_type}>",);
+                // let err_type = "std::unexpected";
+                // let operand = &operands[0];
+                // results.push(format!(
+                //     "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
+                // ));
             }
 
             Instruction::EnumLower { enum_, ty, .. } => {
-                let mut result = format!("match {} {{\n", operands[0]);
-                let name = self.gen.type_path(*ty, true);
-                for (i, case) in enum_.cases.iter().enumerate() {
-                    let case = case.name.to_upper_camel_case();
-                    result.push_str(&format!("{name}::{case} => {i},\n"));
-                }
-                result.push_str("}");
-                results.push(result);
+                // let mut result = format!("match {} {{\n", operands[0]);
+                // let name = self.gen.type_path(*ty, true);
+                // for (i, case) in enum_.cases.iter().enumerate() {
+                //     let case = case.name.to_upper_camel_case();
+                //     result.push_str(&format!("{name}::{case} => {i},\n"));
+                // }
+                // result.push_str("}");
+                // results.push(result);
             }
 
             Instruction::EnumLift { .. } => {
@@ -3117,132 +3124,132 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::ListCanonLower { realloc, .. } => {
-                let tmp = self.tmp();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
-                //                if realloc.is_none() {
-                self.push_str(&format!("auto& {} = {};\n", val, operands[0]));
-                // } else {
-                //     let op0 = operands.pop().unwrap();
-                //     self.push_str(&format!("auto {} = ({}).into_boxed_slice();\n", val, op0));
+                // let tmp = self.tmp();
+                // let val = format!("vec{}", tmp);
+                // let ptr = format!("ptr{}", tmp);
+                // let len = format!("len{}", tmp);
+                // //                if realloc.is_none() {
+                // self.push_str(&format!("auto& {} = {};\n", val, operands[0]));
+                // // } else {
+                // //     let op0 = operands.pop().unwrap();
+                // //     self.push_str(&format!("auto {} = ({}).into_boxed_slice();\n", val, op0));
+                // // }
+                // self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
+                // self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
+                // if realloc.is_some() {
+                //     todo!();
+                //     // self.push_str(&format!("::core::mem::forget({});\n", val));
                 // }
-                self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
-                self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
-                if realloc.is_some() {
-                    todo!();
-                    // self.push_str(&format!("::core::mem::forget({});\n", val));
-                }
-                results.push(ptr);
-                results.push(len);
+                // results.push(ptr);
+                // results.push(len);
             }
 
             Instruction::ListCanonLift { .. } => {
-                let tmp = self.tmp();
-                let len = format!("len{}", tmp);
-                self.push_str(&format!("auto {} = {};\n", len, operands[1]));
-                let result = format!("std::vector((?*)({}), {len})", operands[0]);
-                results.push(result);
+                // let tmp = self.tmp();
+                // let len = format!("len{}", tmp);
+                // self.push_str(&format!("auto {} = {};\n", len, operands[1]));
+                // let result = format!("std::vector((?*)({}), {len})", operands[0]);
+                // results.push(result);
             }
 
             Instruction::StringLower { realloc } => {
-                let tmp = self.tmp();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
-                if realloc.is_none() {
-                    self.push_str(&format!("auto {} = {};\n", val, operands[0]));
-                } else {
-                    todo!();
-                    // let op0 = format!("{}.into_bytes()", operands[0]);
-                    // self.push_str(&format!("let {} = ({}).into_boxed_slice();\n", val, op0));
-                }
-                self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
-                self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
-                if realloc.is_some() {
-                    todo!();
-                    //                    self.push_str(&format!("::core::mem::forget({});\n", val));
-                }
-                results.push(ptr);
-                results.push(len);
+                // let tmp = self.tmp();
+                // let val = format!("vec{}", tmp);
+                // let ptr = format!("ptr{}", tmp);
+                // let len = format!("len{}", tmp);
+                // if realloc.is_none() {
+                //     self.push_str(&format!("auto {} = {};\n", val, operands[0]));
+                // } else {
+                //     todo!();
+                //     // let op0 = format!("{}.into_bytes()", operands[0]);
+                //     // self.push_str(&format!("let {} = ({}).into_boxed_slice();\n", val, op0));
+                // }
+                // self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
+                // self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
+                // if realloc.is_some() {
+                //     todo!();
+                //     //                    self.push_str(&format!("::core::mem::forget({});\n", val));
+                // }
+                // results.push(ptr);
+                // results.push(len);
             }
 
             Instruction::StringLift => {
-                let tmp = self.tmp();
-                let len = format!("len{}", tmp);
-                self.push_str(&format!("auto {} = {};\n", len, operands[1]));
-                let result = format!("std::string((char const*)({}), {len})", operands[0]);
-                results.push(result);
+                // let tmp = self.tmp();
+                // let len = format!("len{}", tmp);
+                // self.push_str(&format!("auto {} = {};\n", len, operands[1]));
+                // let result = format!("std::string((char const*)({}), {len})", operands[0]);
+                // results.push(result);
             }
 
             Instruction::ListLower { element, realloc } => {
-                let body = self.blocks.pop().unwrap();
-                let tmp = self.tmp();
-                let vec = format!("vec{tmp}");
-                let result = format!("result{tmp}");
-                let layout = format!("layout{tmp}");
-                let len = format!("len{tmp}");
-                self.push_str(&format!(
-                    "let {vec} = {operand0};\n",
-                    operand0 = operands[0]
-                ));
-                self.push_str(&format!("let {len} = {vec}.len() as i32;\n"));
-                let size = self.gen.gen.sizes.size(element);
-                let align = self.gen.gen.sizes.align(element);
-                self.push_str(&format!(
-                    "let {layout} = alloc::Layout::from_size_align_unchecked({vec}.len() * {size}, {align});\n",
-                ));
-                self.push_str(&format!(
-                    "let {result} = if {layout}.size() != 0\n{{\nlet ptr = alloc::alloc({layout});\n",
-                ));
-                self.push_str(&format!(
-                    "if ptr.is_null()\n{{\nalloc::handle_alloc_error({layout});\n}}\nptr\n}}",
-                ));
-                self.push_str(&format!("else {{\n::core::ptr::null_mut()\n}};\n",));
-                self.push_str(&format!("for (i, e) in {vec}.into_iter().enumerate() {{\n",));
-                self.push_str(&format!(
-                    "let base = {result} as i32 + (i as i32) * {size};\n",
-                ));
-                self.push_str(&body);
-                self.push_str("}\n");
-                results.push(format!("{result} as i32"));
-                results.push(len);
+                // let body = self.blocks.pop().unwrap();
+                // let tmp = self.tmp();
+                // let vec = format!("vec{tmp}");
+                // let result = format!("result{tmp}");
+                // let layout = format!("layout{tmp}");
+                // let len = format!("len{tmp}");
+                // self.push_str(&format!(
+                //     "let {vec} = {operand0};\n",
+                //     operand0 = operands[0]
+                // ));
+                // self.push_str(&format!("let {len} = {vec}.len() as i32;\n"));
+                // let size = self.gen.gen.sizes.size(element);
+                // let align = self.gen.gen.sizes.align(element);
+                // self.push_str(&format!(
+                //     "let {layout} = alloc::Layout::from_size_align_unchecked({vec}.len() * {size}, {align});\n",
+                // ));
+                // self.push_str(&format!(
+                //     "let {result} = if {layout}.size() != 0\n{{\nlet ptr = alloc::alloc({layout});\n",
+                // ));
+                // self.push_str(&format!(
+                //     "if ptr.is_null()\n{{\nalloc::handle_alloc_error({layout});\n}}\nptr\n}}",
+                // ));
+                // self.push_str(&format!("else {{\n::core::ptr::null_mut()\n}};\n",));
+                // self.push_str(&format!("for (i, e) in {vec}.into_iter().enumerate() {{\n",));
+                // self.push_str(&format!(
+                //     "let base = {result} as i32 + (i as i32) * {size};\n",
+                // ));
+                // self.push_str(&body);
+                // self.push_str("}\n");
+                // results.push(format!("{result} as i32"));
+                // results.push(len);
 
-                if realloc.is_none() {
-                    // If an allocator isn't requested then we must clean up the
-                    // allocation ourselves since our callee isn't taking
-                    // ownership.
-                    self.cleanup.push((result, layout));
-                }
+                // if realloc.is_none() {
+                //     // If an allocator isn't requested then we must clean up the
+                //     // allocation ourselves since our callee isn't taking
+                //     // ownership.
+                //     self.cleanup.push((result, layout));
+                // }
             }
 
             Instruction::ListLift { element, .. } => {
-                let body = self.blocks.pop().unwrap();
-                let tmp = self.tmp();
-                let size = self.gen.gen.sizes.size(element);
-                let _align = self.gen.gen.sizes.align(element);
-                let len = format!("len{tmp}");
-                let base = format!("base{tmp}");
-                let result = format!("result{tmp}");
-                self.push_str(&format!(
-                    "auto {base} = {operand0};\n",
-                    operand0 = operands[0]
-                ));
-                self.push_str(&format!(
-                    "auto {len} = {operand1};\n",
-                    operand1 = operands[1]
-                ));
-                let elemtype = print_to_result(self, resolve, |gen| {
-                    gen.print_ty(SourceType::HDefs, element, None, Context::Argument)
-                });
-                self.push_str(&format!("auto {result} = std::vector<{elemtype}>();\n"));
-                self.push_str(&format!("{result}.reserve({len});\n"));
-                self.push_str(&format!("for (unsigned i=0;i<{len};++i) {{\n"));
-                self.push_str(&format!("auto base = {base} + i * {size};\n"));
-                self.push_str(&format!("{result}.push_back({body});\n"));
-                self.push_str("}\n");
-                results.push(result);
-                self.push_str(&format!("free((void*){base});\n"));
+                // let body = self.blocks.pop().unwrap();
+                // let tmp = self.tmp();
+                // let size = self.gen.gen.sizes.size(element);
+                // let _align = self.gen.gen.sizes.align(element);
+                // let len = format!("len{tmp}");
+                // let base = format!("base{tmp}");
+                // let result = format!("result{tmp}");
+                // self.push_str(&format!(
+                //     "auto {base} = {operand0};\n",
+                //     operand0 = operands[0]
+                // ));
+                // self.push_str(&format!(
+                //     "auto {len} = {operand1};\n",
+                //     operand1 = operands[1]
+                // ));
+                // let elemtype = print_to_result(self, resolve, |gen| {
+                //     gen.print_ty(SourceType::HDefs, element, None, Context::Argument)
+                // });
+                // self.push_str(&format!("auto {result} = std::vector<{elemtype}>();\n"));
+                // self.push_str(&format!("{result}.reserve({len});\n"));
+                // self.push_str(&format!("for (unsigned i=0;i<{len};++i) {{\n"));
+                // self.push_str(&format!("auto base = {base} + i * {size};\n"));
+                // self.push_str(&format!("{result}.push_back({body});\n"));
+                // self.push_str("}\n");
+                // results.push(result);
+                // self.push_str(&format!("free((void*){base});\n"));
             }
 
             Instruction::IterElem { .. } => results.push("e".to_string()),
@@ -3258,55 +3265,55 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 );
 
                 // ... then call the function with all our operands
-                if sig.results.len() > 0 {
-                    self.push_str("auto ret = ");
-                    results.push("ret".to_string());
-                }
-                self.push_str(&func);
-                self.push_str("(");
-                self.push_str(&operands.join(", "));
-                self.push_str(");\n");
+                // if sig.results.len() > 0 {
+                //     self.push_str("auto ret = ");
+                //     results.push("ret".to_string());
+                // }
+                // self.push_str(&func);
+                // self.push_str("(");
+                // self.push_str(&operands.join(", "));
+                // self.push_str(");\n");
             }
 
             Instruction::CallInterface { func, .. } => {
-                self.let_results(func.results.len(), results);
-                match &func.kind {
-                    FunctionKind::Freestanding => {
-                        self.push_str(&format!(
-                            "<{0}Impl as {0}>::{1}",
-                            self.trait_name.unwrap(),
-                            to_rust_ident(&func.name)
-                        ));
-                    }
-                    FunctionKind::Method(ty) | FunctionKind::Static(ty) => {
-                        self.push_str(&format!(
-                            "<Rep{0} as {0}>::{1}",
-                            resolve.types[*ty]
-                                .name
-                                .as_deref()
-                                .unwrap()
-                                .to_upper_camel_case(),
-                            to_rust_ident(func.item_name())
-                        ));
-                    }
-                    FunctionKind::Constructor(ty) => {
-                        self.push_str(&format!(
-                            "Own{0}::new(<Rep{0} as {0}>::new",
-                            resolve.types[*ty]
-                                .name
-                                .as_deref()
-                                .unwrap()
-                                .to_upper_camel_case()
-                        ));
-                    }
-                }
-                self.push_str("(");
-                self.push_str(&operands.join(", "));
-                self.push_str(")");
-                if let FunctionKind::Constructor(_) = &func.kind {
-                    self.push_str(")");
-                }
-                self.push_str(";\n");
+                // self.let_results(func.results.len(), results);
+                // match &func.kind {
+                //     FunctionKind::Freestanding => {
+                //         self.push_str(&format!(
+                //             "<{0}Impl as {0}>::{1}",
+                //             self.trait_name.unwrap(),
+                //             to_rust_ident(&func.name)
+                //         ));
+                //     }
+                //     FunctionKind::Method(ty) | FunctionKind::Static(ty) => {
+                //         self.push_str(&format!(
+                //             "<Rep{0} as {0}>::{1}",
+                //             resolve.types[*ty]
+                //                 .name
+                //                 .as_deref()
+                //                 .unwrap()
+                //                 .to_upper_camel_case(),
+                //             to_rust_ident(func.item_name())
+                //         ));
+                //     }
+                //     FunctionKind::Constructor(ty) => {
+                //         self.push_str(&format!(
+                //             "Own{0}::new(<Rep{0} as {0}>::new",
+                //             resolve.types[*ty]
+                //                 .name
+                //                 .as_deref()
+                //                 .unwrap()
+                //                 .to_upper_camel_case()
+                //         ));
+                //     }
+                // }
+                // self.push_str("(");
+                // self.push_str(&operands.join(", "));
+                // self.push_str(")");
+                // if let FunctionKind::Constructor(_) = &func.kind {
+                //     self.push_str(")");
+                // }
+                // self.push_str(";\n");
             }
 
             Instruction::Return { amt, func, .. } => {
@@ -3314,15 +3321,15 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 match amt {
                     0 => {}
                     1 => {
-                        match &func.kind {
-                            FunctionKind::Constructor(_) => {
-                                // strange but works
-                                self.push_str("*this = ");
-                            }
-                            _ => self.push_str("return "),
-                        }
-                        self.push_str(&operands[0]);
-                        self.push_str(";\n");
+                        // match &func.kind {
+                        //     FunctionKind::Constructor(_) => {
+                        //         // strange but works
+                        //         self.push_str("*this = ");
+                        //     }
+                        //     _ => self.push_str("return "),
+                        // }
+                        // self.push_str(&operands[0]);
+                        // self.push_str(";\n");
                     }
                     _ => todo!(),
                 }
@@ -3365,56 +3372,56 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(format!("*((double const*)({} + {}))", operands[0], offset));
             }
             Instruction::I32Store { offset } => {
-                self.push_str(&format!(
-                    "*((int32_t*)({} + {})) = {};\n",
-                    operands[1], offset, operands[0]
-                ));
+                // self.push_str(&format!(
+                //     "*((int32_t*)({} + {})) = {};\n",
+                //     operands[1], offset, operands[0]
+                // ));
             }
             Instruction::I32Store8 { offset } => {
-                self.push_str(&format!(
-                    "*((int8_t*)({} + {})) = int8_t({});\n",
-                    operands[1], offset, operands[0]
-                ));
+                // self.push_str(&format!(
+                //     "*((int8_t*)({} + {})) = int8_t({});\n",
+                //     operands[1], offset, operands[0]
+                // ));
             }
             Instruction::I32Store16 { offset } => {
-                self.push_str(&format!(
-                    "*((uint16_t*)({} + {})) = uint16_t({});\n",
-                    operands[1], offset, operands[0]
-                ));
+                // self.push_str(&format!(
+                //     "*((uint16_t*)({} + {})) = uint16_t({});\n",
+                //     operands[1], offset, operands[0]
+                // ));
             }
             Instruction::I64Store { offset } => {
-                self.push_str(&format!(
-                    "*((int64_t*)({} + {})) = {};\n",
-                    operands[1], offset, operands[0]
-                ));
+                // self.push_str(&format!(
+                //     "*((int64_t*)({} + {})) = {};\n",
+                //     operands[1], offset, operands[0]
+                // ));
             }
             Instruction::F32Store { offset } => {
-                self.push_str(&format!(
-                    "*((float*)({} + {})) = {};\n",
-                    operands[1], offset, operands[0]
-                ));
+                // self.push_str(&format!(
+                //     "*((float*)({} + {})) = {};\n",
+                //     operands[1], offset, operands[0]
+                // ));
             }
             Instruction::F64Store { offset } => {
-                self.push_str(&format!(
-                    "*((double*)({} + {})) = {};\n",
-                    operands[1], offset, operands[0]
-                ));
+                // self.push_str(&format!(
+                //     "*((double*)({} + {})) = {};\n",
+                //     operands[1], offset, operands[0]
+                // ));
             }
 
             Instruction::Malloc { .. } => unimplemented!(),
 
             Instruction::GuestDeallocate { size, align } => {
-                self.push_str(&format!(
-                    "wit_bindgen::rt::dealloc({}, {}, {});\n",
-                    operands[0], size, align
-                ));
+                // self.push_str(&format!(
+                //     "wit_bindgen::rt::dealloc({}, {}, {});\n",
+                //     operands[0], size, align
+                // ));
             }
 
             Instruction::GuestDeallocateString => {
-                self.push_str(&format!(
-                    "wit_bindgen::rt::dealloc({}, ({}) as usize, 1);\n",
-                    operands[0], operands[1],
-                ));
+                // self.push_str(&format!(
+                //     "wit_bindgen::rt::dealloc({}, ({}) as usize, 1);\n",
+                //     operands[0], operands[1],
+                // ));
             }
 
             Instruction::GuestDeallocateVariant { blocks } => {
@@ -3437,36 +3444,36 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::GuestDeallocateList { element } => {
-                let body = self.blocks.pop().unwrap();
-                let tmp = self.tmp();
-                let size = self.gen.gen.sizes.size(element);
-                let align = self.gen.gen.sizes.align(element);
-                let len = format!("len{tmp}");
-                let base = format!("base{tmp}");
-                self.push_str(&format!(
-                    "let {base} = {operand0};\n",
-                    operand0 = operands[0]
-                ));
-                self.push_str(&format!(
-                    "let {len} = {operand1};\n",
-                    operand1 = operands[1]
-                ));
+                // let body = self.blocks.pop().unwrap();
+                // let tmp = self.tmp();
+                // let size = self.gen.gen.sizes.size(element);
+                // let align = self.gen.gen.sizes.align(element);
+                // let len = format!("len{tmp}");
+                // let base = format!("base{tmp}");
+                // self.push_str(&format!(
+                //     "let {base} = {operand0};\n",
+                //     operand0 = operands[0]
+                // ));
+                // self.push_str(&format!(
+                //     "let {len} = {operand1};\n",
+                //     operand1 = operands[1]
+                // ));
 
-                if body != "()" {
-                    self.push_str("for i in 0..");
-                    self.push_str(&len);
-                    self.push_str(" {\n");
-                    self.push_str("let base = ");
-                    self.push_str(&base);
-                    self.push_str(" + i *");
-                    self.push_str(&size.to_string());
-                    self.push_str(";\n");
-                    self.push_str(&body);
-                    self.push_str("\n}\n");
-                }
-                self.push_str(&format!(
-                    "wit_bindgen::rt::dealloc({base}, ({len} as usize) * {size}, {align});\n",
-                ));
+                // if body != "()" {
+                //     self.push_str("for i in 0..");
+                //     self.push_str(&len);
+                //     self.push_str(" {\n");
+                //     self.push_str("let base = ");
+                //     self.push_str(&base);
+                //     self.push_str(" + i *");
+                //     self.push_str(&size.to_string());
+                //     self.push_str(";\n");
+                //     self.push_str(&body);
+                //     self.push_str("\n}\n");
+                // }
+                // self.push_str(&format!(
+                //     "wit_bindgen::rt::dealloc({base}, ({len} as usize) * {size}, {align});\n",
+                // ));
             }
         }
     }

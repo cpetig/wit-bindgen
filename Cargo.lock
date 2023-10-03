@@ -2200,7 +2200,7 @@ dependencies = [
  "clap",
  "heck",
  "test-helpers",
- "wasm-encoder 0.32.0",
+ "wasm-encoder 0.33.2",
  "wasm-metadata",
  "wit-bindgen-c",
  "wit-bindgen-core",
@@ -2263,12 +2263,12 @@ dependencies = [
  "clap",
  "heck",
  "test-helpers",
- "wasm-encoder 0.32.0",
+ "wasm-encoder 0.33.2",
  "wasm-metadata",
  "wit-bindgen-c",
  "wit-bindgen-core",
  "wit-bindgen-cpp-host",
- "wit-bindgen-rust-lib",
+ "wit-bindgen-rust",
  "wit-component",
 ]
 
@@ -2280,11 +2280,11 @@ dependencies = [
  "clap",
  "heck",
  "test-helpers",
- "wasm-encoder 0.32.0",
+ "wasm-encoder 0.33.2",
  "wasm-metadata",
  "wit-bindgen-c",
  "wit-bindgen-core",
- "wit-bindgen-rust-lib",
+ "wit-bindgen-rust",
  "wit-component",
 ]
 

@@ -8,7 +8,7 @@ use wit_bindgen_core::{
     WorldGenerator,
 };
 use wit_bindgen_cpp_host::RESOURCE_BASE_CLASS_NAME;
-use wit_bindgen_rust_lib::{
+use wit_bindgen_rust::{
     dealias, FnSig, Ownership, RustFlagsRepr, RustFunctionGenerator, RustGenerator, TypeMode,
 };
 

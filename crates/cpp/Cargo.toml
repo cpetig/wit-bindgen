@@ -23,7 +23,7 @@ anyhow = { workspace = true }
 heck = { workspace = true }
 clap = { workspace = true, optional = true }
 # for now 
-wit-bindgen-rust-lib = { workspace = true }
+wit-bindgen-rust = { workspace = true }
 wit-bindgen-cpp-host = { workspace = true }
 
 [dev-dependencies]

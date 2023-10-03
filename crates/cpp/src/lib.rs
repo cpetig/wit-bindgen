@@ -1,7 +1,9 @@
 use wit_bindgen_core::WorldGenerator;
 
 #[derive(Default)]
-struct Cpp {}
+struct Cpp {
+    opts: Opts,
+}
 
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
@@ -10,8 +12,7 @@ pub struct Opts {}
 impl Opts {
     pub fn build(self) -> Box<dyn WorldGenerator> {
         let mut r = Cpp::new();
-        // r.skip = self.skip.iter().cloned().collect();
-        // r.opts = self;
+        r.opts = self;
         Box::new(r)
     }
 }
@@ -30,7 +31,7 @@ impl WorldGenerator for Cpp {
         iface: wit_bindgen_core::wit_parser::InterfaceId,
         files: &mut wit_bindgen_core::Files,
     ) {
-        todo!()
+        //todo!()
     }
 
     fn export_interface(
@@ -79,6 +80,6 @@ impl WorldGenerator for Cpp {
         world: wit_bindgen_core::wit_parser::WorldId,
         files: &mut wit_bindgen_core::Files,
     ) {
-        todo!()
+        // todo!()
     }
 }

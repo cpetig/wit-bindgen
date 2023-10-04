@@ -252,7 +252,8 @@ impl WorldGenerator for Cpp {
             }
         }
 
-        // c_str.push_str(&self.src.c_defs);
+        c_str.push_str(&self.c_src);
+        h_str.push_str(&self.h_src);
         // c_str.push_str(&self.src.c_fns);
 
         // if self.src.h_defs.len() > 0 {

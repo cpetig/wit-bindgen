@@ -191,58 +191,58 @@ impl WorldGenerator for Cpp {
                 );
             }
 
-        //     if self.dependencies.needs_resources {
-        //         let (_, ns_enter, ns_leave, _) =
-        //             self.surround_with_namespace2(resolve, TypeOwner::World(world_id));
-        //         if !self.opts.guest_header {
-        //             uwriteln!(
-        //                 h_str,
-        //                 "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
-        //                 public:
-        //                 int32_t id;
-        //                 virtual ~{RESOURCE_BASE_CLASS_NAME}();
-        //                 {RESOURCE_BASE_CLASS_NAME}();
-        //                 static {RESOURCE_BASE_CLASS_NAME}* lookup_resource(int32_t id);
-        //               }}; 
-        //               template <typename T> struct {OWNED_CLASS_NAME} {{
-        //                 T *ptr;
-        //               }}; {ns_leave}"
-        //             );
-        //         } else {
-        //             // somehow spaces get removed, newlines remain (problem occurs before const&)
-        //             uwriteln!(
-        //                 h_str,
-        //                 "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
-        //                 static const int32_t invalid = -1;
-        //                 protected:
-        //                 int32_t handle;
-        //                 public:
-        //                 {RESOURCE_BASE_CLASS_NAME}(int32_t h=invalid) : handle(h) {{}}
-        //                 {RESOURCE_BASE_CLASS_NAME}({RESOURCE_BASE_CLASS_NAME}&&r) 
-        //                     : handle(r.handle) {{ 
-        //                         r.handle=invalid; 
-        //                 }}
-        //                 {RESOURCE_BASE_CLASS_NAME}({RESOURCE_BASE_CLASS_NAME} 
-        //                     const&) = delete;
-        //                 void set_handle(int32_t h) {{ handle=h; }}
-        //                 int32_t get_handle() const {{ return handle; }}
-        //                 int32_t into_raw() {{
-        //                     int32_t h= handle;
-        //                     handle= invalid;
-        //                     return h;
-        //                 }}
-        //                 {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME}&&r) {{
-        //                     assert(handle<0);
-        //                     handle= r.handle;
-        //                     r.handle= invalid;
-        //                     return *this;
-        //                 }}
-        //                 {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME} 
-        //                     const&r) = delete;
-        //                 }}; {ns_leave}"
-        //             );
-        //         }
-        //     }
+            if self.dependencies.needs_resources {
+                let (_, ns_enter, ns_leave, _) = ("", "", "", "");
+                    // self.surround_with_namespace2(resolve, TypeOwner::World(world_id));
+                if self.opts.host {
+                    uwriteln!(
+                        h_str,
+                        "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
+                        public:
+                        int32_t id;
+                        virtual ~{RESOURCE_BASE_CLASS_NAME}();
+                        {RESOURCE_BASE_CLASS_NAME}();
+                        static {RESOURCE_BASE_CLASS_NAME}* lookup_resource(int32_t id);
+                      }}; 
+                      template <typename T> struct {OWNED_CLASS_NAME} {{
+                        T *ptr;
+                      }}; {ns_leave}"
+                    );
+                } else {
+                    // somehow spaces get removed, newlines remain (problem occurs before const&)
+                    uwriteln!(
+                        h_str,
+                        "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
+                        static const int32_t invalid = -1;
+                        protected:
+                        int32_t handle;
+                        public:
+                        {RESOURCE_BASE_CLASS_NAME}(int32_t h=invalid) : handle(h) {{}}
+                        {RESOURCE_BASE_CLASS_NAME}({RESOURCE_BASE_CLASS_NAME}&&r) 
+                            : handle(r.handle) {{ 
+                                r.handle=invalid; 
+                        }}
+                        {RESOURCE_BASE_CLASS_NAME}({RESOURCE_BASE_CLASS_NAME} 
+                            const&) = delete;
+                        void set_handle(int32_t h) {{ handle=h; }}
+                        int32_t get_handle() const {{ return handle; }}
+                        int32_t into_raw() {{
+                            int32_t h= handle;
+                            handle= invalid;
+                            return h;
+                        }}
+                        {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME}&&r) {{
+                            assert(handle<0);
+                            handle= r.handle;
+                            r.handle= invalid;
+                            return *this;
+                        }}
+                        {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME} 
+                            const&r) = delete;
+                        }}; {ns_leave}"
+                    );
+                }
+            }
         }
 
         // c_str.push_str(&self.src.c_defs);
@@ -254,39 +254,39 @@ impl WorldGenerator for Cpp {
 
         // h_str.push_str(&self.src.h_fns);
 
-        // uwriteln!(c_str, "\n// Component Adapters");
+        uwriteln!(c_str, "\n// Component Adapters");
 
         // c_str.push_str(&self.src.c_adapters);
 
-        // if !self.opts.short_cut && self.opts.host {
-        //     uwriteln!(
-        //         h_str,
-        //         "extern \"C\" void register_{}();",
-        //         world.name.to_snake_case()
-        //     );
-        //     uwriteln!(c_str, "void register_{}() {{", world.name.to_snake_case());
-        //     for i in self.host_functions.iter() {
-        //         uwriteln!(
-        //             c_str,
-        //             "  static NativeSymbol {}_funs[] = {{",
-        //             i.0.replace(":", "_").to_snake_case()
-        //         );
-        //         for f in i.1.iter() {
-        //             uwriteln!(
-        //                 c_str,
-        //                 "    {{ \"{}\", (void*){}, \"{}\", nullptr }},",
-        //                 f.wasm_name,
-        //                 f.host_name,
-        //                 f.wamr_signature
-        //             );
-        //         }
-        //         uwriteln!(c_str, "  }};");
-        //     }
-        //     for i in self.host_functions.iter() {
-        //         uwriteln!(c_str, "  wasm_runtime_register_natives(\"{}\", {1}_funs, sizeof({1}_funs)/sizeof(NativeSymbol));", i.0, i.0.replace(":", "_").to_snake_case());
-        //     }
-        //     uwriteln!(c_str, "}}");
-        // }
+        if !self.opts.short_cut && self.opts.host {
+            uwriteln!(
+                h_str,
+                "extern \"C\" void register_{}();",
+                world.name.to_snake_case()
+            );
+            uwriteln!(c_str, "void register_{}() {{", world.name.to_snake_case());
+            // for i in self.host_functions.iter() {
+            //     uwriteln!(
+            //         c_str,
+            //         "  static NativeSymbol {}_funs[] = {{",
+            //         i.0.replace(":", "_").to_snake_case()
+            //     );
+            //     for f in i.1.iter() {
+            //         uwriteln!(
+            //             c_str,
+            //             "    {{ \"{}\", (void*){}, \"{}\", nullptr }},",
+            //             f.wasm_name,
+            //             f.host_name,
+            //             f.wamr_signature
+            //         );
+            //     }
+            //     uwriteln!(c_str, "  }};");
+            // }
+            // for i in self.host_functions.iter() {
+            //     uwriteln!(c_str, "  wasm_runtime_register_natives(\"{}\", {1}_funs, sizeof({1}_funs)/sizeof(NativeSymbol));", i.0, i.0.replace(":", "_").to_snake_case());
+            // }
+            uwriteln!(c_str, "}}");
+        }
 
         uwriteln!(
             h_str,

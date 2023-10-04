@@ -1,8 +1,8 @@
 use heck::{ToShoutySnakeCase, ToSnakeCase};
-use std::{fmt::Write, collections::HashMap};
+use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
     uwrite, uwriteln,
-    wit_parser::{Function, InterfaceId, Resolve, TypeId, WorldId, WorldKey, TypeOwner},
+    wit_parser::{Function, InterfaceId, Resolve, TypeId, TypeOwner, WorldId, WorldKey},
     Files, Source, WorldGenerator,
 };
 
@@ -128,6 +128,7 @@ impl WorldGenerator for Cpp {
 
         let mut h_str = Source::default();
         let mut c_str = Source::default();
+        let mut h_namespace = Vec::new();
 
         let version = env!("CARGO_PKG_VERSION");
         uwriteln!(
@@ -199,12 +200,12 @@ impl WorldGenerator for Cpp {
             }
 
             if self.dependencies.needs_resources {
-                let (_, ns_enter, ns_leave, _) = ("", "", "", "");
-                    // self.surround_with_namespace2(resolve, TypeOwner::World(world_id));
+                let namespace = namespace(resolve, TypeOwner::World(world_id));
+                change_namespace(&mut h_namespace, &namespace, &mut h_str);
                 if self.opts.host {
                     uwriteln!(
                         h_str,
-                        "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
+                        "class {RESOURCE_BASE_CLASS_NAME} {{
                         public:
                         int32_t id;
                         virtual ~{RESOURCE_BASE_CLASS_NAME}();
@@ -213,13 +214,13 @@ impl WorldGenerator for Cpp {
                       }}; 
                       template <typename T> struct {OWNED_CLASS_NAME} {{
                         T *ptr;
-                      }}; {ns_leave}"
+                      }};"
                     );
                 } else {
                     // somehow spaces get removed, newlines remain (problem occurs before const&)
                     uwriteln!(
                         h_str,
-                        "{ns_enter} class {RESOURCE_BASE_CLASS_NAME} {{
+                        "class {RESOURCE_BASE_CLASS_NAME} {{
                         static const int32_t invalid = -1;
                         protected:
                         int32_t handle;
@@ -246,11 +247,12 @@ impl WorldGenerator for Cpp {
                         }}
                         {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME} 
                             const&r) = delete;
-                        }}; {ns_leave}"
+                        }};"
                     );
                 }
             }
         }
+        change_namespace(&mut h_namespace, &Vec::default(), &mut h_str);
 
         c_str.push_str(&self.c_src);
         h_str.push_str(&self.h_src);
@@ -309,5 +311,44 @@ impl WorldGenerator for Cpp {
             files.push(&format!("{snake}_host.cpp"), c_str.as_bytes());
             files.push(&format!("{snake}_cpp_host.h"), h_str.as_bytes());
         }
+    }
+}
+
+// determine namespace
+fn namespace(resolve: &Resolve, owner: TypeOwner) -> Vec<String> {
+    let mut result = Vec::default();
+    match owner {
+        TypeOwner::World(w) => result.push(resolve.worlds[w].name.to_snake_case()),
+        TypeOwner::Interface(i) => {
+            let iface = &resolve.interfaces[i];
+            let pkg = &resolve.packages[iface.package.unwrap()];
+            result.push(pkg.name.namespace.to_snake_case());
+            result.push(pkg.name.name.to_snake_case());
+            if let Some(name) = &iface.name {
+                result.push(name.to_snake_case());
+            }
+        }
+        TypeOwner::None => (),
+    }
+    result
+}
+
+fn change_namespace(current: &mut Vec<String>, target: &Vec<String>, output: &mut Source) {
+    let mut same = 0;
+    // itertools::fold_while?
+    for (a, b) in current.iter().zip(target.iter()) {
+        if a == b {
+            same += 1;
+        } else {
+            break;
+        }
+    }
+    for i in same..current.len() {
+        uwrite!(output, "}}");
+    }
+    current.truncate(same);
+    for i in target.iter().skip(same) {
+        uwrite!(output, "namespace {} {{", i);
+        current.push(i.clone());
     }
 }

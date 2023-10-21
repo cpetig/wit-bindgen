@@ -1,6 +1,8 @@
-use heck::{ToPascalCase, ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
+use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
+    abi::Bindgen,
+    abi::{self, AbiVariant, LiftLower},
     uwrite, uwriteln,
     wit_parser::{
         Function, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
@@ -119,8 +121,8 @@ impl WorldGenerator for Cpp {
         gen.types(id);
         // }
 
-        for (_name, _func) in resolve.interfaces[id].functions.iter() {
-            // gen.import(resolve, func);
+        for (_name, func) in resolve.interfaces[id].functions.iter() {
+            gen.generate_guest_import(func);
         }
         // gen.finish();
     }
@@ -449,6 +451,26 @@ impl CppInterfaceGenerator<'_> {
             TypeDefKind::Unknown => unreachable!(),
         }
     }
+
+    fn print_signature(&mut self, func: &Function) -> Vec<String> {
+        // Vec::default()
+        vec!["a".into(),"b".into(),"c".into(),"d".into(),"e".into(),]
+    }
+
+    fn generate_guest_import(&mut self, func: &Function) {
+        //        let mut sig = FnSig::default();
+        let params = self.print_signature(func);
+        self.gen.c_src.src.push_str("{\n");
+        let mut f = FunctionBindgen::new(self, params);
+        abi::call(
+            f.gen.resolve,
+            AbiVariant::GuestImport,
+            LiftLower::LowerArgsLiftResults,
+            func,
+            &mut f,
+        );
+        self.gen.c_src.src.push_str("}\n");
+    }
 }
 
 impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> {
@@ -480,19 +502,20 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
 
             let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
             uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
-            if !self.gen.opts.host {
-                //gen.src.h_defs("  int32_t handle;\nbool owned;\n");
-            } else {
+            if self.gen.opts.host {
                 uwriteln!(
                     self.gen.h_src.src,
                     "  // private implementation data\n  struct pImpl;\n  pImpl * p_impl;\n"
                 );
+            } else {
+                //gen.src.h_defs("  int32_t handle;\nbool owned;\n");
             }
             uwriteln!(self.gen.h_src.src, "public:\n");
             // destructor
             uwriteln!(self.gen.h_src.src, "~{pascal}();\n");
             for func in funcs {
-                // self.gen.import(Some(name), func);
+                // Some(name),
+                self.generate_guest_import(func);
             }
 
             if !self.gen.opts.host {
@@ -505,29 +528,31 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             }
             uwriteln!(self.gen.h_src.src, "}};\n");
 
-            let iface = &self.resolve.interfaces[intf];
-            let pkg = &self.resolve.packages[iface.package.unwrap()];
-            let mut interface_name = pkg.name.namespace.to_snake_case();
-            interface_name.push_str("_");
-            interface_name.push_str(&pkg.name.name.to_snake_case());
-            interface_name.push_str("_");
-            interface_name.push_str(&iface.name.as_ref().unwrap().to_snake_case());
-            let resource = self.resolve.types[id].name.as_deref().unwrap();
-            let resource_snake = resource.to_snake_case();
-            let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
-            let wasm_name = format!("[resource-drop]{resource}");
-            uwriteln!(self.gen.c_src.src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
-            // let remember = HostFunction {
-            //     wasm_name,
-            //     wamr_signature: "(i)".into(),
-            //     host_name,
-            // };
-            // let module_name = self.resolve.name_world_key(name);
-            // self.gen
-            //     .host_functions
-            //     .entry(module_name)
-            //     .and_modify(|v| v.push(remember.clone()))
-            //     .or_insert(vec![remember]);
+            if self.gen.opts.host {
+                let iface = &self.resolve.interfaces[intf];
+                let pkg = &self.resolve.packages[iface.package.unwrap()];
+                let mut interface_name = pkg.name.namespace.to_snake_case();
+                interface_name.push_str("_");
+                interface_name.push_str(&pkg.name.name.to_snake_case());
+                interface_name.push_str("_");
+                interface_name.push_str(&iface.name.as_ref().unwrap().to_snake_case());
+                let resource = self.resolve.types[id].name.as_deref().unwrap();
+                let resource_snake = resource.to_snake_case();
+                let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
+                let wasm_name = format!("[resource-drop]{resource}");
+                uwriteln!(self.gen.c_src.src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
+                // let remember = HostFunction {
+                //     wasm_name,
+                //     wamr_signature: "(i)".into(),
+                //     host_name,
+                // };
+                // let module_name = self.resolve.name_world_key(name);
+                // self.gen
+                //     .host_functions
+                //     .entry(module_name)
+                //     .and_modify(|v| v.push(remember.clone()))
+                //     .or_insert(vec![remember]);
+            }
 
             // let entry = self
             //     .gen
@@ -628,6 +653,55 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         _ty: &wit_bindgen_core::wit_parser::Type,
         _docs: &wit_bindgen_core::wit_parser::Docs,
     ) {
+        todo!()
+    }
+}
+
+struct FunctionBindgen<'a, 'b> {
+    gen: &'b mut CppInterfaceGenerator<'a>,
+    params: Vec<String>,
+}
+
+impl<'a, 'b> FunctionBindgen<'a, 'b> {
+    fn new(gen: &'b mut CppInterfaceGenerator<'a>, params: Vec<String>) -> Self {
+        Self { gen, params }
+    }
+}
+
+impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
+    type Operand = String;
+
+    fn emit(
+        &mut self,
+        resolve: &Resolve,
+        inst: &wit_bindgen_core::abi::Instruction<'_>,
+        operands: &mut Vec<Self::Operand>,
+        results: &mut Vec<Self::Operand>,
+    ) {
+        //todo!()
+    }
+
+    fn return_pointer(&mut self, size: usize, align: usize) -> Self::Operand {
+        todo!()
+    }
+
+    fn push_block(&mut self) {
+        todo!()
+    }
+
+    fn finish_block(&mut self, operand: &mut Vec<Self::Operand>) {
+        todo!()
+    }
+
+    fn sizes(&self) -> &wit_bindgen_core::wit_parser::SizeAlign {
+        todo!()
+    }
+
+    fn is_list_canonical(
+        &self,
+        resolve: &Resolve,
+        element: &wit_bindgen_core::wit_parser::Type,
+    ) -> bool {
         todo!()
     }
 }

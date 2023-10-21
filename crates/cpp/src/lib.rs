@@ -35,10 +35,16 @@ struct HostFunction {
 }
 
 #[derive(Default)]
+struct SourceWithState {
+    src: Source,
+    namespace: Vec<String>,
+}
+
+#[derive(Default)]
 struct Cpp {
     opts: Opts,
-    c_src: Source,
-    h_src: Source,
+    c_src: SourceWithState,
+    h_src: SourceWithState,
     dependencies: Includes,
     includes: Vec<String>,
     host_functions: HashMap<String, Vec<HostFunction>>,
@@ -242,7 +248,7 @@ impl WorldGenerator for Cpp {
         }
 
         if self.dependencies.needs_resources {
-            let namespace = namespace(resolve, TypeOwner::World(world_id));
+            let namespace = namespace(resolve, &TypeOwner::World(world_id));
             change_namespace(&mut h_namespace, &namespace, &mut h_str);
             if self.opts.host {
                 uwriteln!(
@@ -295,8 +301,18 @@ impl WorldGenerator for Cpp {
         }
         change_namespace(&mut h_namespace, &Vec::default(), &mut h_str);
 
-        c_str.push_str(&self.c_src);
-        h_str.push_str(&self.h_src);
+        change_namespace(
+            &mut self.c_src.namespace,
+            &Vec::default(),
+            &mut self.c_src.src,
+        );
+        c_str.push_str(&self.c_src.src);
+        change_namespace(
+            &mut self.h_src.namespace,
+            &Vec::default(),
+            &mut self.h_src.src,
+        );
+        h_str.push_str(&self.h_src.src);
         // c_str.push_str(&self.src.c_fns);
 
         // if self.src.h_defs.len() > 0 {
@@ -356,12 +372,12 @@ impl WorldGenerator for Cpp {
 }
 
 // determine namespace
-fn namespace(resolve: &Resolve, owner: TypeOwner) -> Vec<String> {
+fn namespace(resolve: &Resolve, owner: &TypeOwner) -> Vec<String> {
     let mut result = Vec::default();
     match owner {
-        TypeOwner::World(w) => result.push(resolve.worlds[w].name.to_snake_case()),
+        TypeOwner::World(w) => result.push(resolve.worlds[*w].name.to_snake_case()),
         TypeOwner::Interface(i) => {
-            let iface = &resolve.interfaces[i];
+            let iface = &resolve.interfaces[*i];
             let pkg = &resolve.packages[iface.package.unwrap()];
             result.push(pkg.name.namespace.to_snake_case());
             result.push(pkg.name.name.to_snake_case());
@@ -386,6 +402,10 @@ fn change_namespace(current: &mut Vec<String>, target: &Vec<String>, output: &mu
     }
     for _i in same..current.len() {
         uwrite!(output, "}}");
+    }
+    if same != current.len() {
+        // finish closing brackets by a newline
+        uwriteln!(output, "");
     }
     current.truncate(same);
     for i in target.iter().skip(same) {
@@ -432,6 +452,14 @@ impl CppInterfaceGenerator<'_> {
             TypeDefKind::Unknown => unreachable!(),
         }
     }
+
+    // pub fn owner_namespace(&self, owner: &TypeOwner) {
+    //     match owner {
+    //         TypeOwner::World(_) => todo!(),
+    //         TypeOwner::Interface(_) => todo!(),
+    //         TypeOwner::None => todo!(),
+    //     }
+    // }
 }
 
 impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> {
@@ -455,29 +483,29 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             let mut world_name = self.gen.world.to_snake_case();
             world_name.push_str("::");
             let funcs = self.resolve.interfaces[intf].functions.values();
+            let namespc = namespace(self.resolve, &type_.owner);
+            change_namespace(
+                &mut self.gen.h_src.namespace,
+                &namespc,
+                &mut self.gen.h_src.src,
+            );
 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();
 
-            // if self.in_import {
-
-            // } else {
-
-            // }
-
             let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
-            uwriteln!(self.gen.h_src, "class {pascal}{derive} {{\n");
+            uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
             if !self.gen.opts.host {
                 //gen.src.h_defs("  int32_t handle;\nbool owned;\n");
             } else {
                 uwriteln!(
-                    self.gen.h_src,
+                    self.gen.h_src.src,
                     "  // private implementation data\n  struct pImpl;\n  pImpl * p_impl;\n"
                 );
             }
-            uwriteln!(self.gen.h_src, "public:\n");
+            uwriteln!(self.gen.h_src.src, "public:\n");
             // destructor
-            uwriteln!(self.gen.h_src, "~{pascal}();\n");
+            uwriteln!(self.gen.h_src.src, "~{pascal}();\n");
             for func in funcs {
                 // self.gen.import(Some(name), func);
             }
@@ -485,12 +513,12 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             if !self.gen.opts.host {
                 // consuming constructor from handle (bindings)
                 uwriteln!(
-                    self.gen.h_src,
+                    self.gen.h_src.src,
                     "{pascal}({world_name}{RESOURCE_BASE_CLASS_NAME}&&);\n"
                 );
-                uwriteln!(self.gen.h_src, "{pascal}({pascal}&&) = default;\n");
+                uwriteln!(self.gen.h_src.src, "{pascal}({pascal}&&) = default;\n");
             }
-            uwriteln!(self.gen.h_src, "}};\n");
+            uwriteln!(self.gen.h_src.src, "}};\n");
 
             let iface = &self.resolve.interfaces[intf];
             let pkg = &self.resolve.packages[iface.package.unwrap()];
@@ -503,7 +531,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             let resource_snake = resource.to_snake_case();
             let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
             let wasm_name = format!("[resource-drop]{resource}");
-            uwriteln!(self.gen.c_src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
+            uwriteln!(self.gen.c_src.src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
             // let remember = HostFunction {
             //     wasm_name,
             //     wamr_signature: "(i)".into(),

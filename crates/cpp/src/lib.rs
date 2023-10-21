@@ -5,7 +5,8 @@ use wit_bindgen_core::{
     abi::{self, AbiVariant, LiftLower},
     uwrite, uwriteln,
     wit_parser::{
-        Function, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
+        Function, FunctionKind, Handle, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner,
+        WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -454,7 +455,7 @@ impl CppInterfaceGenerator<'_> {
 
     fn print_signature(&mut self, func: &Function) -> Vec<String> {
         // Vec::default()
-        vec!["a".into(),"b".into(),"c".into(),"d".into(),"e".into(),]
+        vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()]
     }
 
     fn generate_guest_import(&mut self, func: &Function) {
@@ -678,7 +679,150 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         operands: &mut Vec<Self::Operand>,
         results: &mut Vec<Self::Operand>,
     ) {
+        let mut top_as = |cvt: &str| {
+            results.push(format!("({cvt}({}))", operands.pop().unwrap()));
+        };
+
         //todo!()
+        match inst {
+            abi::Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
+            abi::Instruction::I32Const { val } => todo!(),
+            abi::Instruction::Bitcasts { casts } => todo!(),
+            abi::Instruction::ConstZero { tys } => todo!(),
+            abi::Instruction::I32Load { offset } => todo!(),
+            abi::Instruction::I32Load8U { offset } => todo!(),
+            abi::Instruction::I32Load8S { offset } => todo!(),
+            abi::Instruction::I32Load16U { offset } => todo!(),
+            abi::Instruction::I32Load16S { offset } => todo!(),
+            abi::Instruction::I64Load { offset } => todo!(),
+            abi::Instruction::F32Load { offset } => todo!(),
+            abi::Instruction::F64Load { offset } => todo!(),
+            abi::Instruction::I32Store { offset } => todo!(),
+            abi::Instruction::I32Store8 { offset } => todo!(),
+            abi::Instruction::I32Store16 { offset } => todo!(),
+            abi::Instruction::I64Store { offset } => todo!(),
+            abi::Instruction::F32Store { offset } => todo!(),
+            abi::Instruction::F64Store { offset } => todo!(),
+            abi::Instruction::I32FromChar
+            | abi::Instruction::I32FromU8
+            | abi::Instruction::I32FromS8
+            | abi::Instruction::I32FromU16
+            | abi::Instruction::I32FromS16
+            | abi::Instruction::I32FromU32
+            | abi::Instruction::I32FromS32 => top_as("int32_t"),
+            abi::Instruction::I64FromU64 => todo!(),
+            abi::Instruction::I64FromS64 => todo!(),
+            abi::Instruction::F32FromFloat32 => todo!(),
+            abi::Instruction::F64FromFloat64 => todo!(),
+            abi::Instruction::S8FromI32 => todo!(),
+            abi::Instruction::U8FromI32 => todo!(),
+            abi::Instruction::S16FromI32 => todo!(),
+            abi::Instruction::U16FromI32 => todo!(),
+            abi::Instruction::S32FromI32 => todo!(),
+            abi::Instruction::U32FromI32 => top_as("uint32_t"),
+            abi::Instruction::S64FromI64 => todo!(),
+            abi::Instruction::U64FromI64 => todo!(),
+            abi::Instruction::CharFromI32 => todo!(),
+            abi::Instruction::Float32FromF32 => todo!(),
+            abi::Instruction::Float64FromF64 => todo!(),
+            abi::Instruction::BoolFromI32 => todo!(),
+            abi::Instruction::I32FromBool => todo!(),
+            abi::Instruction::ListCanonLower { element, realloc } => todo!(),
+            abi::Instruction::StringLower { realloc } => todo!(),
+            abi::Instruction::ListLower { element, realloc } => todo!(),
+            abi::Instruction::ListCanonLift { element, ty } => todo!(),
+            abi::Instruction::StringLift => todo!(),
+            abi::Instruction::ListLift { element, ty } => todo!(),
+            abi::Instruction::IterElem { element } => todo!(),
+            abi::Instruction::IterBasePointer => todo!(),
+            abi::Instruction::RecordLower { record, name, ty } => todo!(),
+            abi::Instruction::RecordLift { record, name, ty } => todo!(),
+            abi::Instruction::HandleLower { handle, name, ty } => {
+                let op = &operands[0];
+                results.push(format!("({op}).into_handle()"));
+            }
+            abi::Instruction::HandleLift { handle, name, ty } => {
+                let op = &operands[0];
+                // let (prefix, resource, _owned) = match handle {
+                //     Handle::Borrow(resource) => ("&", resource, false),
+                //     Handle::Own(resource) => ("", resource, true),
+                // };
+                // let resource = dealias(resolve, *resource);
+
+                results.push(op.clone());
+            }
+            abi::Instruction::TupleLower { tuple, ty } => todo!(),
+            abi::Instruction::TupleLift { tuple, ty } => todo!(),
+            abi::Instruction::FlagsLower { flags, name, ty } => todo!(),
+            abi::Instruction::FlagsLift { flags, name, ty } => todo!(),
+            abi::Instruction::VariantPayloadName => todo!(),
+            abi::Instruction::VariantLower {
+                variant,
+                name,
+                ty,
+                results,
+            } => todo!(),
+            abi::Instruction::VariantLift { variant, name, ty } => todo!(),
+            abi::Instruction::EnumLower { enum_, name, ty } => todo!(),
+            abi::Instruction::EnumLift { enum_, name, ty } => todo!(),
+            abi::Instruction::OptionLower {
+                payload,
+                ty,
+                results,
+            } => todo!(),
+            abi::Instruction::OptionLift { payload, ty } => todo!(),
+            abi::Instruction::ResultLower {
+                result,
+                ty,
+                results,
+            } => todo!(),
+            abi::Instruction::ResultLift { result, ty } => todo!(),
+            abi::Instruction::CallWasm { name, sig } => {
+                let func = "test"; //self.declare_import(
+                                   //                    self.gen.wasm_import_module.unwrap(),
+                                   //     name,
+                                   //     &sig.params,
+                                   //     &sig.results,
+                                   // );
+
+                // ... then call the function with all our operands
+                if sig.results.len() > 0 {
+                    self.gen.gen.c_src.src.push_str("auto ret = ");
+                    results.push("ret".to_string());
+                }
+                self.gen.gen.c_src.src.push_str(&func);
+                self.gen.gen.c_src.src.push_str("(");
+                self.gen.gen.c_src.src.push_str(&operands.join(", "));
+                self.gen.gen.c_src.src.push_str(");\n");
+            }
+            abi::Instruction::CallInterface { func } => todo!(),
+            abi::Instruction::Return { amt, func } => {
+                match amt {
+                    0 => {}
+                    1 => {
+                        match &func.kind {
+                            FunctionKind::Constructor(_) => {
+                                // strange but works
+                                self.gen.gen.c_src.src.push_str("this->handle = ");
+                            }
+                            _ => self.gen.gen.c_src.src.push_str("return "),
+                        }
+                        self.gen.gen.c_src.src.push_str(&operands[0]);
+                        self.gen.gen.c_src.src.push_str(";\n");
+                    }
+                    _ => todo!(),
+                }
+            }
+            abi::Instruction::Malloc {
+                realloc,
+                size,
+                align,
+            } => todo!(),
+            abi::Instruction::GuestDeallocate { size, align } => todo!(),
+            abi::Instruction::GuestDeallocateString => todo!(),
+            abi::Instruction::GuestDeallocateList { element } => todo!(),
+            abi::Instruction::GuestDeallocateVariant { blocks } => todo!(),
+        }
     }
 
     fn return_pointer(&mut self, size: usize, align: usize) -> Self::Operand {

@@ -1,7 +1,7 @@
 use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
-    abi::Bindgen,
+    abi::{Bindgen, WasmType},
     abi::{self, AbiVariant, LiftLower},
     uwrite, uwriteln,
     wit_parser::{
@@ -455,6 +455,8 @@ impl CppInterfaceGenerator<'_> {
 
     fn print_signature(&mut self, func: &Function) -> Vec<String> {
         // Vec::default()
+        uwriteln!(self.gen.h_src.src, "void {}(...);", func.name);
+        uwriteln!(self.gen.c_src.src, "void {}(...)", func.name);
         vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()]
     }
 
@@ -686,9 +688,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         //todo!()
         match inst {
             abi::Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
-            abi::Instruction::I32Const { val } => todo!(),
+            abi::Instruction::I32Const { val } => results.push(format!("(int32_t({}))", val)),
             abi::Instruction::Bitcasts { casts } => todo!(),
-            abi::Instruction::ConstZero { tys } => todo!(),
+            abi::Instruction::ConstZero { tys } => {
+                for ty in tys.iter() {
+                    match ty {
+                        WasmType::I32 => results.push("int32_t(0)".to_string()),
+                        WasmType::I64 => results.push("int64_t(0)".to_string()),
+                        WasmType::F32 => results.push("0.0f".to_string()),
+                        WasmType::F64 => results.push("0.0".to_string()),
+                    }
+                }
+            }
             abi::Instruction::I32Load { offset } => todo!(),
             abi::Instruction::I32Load8U { offset } => todo!(),
             abi::Instruction::I32Load8S { offset } => todo!(),
@@ -704,14 +715,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::F32Store { offset } => todo!(),
             abi::Instruction::F64Store { offset } => todo!(),
             abi::Instruction::I32FromChar
+            | abi::Instruction::I32FromBool
             | abi::Instruction::I32FromU8
             | abi::Instruction::I32FromS8
             | abi::Instruction::I32FromU16
             | abi::Instruction::I32FromS16
             | abi::Instruction::I32FromU32
             | abi::Instruction::I32FromS32 => top_as("int32_t"),
-            abi::Instruction::I64FromU64 => todo!(),
-            abi::Instruction::I64FromS64 => todo!(),
+            abi::Instruction::I64FromU64 | abi::Instruction::I64FromS64 => top_as("int64_t"),
             abi::Instruction::F32FromFloat32 => todo!(),
             abi::Instruction::F64FromFloat64 => todo!(),
             abi::Instruction::S8FromI32 => todo!(),
@@ -725,8 +736,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::CharFromI32 => todo!(),
             abi::Instruction::Float32FromF32 => todo!(),
             abi::Instruction::Float64FromF64 => todo!(),
-            abi::Instruction::BoolFromI32 => todo!(),
-            abi::Instruction::I32FromBool => todo!(),
+            abi::Instruction::BoolFromI32 => top_as("bool"),
             abi::Instruction::ListCanonLower { element, realloc } => todo!(),
             abi::Instruction::StringLower { realloc } => todo!(),
             abi::Instruction::ListLower { element, realloc } => todo!(),

@@ -1,4 +1,4 @@
-use heck::{ToShoutySnakeCase, ToSnakeCase};
+use heck::{ToPascalCase, ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
     uwrite, uwriteln,
@@ -42,6 +42,7 @@ struct Cpp {
     dependencies: Includes,
     includes: Vec<String>,
     host_functions: HashMap<String, Vec<HostFunction>>,
+    world: String,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -92,6 +93,12 @@ impl Cpp {
 }
 
 impl WorldGenerator for Cpp {
+    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
+        let name = &resolve.worlds[world].name;
+        self.world = name.to_string();
+        //        self.sizes.fill(resolve);
+    }
+
     fn import_interface(
         &mut self,
         resolve: &Resolve,
@@ -102,7 +109,7 @@ impl WorldGenerator for Cpp {
         let binding = Some(name);
         let mut gen = self.interface(resolve, &binding, true);
         gen.interface = Some(id);
-        // if gen.gen.interfaces_with_types_printed.insert(id) {
+        // if self.gen.interfaces_with_types_printed.insert(id) {
         gen.types(id);
         // }
 
@@ -442,22 +449,83 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         todo!()
     }
 
-    fn type_resource(
-        &mut self,
-        id: TypeId,
-        _name: &str,
-        docs: &wit_bindgen_core::wit_parser::Docs,
-    ) {
-        self.gen.dependencies.needs_resources = true;
-        // let entry = self
-        //     .gen
-        //     .resources
-        //     .entry(dealias(self.resolve, id))
-        //     .or_default();
-        // if !self.in_import {
-        //     entry.direction = Direction::Export;
-        // }
-        // entry.docs = docs.clone();
+    fn type_resource(&mut self, id: TypeId, name: &str, docs: &wit_bindgen_core::wit_parser::Docs) {
+        let type_ = &self.resolve.types[id];
+        if let TypeOwner::Interface(intf) = type_.owner {
+            let mut world_name = self.gen.world.to_snake_case();
+            world_name.push_str("::");
+            let funcs = self.resolve.interfaces[intf].functions.values();
+
+            self.gen.dependencies.needs_resources = true;
+            let pascal = name.to_upper_camel_case();
+
+            // if self.in_import {
+
+            // } else {
+
+            // }
+
+            let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
+            uwriteln!(self.gen.h_src, "class {pascal}{derive} {{\n");
+            if !self.gen.opts.host {
+                //gen.src.h_defs("  int32_t handle;\nbool owned;\n");
+            } else {
+                uwriteln!(
+                    self.gen.h_src,
+                    "  // private implementation data\n  struct pImpl;\n  pImpl * p_impl;\n"
+                );
+            }
+            uwriteln!(self.gen.h_src, "public:\n");
+            // destructor
+            uwriteln!(self.gen.h_src, "~{pascal}();\n");
+            for func in funcs {
+                // self.gen.import(Some(name), func);
+            }
+
+            if !self.gen.opts.host {
+                // consuming constructor from handle (bindings)
+                uwriteln!(
+                    self.gen.h_src,
+                    "{pascal}({world_name}{RESOURCE_BASE_CLASS_NAME}&&);\n"
+                );
+                uwriteln!(self.gen.h_src, "{pascal}({pascal}&&) = default;\n");
+            }
+            uwriteln!(self.gen.h_src, "}};\n");
+
+            let iface = &self.resolve.interfaces[intf];
+            let pkg = &self.resolve.packages[iface.package.unwrap()];
+            let mut interface_name = pkg.name.namespace.to_snake_case();
+            interface_name.push_str("_");
+            interface_name.push_str(&pkg.name.name.to_snake_case());
+            interface_name.push_str("_");
+            interface_name.push_str(&iface.name.as_ref().unwrap().to_snake_case());
+            let resource = self.resolve.types[id].name.as_deref().unwrap();
+            let resource_snake = resource.to_snake_case();
+            let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
+            let wasm_name = format!("[resource-drop]{resource}");
+            uwriteln!(self.gen.c_src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
+            // let remember = HostFunction {
+            //     wasm_name,
+            //     wamr_signature: "(i)".into(),
+            //     host_name,
+            // };
+            // let module_name = self.resolve.name_world_key(name);
+            // self.gen
+            //     .host_functions
+            //     .entry(module_name)
+            //     .and_modify(|v| v.push(remember.clone()))
+            //     .or_insert(vec![remember]);
+
+            // let entry = self
+            //     .gen
+            //     .resources
+            //     .entry(dealias(self.resolve, id))
+            //     .or_default();
+            // if !self.in_import {
+            //     entry.direction = Direction::Export;
+            // }
+            // entry.docs = docs.clone();
+        }
     }
 
     fn type_flags(

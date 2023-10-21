@@ -2,8 +2,10 @@ use heck::{ToShoutySnakeCase, ToSnakeCase};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
     uwrite, uwriteln,
-    wit_parser::{Function, InterfaceId, Resolve, TypeId, TypeOwner, WorldId, WorldKey, TypeDefKind},
-    Files, Source, WorldGenerator, InterfaceGenerator,
+    wit_parser::{
+        Function, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
+    },
+    Files, InterfaceGenerator, Source, WorldGenerator,
 };
 
 mod wamr;
@@ -104,7 +106,7 @@ impl WorldGenerator for Cpp {
         gen.types(id);
         // }
 
-        for (_name, func) in resolve.interfaces[id].functions.iter() {
+        for (_name, _func) in resolve.interfaces[id].functions.iter() {
             // gen.import(resolve, func);
         }
         // gen.finish();
@@ -229,14 +231,16 @@ impl WorldGenerator for Cpp {
                         "int32_t guest_alloc(wasm_exec_env_t exec_env, uint32_t size);"
                     );
                 }
+            }
+        }
 
-                if self.dependencies.needs_resources {
-                    let namespace = namespace(resolve, TypeOwner::World(world_id));
-                    change_namespace(&mut h_namespace, &namespace, &mut h_str);
-                    if self.opts.host {
-                        uwriteln!(
-                            h_str,
-                            "class {RESOURCE_BASE_CLASS_NAME} {{
+        if self.dependencies.needs_resources {
+            let namespace = namespace(resolve, TypeOwner::World(world_id));
+            change_namespace(&mut h_namespace, &namespace, &mut h_str);
+            if self.opts.host {
+                uwriteln!(
+                    h_str,
+                    "class {RESOURCE_BASE_CLASS_NAME} {{
                             public:
                             int32_t id;
                             virtual ~{RESOURCE_BASE_CLASS_NAME}();
@@ -246,12 +250,12 @@ impl WorldGenerator for Cpp {
                         template <typename T> struct {OWNED_CLASS_NAME} {{
                             T *ptr;
                         }};"
-                        );
-                    } else {
-                        // somehow spaces get removed, newlines remain (problem occurs before const&)
-                        uwriteln!(
-                            h_str,
-                            "class {RESOURCE_BASE_CLASS_NAME} {{
+                );
+            } else {
+                // somehow spaces get removed, newlines remain (problem occurs before const&)
+                uwriteln!(
+                    h_str,
+                    "class {RESOURCE_BASE_CLASS_NAME} {{
                             static const int32_t invalid = -1;
                             protected:
                             int32_t handle;
@@ -279,12 +283,10 @@ impl WorldGenerator for Cpp {
                             {RESOURCE_BASE_CLASS_NAME}& operator=({RESOURCE_BASE_CLASS_NAME} 
                                 const&r) = delete;
                             }};"
-                        );
-                    }
-                }
+                );
             }
-            change_namespace(&mut h_namespace, &Vec::default(), &mut h_str);
         }
+        change_namespace(&mut h_namespace, &Vec::default(), &mut h_str);
 
         c_str.push_str(&self.c_src);
         h_str.push_str(&self.h_src);
@@ -391,9 +393,9 @@ struct CppInterfaceGenerator<'a> {
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
     name: &'a Option<&'a WorldKey>,
-//    public_anonymous_types: BTreeSet<TypeId>,
+    //    public_anonymous_types: BTreeSet<TypeId>,
     in_import: bool,
-//    export_funcs: Vec<(String, String)>,
+    //    export_funcs: Vec<(String, String)>,
 }
 
 impl CppInterfaceGenerator<'_> {
@@ -430,47 +432,121 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         self.resolve
     }
 
-    fn type_record(&mut self, id: TypeId, name: &str, record: &wit_bindgen_core::wit_parser::Record, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_record(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _record: &wit_bindgen_core::wit_parser::Record,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_resource(&mut self, id: TypeId, name: &str, docs: &wit_bindgen_core::wit_parser::Docs) {
-//        todo!()
+    fn type_resource(
+        &mut self,
+        id: TypeId,
+        _name: &str,
+        docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
+        self.gen.dependencies.needs_resources = true;
+        // let entry = self
+        //     .gen
+        //     .resources
+        //     .entry(dealias(self.resolve, id))
+        //     .or_default();
+        // if !self.in_import {
+        //     entry.direction = Direction::Export;
+        // }
+        // entry.docs = docs.clone();
     }
 
-    fn type_flags(&mut self, id: TypeId, name: &str, flags: &wit_bindgen_core::wit_parser::Flags, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_flags(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _flags: &wit_bindgen_core::wit_parser::Flags,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_tuple(&mut self, id: TypeId, name: &str, flags: &wit_bindgen_core::wit_parser::Tuple, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_tuple(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _flags: &wit_bindgen_core::wit_parser::Tuple,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_variant(&mut self, id: TypeId, name: &str, variant: &wit_bindgen_core::wit_parser::Variant, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_variant(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _variant: &wit_bindgen_core::wit_parser::Variant,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_option(&mut self, id: TypeId, name: &str, payload: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_option(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _payload: &wit_bindgen_core::wit_parser::Type,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_result(&mut self, id: TypeId, name: &str, result: &wit_bindgen_core::wit_parser::Result_, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_result(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _result: &wit_bindgen_core::wit_parser::Result_,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_enum(&mut self, id: TypeId, name: &str, enum_: &wit_bindgen_core::wit_parser::Enum, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_enum(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _enum_: &wit_bindgen_core::wit_parser::Enum,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_alias(&mut self, id: TypeId, name: &str, ty: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_alias(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _ty: &wit_bindgen_core::wit_parser::Type,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_list(&mut self, id: TypeId, name: &str, ty: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_list(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _ty: &wit_bindgen_core::wit_parser::Type,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 
-    fn type_builtin(&mut self, id: TypeId, name: &str, ty: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_builtin(
+        &mut self,
+        _id: TypeId,
+        _name: &str,
+        _ty: &wit_bindgen_core::wit_parser::Type,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         todo!()
     }
 }

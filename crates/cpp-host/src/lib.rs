@@ -6,8 +6,7 @@ use std::fmt::Write;
 use std::mem;
 use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, WasmSignature, WasmType};
 use wit_bindgen_core::{
-    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, Types,
-    WorldGenerator,
+    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, Types, WorldGenerator,
 };
 use wit_component::StringEncoding;
 
@@ -2816,14 +2815,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(format!("{}!=0", operands[0]));
             }
 
-            Instruction::FlagsLower {  .. } => {
+            Instruction::FlagsLower { .. } => {
                 // let tmp = self.tmp();
                 // self.push_str(&format!("auto flags{} = {};\n", tmp, operands[0]));
                 // for i in 0..flags.repr().count() {
                 //     results.push(format!("(flags{}.bits() >> {}) as i32", tmp, i * 32));
                 // }
             }
-            Instruction::FlagsLift {   .. } => {
+            Instruction::FlagsLift { .. } => {
                 // let repr = RustFlagsRepr::new(flags);
                 // let name = self.gen.type_path(*ty, true);
                 // let mut result = format!("{name}::empty()");
@@ -2891,10 +2890,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // );
             }
 
-            Instruction::RecordLower {   .. } => {
+            Instruction::RecordLower { .. } => {
                 // self.record_lower(*ty, record, &operands[0], results);
             }
-            Instruction::RecordLift {   .. } => {
+            Instruction::RecordLift { .. } => {
                 // let mut result = self.typename_lift(*ty);
                 // result.push_str("{");
                 // for (_field, val) in record.fields.iter().zip(operands) {
@@ -2907,7 +2906,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::TupleLower {  .. } => {
+            Instruction::TupleLower { .. } => {
                 // self.tuple_lower(tuple, &operands[0], results);
             }
             Instruction::TupleLift { .. } => {
@@ -2942,7 +2941,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // self.push_str("};\n");
             }
 
-            Instruction::VariantLift { variant,  .. } => {
+            Instruction::VariantLift { variant, .. } => {
                 let mut result = String::new();
                 result.push_str("{");
 
@@ -3074,7 +3073,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // ));
             }
 
-            Instruction::EnumLower {   .. } => {
+            Instruction::EnumLower { .. } => {
                 // let mut result = format!("match {} {{\n", operands[0]);
                 // let name = self.gen.type_path(*ty, true);
                 // for (i, case) in enum_.cases.iter().enumerate() {
@@ -3122,7 +3121,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::ListCanonLower {  .. } => {
+            Instruction::ListCanonLower { .. } => {
                 // let tmp = self.tmp();
                 // let val = format!("vec{}", tmp);
                 // let ptr = format!("ptr{}", tmp);
@@ -3181,7 +3180,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::ListLower { element: _, realloc: _ } => {
+            Instruction::ListLower {
+                element: _,
+                realloc: _,
+            } => {
                 // let body = self.blocks.pop().unwrap();
                 // let tmp = self.tmp();
                 // let vec = format!("vec{tmp}");
@@ -3222,7 +3224,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // }
             }
 
-            Instruction::ListLift {  .. } => {
+            Instruction::ListLift { .. } => {
                 // let body = self.blocks.pop().unwrap();
                 // let tmp = self.tmp();
                 // let size = self.gen.gen.sizes.size(element);
@@ -3274,7 +3276,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // self.push_str(");\n");
             }
 
-            Instruction::CallInterface {  .. } => {
+            Instruction::CallInterface { .. } => {
                 // self.let_results(func.results.len(), results);
                 // match &func.kind {
                 //     FunctionKind::Freestanding => {
@@ -3315,7 +3317,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // self.push_str(";\n");
             }
 
-            Instruction::Return { amt,  .. } => {
+            Instruction::Return { amt, .. } => {
                 self.emit_cleanup();
                 match amt {
                     0 => {}

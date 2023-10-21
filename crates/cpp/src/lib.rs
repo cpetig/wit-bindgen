@@ -74,50 +74,50 @@ impl Cpp {
 impl WorldGenerator for Cpp {
     fn import_interface(
         &mut self,
-        resolve: &Resolve,
-        name: &WorldKey,
-        iface: InterfaceId,
-        files: &mut Files,
+        _resolve: &Resolve,
+        _name: &WorldKey,
+        _iface: InterfaceId,
+        _files: &mut Files,
     ) {
         //todo!()
     }
 
     fn export_interface(
         &mut self,
-        resolve: &Resolve,
-        name: &WorldKey,
-        iface: InterfaceId,
-        files: &mut Files,
+        _resolve: &Resolve,
+        _name: &WorldKey,
+        _iface: InterfaceId,
+        _files: &mut Files,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
     fn import_funcs(
         &mut self,
-        resolve: &Resolve,
-        world: WorldId,
-        funcs: &[(&str, &Function)],
-        files: &mut Files,
+        _resolve: &Resolve,
+        _world: WorldId,
+        _funcs: &[(&str, &Function)],
+        _files: &mut Files,
     ) {
         todo!()
     }
 
     fn export_funcs(
         &mut self,
-        resolve: &Resolve,
-        world: WorldId,
-        funcs: &[(&str, &Function)],
-        files: &mut Files,
+        _resolve: &Resolve,
+        _world: WorldId,
+        _funcs: &[(&str, &Function)],
+        _files: &mut Files,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
     fn import_types(
         &mut self,
-        resolve: &Resolve,
-        world: WorldId,
-        types: &[(&str, TypeId)],
-        files: &mut Files,
+        _resolve: &Resolve,
+        _world: WorldId,
+        _types: &[(&str, TypeId)],
+        _files: &mut Files,
     ) {
         todo!()
     }
@@ -347,7 +347,7 @@ fn change_namespace(current: &mut Vec<String>, target: &Vec<String>, output: &mu
             break;
         }
     }
-    for i in same..current.len() {
+    for _i in same..current.len() {
         uwrite!(output, "}}");
     }
     current.truncate(same);

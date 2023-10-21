@@ -4,9 +4,9 @@ use heck::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::mem;
-use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmSignature, WasmType};
+use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, WasmSignature, WasmType};
 use wit_bindgen_core::{
-    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, TypeInfo, Types,
+    uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Ns, Types,
     WorldGenerator,
 };
 use wit_component::StringEncoding;
@@ -1852,7 +1852,7 @@ impl InterfaceGenerator<'_> {
                     .c_adapters(&format!("  return (new ::{func_ns}({param}))->id;\n"));
             }
             FunctionKind::Method(_) => {
-                let mut world_name = self.gen.world.to_snake_case();
+                let world_name = self.gen.world.to_snake_case();
                 if func.results.len() > 0 {
                     self.src.c_adapters("  auto call_result = ");
                 } else {
@@ -2673,7 +2673,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, _size: usize, _align: usize) -> String {
         todo!()
         // let tmp = self.tmp();
 
@@ -2706,7 +2706,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
     fn emit(
         &mut self,
-        resolve: &Resolve,
+        _resolve: &Resolve,
         inst: &Instruction<'_>,
         operands: &mut Vec<String>,
         results: &mut Vec<String>,
@@ -2805,7 +2805,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // ));
             }
 
-            Instruction::Bitcasts { casts } => {
+            Instruction::Bitcasts { casts: _ } => {
                 // wit_bindgen_rust::bitcast(casts, operands, results)
             }
 
@@ -2816,14 +2816,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(format!("{}!=0", operands[0]));
             }
 
-            Instruction::FlagsLower { flags, .. } => {
+            Instruction::FlagsLower {  .. } => {
                 // let tmp = self.tmp();
                 // self.push_str(&format!("auto flags{} = {};\n", tmp, operands[0]));
                 // for i in 0..flags.repr().count() {
                 //     results.push(format!("(flags{}.bits() >> {}) as i32", tmp, i * 32));
                 // }
             }
-            Instruction::FlagsLift { flags, ty, .. } => {
+            Instruction::FlagsLift {   .. } => {
                 // let repr = RustFlagsRepr::new(flags);
                 // let name = self.gen.type_path(*ty, true);
                 // let mut result = format!("{name}::empty()");
@@ -2857,8 +2857,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::HandleLift { handle, .. } => {
-                let op = &operands[0];
-                let (prefix, resource, _owned) = match handle {
+                let _op = &operands[0];
+                let (_prefix, _resource, _owned) = match handle {
                     Handle::Borrow(resource) => ("&", resource, false),
                     Handle::Own(resource) => ("", resource, true),
                 };
@@ -2891,10 +2891,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // );
             }
 
-            Instruction::RecordLower { ty, record, .. } => {
+            Instruction::RecordLower {   .. } => {
                 // self.record_lower(*ty, record, &operands[0], results);
             }
-            Instruction::RecordLift { ty, record, .. } => {
+            Instruction::RecordLift {   .. } => {
                 // let mut result = self.typename_lift(*ty);
                 // result.push_str("{");
                 // for (_field, val) in record.fields.iter().zip(operands) {
@@ -2907,7 +2907,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::TupleLower { tuple, .. } => {
+            Instruction::TupleLower {  .. } => {
                 // self.tuple_lower(tuple, &operands[0], results);
             }
             Instruction::TupleLift { .. } => {
@@ -2917,9 +2917,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::VariantPayloadName => results.push("e".to_string()),
 
             Instruction::VariantLower {
-                variant,
-                results: result_types,
-                ty,
+                variant: _,
+                results: _result_types,
+                ty: _,
                 ..
             } => {
                 // let blocks = self
@@ -2942,12 +2942,12 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // self.push_str("};\n");
             }
 
-            Instruction::VariantLift { variant, ty, .. } => {
+            Instruction::VariantLift { variant,  .. } => {
                 let mut result = String::new();
                 result.push_str("{");
 
                 let named_enum = variant.cases.iter().all(|c| c.ty.is_none());
-                let blocks = self
+                let _blocks = self
                     .blocks
                     .drain(self.blocks.len() - variant.cases.len()..)
                     .collect::<Vec<_>>();
@@ -3074,7 +3074,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // ));
             }
 
-            Instruction::EnumLower { enum_, ty, .. } => {
+            Instruction::EnumLower {   .. } => {
                 // let mut result = format!("match {} {{\n", operands[0]);
                 // let name = self.gen.type_path(*ty, true);
                 // for (i, case) in enum_.cases.iter().enumerate() {
@@ -3122,7 +3122,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::ListCanonLower { realloc, .. } => {
+            Instruction::ListCanonLower {  .. } => {
                 // let tmp = self.tmp();
                 // let val = format!("vec{}", tmp);
                 // let ptr = format!("ptr{}", tmp);
@@ -3151,7 +3151,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::StringLower { realloc } => {
+            Instruction::StringLower { realloc: _ } => {
                 // let tmp = self.tmp();
                 // let val = format!("vec{}", tmp);
                 // let ptr = format!("ptr{}", tmp);
@@ -3181,7 +3181,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // results.push(result);
             }
 
-            Instruction::ListLower { element, realloc } => {
+            Instruction::ListLower { element: _, realloc: _ } => {
                 // let body = self.blocks.pop().unwrap();
                 // let tmp = self.tmp();
                 // let vec = format!("vec{tmp}");
@@ -3222,7 +3222,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // }
             }
 
-            Instruction::ListLift { element, .. } => {
+            Instruction::ListLift {  .. } => {
                 // let body = self.blocks.pop().unwrap();
                 // let tmp = self.tmp();
                 // let size = self.gen.gen.sizes.size(element);
@@ -3256,7 +3256,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::IterBasePointer => results.push("base".to_string()),
 
             Instruction::CallWasm { name, sig, .. } => {
-                let func = self.declare_import(
+                let _func = self.declare_import(
                     self.gen.wasm_import_module.unwrap(),
                     name,
                     &sig.params,
@@ -3274,7 +3274,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // self.push_str(");\n");
             }
 
-            Instruction::CallInterface { func, .. } => {
+            Instruction::CallInterface {  .. } => {
                 // self.let_results(func.results.len(), results);
                 // match &func.kind {
                 //     FunctionKind::Freestanding => {
@@ -3315,7 +3315,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // self.push_str(";\n");
             }
 
-            Instruction::Return { amt, func, .. } => {
+            Instruction::Return { amt,  .. } => {
                 self.emit_cleanup();
                 match amt {
                     0 => {}
@@ -3370,37 +3370,37 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::F64Load { offset } => {
                 results.push(format!("*((double const*)({} + {}))", operands[0], offset));
             }
-            Instruction::I32Store { offset } => {
+            Instruction::I32Store { offset: _ } => {
                 // self.push_str(&format!(
                 //     "*((int32_t*)({} + {})) = {};\n",
                 //     operands[1], offset, operands[0]
                 // ));
             }
-            Instruction::I32Store8 { offset } => {
+            Instruction::I32Store8 { offset: _ } => {
                 // self.push_str(&format!(
                 //     "*((int8_t*)({} + {})) = int8_t({});\n",
                 //     operands[1], offset, operands[0]
                 // ));
             }
-            Instruction::I32Store16 { offset } => {
+            Instruction::I32Store16 { offset: _ } => {
                 // self.push_str(&format!(
                 //     "*((uint16_t*)({} + {})) = uint16_t({});\n",
                 //     operands[1], offset, operands[0]
                 // ));
             }
-            Instruction::I64Store { offset } => {
+            Instruction::I64Store { offset: _ } => {
                 // self.push_str(&format!(
                 //     "*((int64_t*)({} + {})) = {};\n",
                 //     operands[1], offset, operands[0]
                 // ));
             }
-            Instruction::F32Store { offset } => {
+            Instruction::F32Store { offset: _ } => {
                 // self.push_str(&format!(
                 //     "*((float*)({} + {})) = {};\n",
                 //     operands[1], offset, operands[0]
                 // ));
             }
-            Instruction::F64Store { offset } => {
+            Instruction::F64Store { offset: _ } => {
                 // self.push_str(&format!(
                 //     "*((double*)({} + {})) = {};\n",
                 //     operands[1], offset, operands[0]
@@ -3409,7 +3409,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::Malloc { .. } => unimplemented!(),
 
-            Instruction::GuestDeallocate { size, align } => {
+            Instruction::GuestDeallocate { size: _, align: _ } => {
                 // self.push_str(&format!(
                 //     "wit_bindgen::rt::dealloc({}, {}, {});\n",
                 //     operands[0], size, align
@@ -3442,7 +3442,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.src.push_str("}\n");
             }
 
-            Instruction::GuestDeallocateList { element } => {
+            Instruction::GuestDeallocateList { element: _ } => {
                 // let body = self.blocks.pop().unwrap();
                 // let tmp = self.tmp();
                 // let size = self.gen.gen.sizes.size(element);
@@ -3727,7 +3727,7 @@ fn push_ty_name(
                 }
                 TypeDefKind::Unknown => unreachable!(),
                 TypeDefKind::Resource => todo!(),
-                TypeDefKind::Handle(h) => {
+                TypeDefKind::Handle(_h) => {
                     if !opts.guest_header {
                         src.push_str("int32_t");
                     } else {

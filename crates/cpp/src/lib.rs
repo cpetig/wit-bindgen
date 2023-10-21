@@ -248,7 +248,7 @@ impl WorldGenerator for Cpp {
 
         if self.dependencies.needs_resources {
             let namespace = namespace(resolve, &TypeOwner::World(world_id));
-            change_namespace(&mut h_str, &namespace);
+            h_str.change_namespace(&namespace);
             if self.opts.host {
                 uwriteln!(
                     h_str.src,
@@ -298,11 +298,11 @@ impl WorldGenerator for Cpp {
                 );
             }
         }
-        change_namespace(&mut h_str, &Vec::default());
+        h_str.change_namespace(&Vec::default());
 
-        change_namespace(&mut self.c_src, &Vec::default());
+        self.c_src.change_namespace(&Vec::default());
         c_str.src.push_str(&self.c_src.src);
-        change_namespace(&mut self.h_src, &Vec::default());
+        self.h_src.change_namespace(&Vec::default());
         h_str.src.push_str(&self.h_src.src);
         // c_str.push_str(&self.src.c_fns);
 
@@ -385,27 +385,29 @@ fn namespace(resolve: &Resolve, owner: &TypeOwner) -> Vec<String> {
     result
 }
 
-fn change_namespace(current: &mut SourceWithState, target: &Vec<String>) {
-    let mut same = 0;
-    // itertools::fold_while?
-    for (a, b) in current.namespace.iter().zip(target.iter()) {
-        if a == b {
-            same += 1;
-        } else {
-            break;
+impl SourceWithState {
+    fn change_namespace(&mut self, target: &Vec<String>) {
+        let mut same = 0;
+        // itertools::fold_while?
+        for (a, b) in self.namespace.iter().zip(target.iter()) {
+            if a == b {
+                same += 1;
+            } else {
+                break;
+            }
         }
-    }
-    for _i in same..current.namespace.len() {
-        uwrite!(current.src, "}}");
-    }
-    if same != current.namespace.len() {
-        // finish closing brackets by a newline
-        uwriteln!(current.src, "");
-    }
-    current.namespace.truncate(same);
-    for i in target.iter().skip(same) {
-        uwrite!(current.src, "namespace {} {{", i);
-        current.namespace.push(i.clone());
+        for _i in same..self.namespace.len() {
+            uwrite!(self.src, "}}");
+        }
+        if same != self.namespace.len() {
+            // finish closing brackets by a newline
+            uwriteln!(self.src, "");
+        }
+        self.namespace.truncate(same);
+        for i in target.iter().skip(same) {
+            uwrite!(self.src, "namespace {} {{", i);
+            self.namespace.push(i.clone());
+        }
     }
 }
 
@@ -471,7 +473,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             world_name.push_str("::");
             let funcs = self.resolve.interfaces[intf].functions.values();
             let namespc = namespace(self.resolve, &type_.owner);
-            change_namespace(&mut self.gen.h_src, &namespc);
+            self.gen.h_src.change_namespace(&namespc);
 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();

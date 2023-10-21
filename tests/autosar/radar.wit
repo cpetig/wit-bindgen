@@ -1,33 +1,8 @@
 // package autosar:fusion
 
-interface radar {
-    use types.{error-code}
-    use core.{instance-specifier}
+interface com-add {
     use com.{instance-identifier}
-    use wasi:poll/poll.{pollable}
     use com.{profile-check-status}
-
-    record position {
-        x: s32,
-        y: s32,
-        z: s32,
-    }
-    record radar-objects {
-        active: bool,
-        object-vector: list<u8>,
-    }
-
-    record adjust-output {
-        success: bool, 
-        effective-position: position,
-    }
-
-    enum fusion-variant {
-        china, usa, europe, russia,
-    }
-    record calibrate-output {
-        call-result: bool
-    }
 
     resource proxy-handle {
         get-instance-id: func() -> instance-identifier
@@ -39,60 +14,120 @@ interface radar {
         get-profile-check-status: func() -> profile-check-status
     }
 
-    resource future-result-adjust-output-error-code {
-        subscribe: func() -> pollable
-        value: func() -> result<adjust-output, error-code>
-    }
-    resource future-result-calibrate-output-error-code {
-        subscribe: func() -> pollable
-        value: func() -> result<calibrate-output, error-code>
-    }
-    resource future-u32 {
-        subscribe: func() -> pollable
-        value: func() -> u32
-    }
-    resource future-u16 {
-        subscribe: func() -> pollable
-        value: func() -> u16
-    }
-    resource stream-proxy-handle {
-        subscribe: func() -> pollable
-        value: func() -> option<proxy-handle>
+    resource stream-control {
+        suspend: func()
+        resume: func()
+        abort: static func(self: own<stream-control>)
     }
 
-    resource stream-sample-ptr {
-        subscribe: func() -> pollable
-        value: func() -> option<sample-ptr>
+    resource abort-handle {
+        abort: static func(self: own<abort-handle>)
     }
+
+    resource resume-handle {
+        resume: static func(self: own<resume-handle>)
+    }
+}
+
+interface radar-types {
+    record position {
+        x: s32,
+        y: s32,
+        z: s32,
+    }
+    record radar-objects {
+        active: bool,
+        object-vector: list<u8>,
+    }
+    enum fusion-variant {
+        china, usa, europe, russia,
+    }
+
+    record adjust-output {
+        success: bool, 
+        effective-position: position,
+    }
+    record calibrate-output {
+        call-result: bool
+    }
+}
+
+interface radar-callbacks {
+    use types.{error-code}
+    use radar-types.{adjust-output, calibrate-output}
+    use com-add.{proxy-handle, sample-ptr}
+
+    resource promise-result-adjust-output-error-code {
+        ready: static func(self: own<promise-result-adjust-output-error-code>, value: result<adjust-output, error-code>)
+    }
+    resource promise-result-calibrate-output-error-code {
+        ready: static func(self: own<promise-result-calibrate-output-error-code>, value: result<calibrate-output, error-code>)
+    }
+    resource promise-u32 {
+        ready: static func(self: own<promise-u32>, value: u32)
+    }
+    resource promise-u16 {
+        ready: static func(self: own<promise-u16>, value: u16)
+    }
+
+    resource stream-proxy-handle {
+        // returns the value if the queue is filled up (backpressure)
+        ready: func(value: option<own<proxy-handle>>) -> option<tuple<own<proxy-handle>, resume-handle>>
+    }
+    resource stream-sample-ptr {
+        ready: func(value: option<own<sample-ptr>>) -> option<tuple<own<sample-ptr>, resume-handle>>
+    }
+}
+
+interface radar {
+    use types.{error-code}
+    use core.{instance-specifier}
+    use com-add.{proxy-handle, stream-control}
+    use radar-callbacks.{promise-result-adjust-output-error-code, promise-result-calibrate-output-error-code, stream-proxy-handle, stream-sample-ptr, promise-u16, promise-u32}
+    use radar-types.{position, fusion-variant}
 
     resource proxy {
         constructor(handle: borrow<proxy-handle>)
 
-        adjust: func (target-position: position) -> future-result-adjust-output-error-code
-        calibrate: func (configuration: string, radar-variant: fusion-variant) -> future-result-calibrate-output-error-code
+        adjust: func (promise: promise-result-adjust-output-error-code, target-position: position) -> option<abort-handle>
+        calibrate: func (promise: promise-result-calibrate-output-error-code, configuration: string, radar-variant: fusion-variant) -> option<abort-handle>
         echo: func (text: string)
     
-        subscribe-brake-event: func (max-sample-count: u32) -> result<stream-sample-ptr, error-code>
-        subscribe-parking-brake-event: func (max-sample-count: u32) -> result<stream-sample-ptr, error-code>
+        subscribe-brake-event: func (max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+        subscribe-parking-brake-event: func (max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
     
         // field
-        get-update-rate: func() -> future-u32
-        set-update-rate: func(value: u32) -> future-u32
-        subscribe-update-rate: func(max-sample-count: u32) -> result<stream-sample-ptr, error-code>
-        subscribe-front-object-distance: func(max-sample-count: u32) -> result<stream-sample-ptr, error-code>
-        get-rear-object-distance: func() -> future-u16
-        set-object-detection-limit: func(value: u16) -> future-u16
+        get-update-rate: func(promise: promise-u32) -> option<abort-handle>
+        set-update-rate: func(promise: promise-u32, value: u32) -> option<abort-handle>
+        subscribe-update-rate: func(max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+        subscribe-front-object-distance: func(max-sample-count: u32, receiver: stream-sample-ptr) -> result<stream-control, error-code>
+        get-rear-object-distance: func(promise: promise-u16) -> option<abort-handle>
+        set-object-detection-limit: func(promise: promise-u16, value: u16) -> option<abort-handle>
     }
 
-    start-find-service: func(spec: instance-specifier) -> stream-proxy-handle
+    start-find-service: func(spec: borrow<instance-specifier>, receiver: stream-proxy-handle) -> option<stream-control>
 }
 
-world fusion {
-    import radar
-    
+interface service {
+    use radar.{proxy}
+    use core.{instance-specifier}
+    enum method-call-processing-mode {
+        poll, event, event-single-thread,
+    }
+    // perhaps use own here?
+    offer-service: func(service: borrow<proxy>, spec: borrow<instance-specifier>, mode: method-call-processing-mode)
+    stop-offer-service: func (service: borrow<proxy>)
+}
+
+world radar-world {
+    export radar
+    import radar-callbacks
+
     import core
     import log
     import com
     import exec
+    import service
     import wasi:threads/threads
+    export wasi:cli/run
 }

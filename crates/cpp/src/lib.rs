@@ -2,8 +2,8 @@ use heck::{ToShoutySnakeCase, ToSnakeCase};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
     uwrite, uwriteln,
-    wit_parser::{Function, InterfaceId, Resolve, TypeId, TypeOwner, WorldId, WorldKey},
-    Files, Source, WorldGenerator,
+    wit_parser::{Function, InterfaceId, Resolve, TypeId, TypeOwner, WorldId, WorldKey, TypeDefKind},
+    Files, Source, WorldGenerator, InterfaceGenerator,
 };
 
 mod wamr;
@@ -69,17 +69,45 @@ impl Cpp {
     fn include(&mut self, s: &str) {
         self.includes.push(s.to_string());
     }
+
+    fn interface<'a>(
+        &'a mut self,
+        resolve: &'a Resolve,
+        name: &'a Option<&'a WorldKey>,
+        in_import: bool,
+    ) -> CppInterfaceGenerator<'a> {
+        CppInterfaceGenerator {
+            src: Source::default(),
+            gen: self,
+            resolve,
+            interface: None,
+            name,
+            // public_anonymous_types: BTreeSet::new(),
+            in_import,
+            // export_funcs: Vec::new(),
+        }
+    }
 }
 
 impl WorldGenerator for Cpp {
     fn import_interface(
         &mut self,
-        _resolve: &Resolve,
-        _name: &WorldKey,
-        _iface: InterfaceId,
+        resolve: &Resolve,
+        name: &WorldKey,
+        id: InterfaceId,
         _files: &mut Files,
     ) {
-        //todo!()
+        let binding = Some(name);
+        let mut gen = self.interface(resolve, &binding, true);
+        gen.interface = Some(id);
+        // if gen.gen.interfaces_with_types_printed.insert(id) {
+        gen.types(id);
+        // }
+
+        for (_name, func) in resolve.interfaces[id].functions.iter() {
+            // gen.import(resolve, func);
+        }
+        // gen.finish();
     }
 
     fn export_interface(
@@ -354,5 +382,95 @@ fn change_namespace(current: &mut Vec<String>, target: &Vec<String>, output: &mu
     for i in target.iter().skip(same) {
         uwrite!(output, "namespace {} {{", i);
         current.push(i.clone());
+    }
+}
+
+struct CppInterfaceGenerator<'a> {
+    src: Source,
+    gen: &'a mut Cpp,
+    resolve: &'a Resolve,
+    interface: Option<InterfaceId>,
+    name: &'a Option<&'a WorldKey>,
+//    public_anonymous_types: BTreeSet<TypeId>,
+    in_import: bool,
+//    export_funcs: Vec<(String, String)>,
+}
+
+impl CppInterfaceGenerator<'_> {
+    fn types(&mut self, iface: InterfaceId) {
+        let iface = &self.resolve().interfaces[iface];
+        for (name, id) in iface.types.iter() {
+            self.define_type(name, *id);
+        }
+    }
+
+    fn define_type(&mut self, name: &str, id: TypeId) {
+        let ty = &self.resolve().types[id];
+        match &ty.kind {
+            TypeDefKind::Record(record) => self.type_record(id, name, record, &ty.docs),
+            TypeDefKind::Resource => self.type_resource(id, name, &ty.docs),
+            TypeDefKind::Flags(flags) => self.type_flags(id, name, flags, &ty.docs),
+            TypeDefKind::Tuple(tuple) => self.type_tuple(id, name, tuple, &ty.docs),
+            TypeDefKind::Enum(enum_) => self.type_enum(id, name, enum_, &ty.docs),
+            TypeDefKind::Variant(variant) => self.type_variant(id, name, variant, &ty.docs),
+            TypeDefKind::Option(t) => self.type_option(id, name, t, &ty.docs),
+            TypeDefKind::Result(r) => self.type_result(id, name, r, &ty.docs),
+            TypeDefKind::List(t) => self.type_list(id, name, t, &ty.docs),
+            TypeDefKind::Type(t) => self.type_alias(id, name, t, &ty.docs),
+            TypeDefKind::Future(_) => todo!("generate for future"),
+            TypeDefKind::Stream(_) => todo!("generate for stream"),
+            TypeDefKind::Handle(_) => todo!("generate for handle"),
+            TypeDefKind::Unknown => unreachable!(),
+        }
+    }
+}
+
+impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> {
+    fn resolve(&self) -> &'a Resolve {
+        self.resolve
+    }
+
+    fn type_record(&mut self, id: TypeId, name: &str, record: &wit_bindgen_core::wit_parser::Record, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_resource(&mut self, id: TypeId, name: &str, docs: &wit_bindgen_core::wit_parser::Docs) {
+//        todo!()
+    }
+
+    fn type_flags(&mut self, id: TypeId, name: &str, flags: &wit_bindgen_core::wit_parser::Flags, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_tuple(&mut self, id: TypeId, name: &str, flags: &wit_bindgen_core::wit_parser::Tuple, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_variant(&mut self, id: TypeId, name: &str, variant: &wit_bindgen_core::wit_parser::Variant, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_option(&mut self, id: TypeId, name: &str, payload: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_result(&mut self, id: TypeId, name: &str, result: &wit_bindgen_core::wit_parser::Result_, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_enum(&mut self, id: TypeId, name: &str, enum_: &wit_bindgen_core::wit_parser::Enum, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_alias(&mut self, id: TypeId, name: &str, ty: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_list(&mut self, id: TypeId, name: &str, ty: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
+    }
+
+    fn type_builtin(&mut self, id: TypeId, name: &str, ty: &wit_bindgen_core::wit_parser::Type, docs: &wit_bindgen_core::wit_parser::Docs) {
+        todo!()
     }
 }

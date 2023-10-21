@@ -1,12 +1,12 @@
 use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
-    abi::{Bindgen, WasmType},
     abi::{self, AbiVariant, LiftLower},
+    abi::{Bindgen, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Function, FunctionKind, Handle, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner,
-        WorldId, WorldKey,
+        Function, FunctionKind, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner, WorldId,
+        WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -491,7 +491,12 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         todo!()
     }
 
-    fn type_resource(&mut self, id: TypeId, name: &str, docs: &wit_bindgen_core::wit_parser::Docs) {
+    fn type_resource(
+        &mut self,
+        id: TypeId,
+        name: &str,
+        _docs: &wit_bindgen_core::wit_parser::Docs,
+    ) {
         let type_ = &self.resolve.types[id];
         if let TypeOwner::Interface(intf) = type_.owner {
             let mut world_name = self.gen.world.to_snake_case();
@@ -542,7 +547,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let resource = self.resolve.types[id].name.as_deref().unwrap();
                 let resource_snake = resource.to_snake_case();
                 let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
-                let wasm_name = format!("[resource-drop]{resource}");
+                let _wasm_name = format!("[resource-drop]{resource}");
                 uwriteln!(self.gen.c_src.src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
                 // let remember = HostFunction {
                 //     wasm_name,
@@ -676,7 +681,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
 
     fn emit(
         &mut self,
-        resolve: &Resolve,
+        _resolve: &Resolve,
         inst: &wit_bindgen_core::abi::Instruction<'_>,
         operands: &mut Vec<Self::Operand>,
         results: &mut Vec<Self::Operand>,
@@ -689,7 +694,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         match inst {
             abi::Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
             abi::Instruction::I32Const { val } => results.push(format!("(int32_t({}))", val)),
-            abi::Instruction::Bitcasts { casts } => todo!(),
+            abi::Instruction::Bitcasts { casts: _ } => todo!(),
             abi::Instruction::ConstZero { tys } => {
                 for ty in tys.iter() {
                     match ty {
@@ -700,20 +705,20 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                 }
             }
-            abi::Instruction::I32Load { offset } => todo!(),
-            abi::Instruction::I32Load8U { offset } => todo!(),
-            abi::Instruction::I32Load8S { offset } => todo!(),
-            abi::Instruction::I32Load16U { offset } => todo!(),
-            abi::Instruction::I32Load16S { offset } => todo!(),
-            abi::Instruction::I64Load { offset } => todo!(),
-            abi::Instruction::F32Load { offset } => todo!(),
-            abi::Instruction::F64Load { offset } => todo!(),
-            abi::Instruction::I32Store { offset } => todo!(),
-            abi::Instruction::I32Store8 { offset } => todo!(),
-            abi::Instruction::I32Store16 { offset } => todo!(),
-            abi::Instruction::I64Store { offset } => todo!(),
-            abi::Instruction::F32Store { offset } => todo!(),
-            abi::Instruction::F64Store { offset } => todo!(),
+            abi::Instruction::I32Load { offset: _ } => todo!(),
+            abi::Instruction::I32Load8U { offset: _ } => todo!(),
+            abi::Instruction::I32Load8S { offset: _ } => todo!(),
+            abi::Instruction::I32Load16U { offset: _ } => todo!(),
+            abi::Instruction::I32Load16S { offset: _ } => todo!(),
+            abi::Instruction::I64Load { offset: _ } => todo!(),
+            abi::Instruction::F32Load { offset: _ } => todo!(),
+            abi::Instruction::F64Load { offset: _ } => todo!(),
+            abi::Instruction::I32Store { offset: _ } => todo!(),
+            abi::Instruction::I32Store8 { offset: _ } => todo!(),
+            abi::Instruction::I32Store16 { offset: _ } => todo!(),
+            abi::Instruction::I64Store { offset: _ } => todo!(),
+            abi::Instruction::F32Store { offset: _ } => todo!(),
+            abi::Instruction::F64Store { offset: _ } => todo!(),
             abi::Instruction::I32FromChar
             | abi::Instruction::I32FromBool
             | abi::Instruction::I32FromU8
@@ -737,21 +742,43 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::Float32FromF32 => todo!(),
             abi::Instruction::Float64FromF64 => todo!(),
             abi::Instruction::BoolFromI32 => top_as("bool"),
-            abi::Instruction::ListCanonLower { element, realloc } => todo!(),
-            abi::Instruction::StringLower { realloc } => todo!(),
-            abi::Instruction::ListLower { element, realloc } => todo!(),
-            abi::Instruction::ListCanonLift { element, ty } => todo!(),
+            abi::Instruction::ListCanonLower {
+                element: _,
+                realloc: _,
+            } => todo!(),
+            abi::Instruction::StringLower { realloc: _ } => todo!(),
+            abi::Instruction::ListLower {
+                element: _,
+                realloc: _,
+            } => todo!(),
+            abi::Instruction::ListCanonLift { element: _, ty: _ } => todo!(),
             abi::Instruction::StringLift => todo!(),
-            abi::Instruction::ListLift { element, ty } => todo!(),
-            abi::Instruction::IterElem { element } => todo!(),
+            abi::Instruction::ListLift { element: _, ty: _ } => todo!(),
+            abi::Instruction::IterElem { element: _ } => todo!(),
             abi::Instruction::IterBasePointer => todo!(),
-            abi::Instruction::RecordLower { record, name, ty } => todo!(),
-            abi::Instruction::RecordLift { record, name, ty } => todo!(),
-            abi::Instruction::HandleLower { handle, name, ty } => {
+            abi::Instruction::RecordLower {
+                record: _,
+                name: _,
+                ty: _,
+            } => todo!(),
+            abi::Instruction::RecordLift {
+                record: _,
+                name: _,
+                ty: _,
+            } => todo!(),
+            abi::Instruction::HandleLower {
+                handle: _,
+                name: _,
+                ty: _,
+            } => {
                 let op = &operands[0];
                 results.push(format!("({op}).into_handle()"));
             }
-            abi::Instruction::HandleLift { handle, name, ty } => {
+            abi::Instruction::HandleLift {
+                handle: _,
+                name: _,
+                ty: _,
+            } => {
                 let op = &operands[0];
                 // let (prefix, resource, _owned) = match handle {
                 //     Handle::Borrow(resource) => ("&", resource, false),
@@ -761,33 +788,53 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
 
                 results.push(op.clone());
             }
-            abi::Instruction::TupleLower { tuple, ty } => todo!(),
-            abi::Instruction::TupleLift { tuple, ty } => todo!(),
-            abi::Instruction::FlagsLower { flags, name, ty } => todo!(),
-            abi::Instruction::FlagsLift { flags, name, ty } => todo!(),
+            abi::Instruction::TupleLower { tuple: _, ty: _ } => todo!(),
+            abi::Instruction::TupleLift { tuple: _, ty: _ } => todo!(),
+            abi::Instruction::FlagsLower {
+                flags: _,
+                name: _,
+                ty: _,
+            } => todo!(),
+            abi::Instruction::FlagsLift {
+                flags: _,
+                name: _,
+                ty: _,
+            } => todo!(),
             abi::Instruction::VariantPayloadName => todo!(),
             abi::Instruction::VariantLower {
-                variant,
-                name,
-                ty,
-                results,
+                variant: _,
+                name: _,
+                ty: _,
+                results: _,
             } => todo!(),
-            abi::Instruction::VariantLift { variant, name, ty } => todo!(),
-            abi::Instruction::EnumLower { enum_, name, ty } => todo!(),
-            abi::Instruction::EnumLift { enum_, name, ty } => todo!(),
+            abi::Instruction::VariantLift {
+                variant: _,
+                name: _,
+                ty: _,
+            } => todo!(),
+            abi::Instruction::EnumLower {
+                enum_: _,
+                name: _,
+                ty: _,
+            } => todo!(),
+            abi::Instruction::EnumLift {
+                enum_: _,
+                name: _,
+                ty: _,
+            } => todo!(),
             abi::Instruction::OptionLower {
-                payload,
-                ty,
-                results,
+                payload: _,
+                ty: _,
+                results: _,
             } => todo!(),
-            abi::Instruction::OptionLift { payload, ty } => todo!(),
+            abi::Instruction::OptionLift { payload: _, ty: _ } => todo!(),
             abi::Instruction::ResultLower {
-                result,
-                ty,
-                results,
+                result: _,
+                ty: _,
+                results: _,
             } => todo!(),
-            abi::Instruction::ResultLift { result, ty } => todo!(),
-            abi::Instruction::CallWasm { name, sig } => {
+            abi::Instruction::ResultLift { result: _, ty: _ } => todo!(),
+            abi::Instruction::CallWasm { name: _, sig } => {
                 let func = "test"; //self.declare_import(
                                    //                    self.gen.wasm_import_module.unwrap(),
                                    //     name,
@@ -805,7 +852,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.gen.gen.c_src.src.push_str(&operands.join(", "));
                 self.gen.gen.c_src.src.push_str(");\n");
             }
-            abi::Instruction::CallInterface { func } => todo!(),
+            abi::Instruction::CallInterface { func: _ } => todo!(),
             abi::Instruction::Return { amt, func } => {
                 match amt {
                     0 => {}
@@ -824,18 +871,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
             }
             abi::Instruction::Malloc {
-                realloc,
-                size,
-                align,
+                realloc: _,
+                size: _,
+                align: _,
             } => todo!(),
-            abi::Instruction::GuestDeallocate { size, align } => todo!(),
+            abi::Instruction::GuestDeallocate { size: _, align: _ } => todo!(),
             abi::Instruction::GuestDeallocateString => todo!(),
-            abi::Instruction::GuestDeallocateList { element } => todo!(),
-            abi::Instruction::GuestDeallocateVariant { blocks } => todo!(),
+            abi::Instruction::GuestDeallocateList { element: _ } => todo!(),
+            abi::Instruction::GuestDeallocateVariant { blocks: _ } => todo!(),
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> Self::Operand {
+    fn return_pointer(&mut self, _size: usize, _align: usize) -> Self::Operand {
         todo!()
     }
 
@@ -843,7 +890,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         todo!()
     }
 
-    fn finish_block(&mut self, operand: &mut Vec<Self::Operand>) {
+    fn finish_block(&mut self, _operand: &mut Vec<Self::Operand>) {
         todo!()
     }
 
@@ -853,8 +900,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
 
     fn is_list_canonical(
         &self,
-        resolve: &Resolve,
-        element: &wit_bindgen_core::wit_parser::Type,
+        _resolve: &Resolve,
+        _element: &wit_bindgen_core::wit_parser::Type,
     ) -> bool {
         todo!()
     }

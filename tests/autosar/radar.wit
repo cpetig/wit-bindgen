@@ -55,7 +55,7 @@ interface radar-types {
 interface radar-callbacks {
     use types.{error-code}
     use radar-types.{adjust-output, calibrate-output}
-    use com-add.{proxy-handle, sample-ptr}
+    use com-add.{proxy-handle, sample-ptr, resume-handle}
 
     resource promise-result-adjust-output-error-code {
         ready: static func(self: own<promise-result-adjust-output-error-code>, value: result<adjust-output, error-code>)
@@ -72,17 +72,17 @@ interface radar-callbacks {
 
     resource stream-proxy-handle {
         // returns the value if the queue is filled up (backpressure)
-        ready: func(value: option<own<proxy-handle>>) -> option<tuple<own<proxy-handle>, resume-handle>>
+        ready: func(value: option<own<proxy-handle>>, resume: resume-handle) -> option<own<proxy-handle>>
     }
     resource stream-sample-ptr {
-        ready: func(value: option<own<sample-ptr>>) -> option<tuple<own<sample-ptr>, resume-handle>>
+        ready: func(value: option<own<sample-ptr>>, resume: resume-handle) -> option<own<sample-ptr>>
     }
 }
 
 interface radar {
     use types.{error-code}
     use core.{instance-specifier}
-    use com-add.{proxy-handle, stream-control}
+    use com-add.{proxy-handle, stream-control, abort-handle}
     use radar-callbacks.{promise-result-adjust-output-error-code, promise-result-calibrate-output-error-code, stream-proxy-handle, stream-sample-ptr, promise-u16, promise-u32}
     use radar-types.{position, fusion-variant}
 

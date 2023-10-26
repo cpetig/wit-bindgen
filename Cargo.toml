@@ -20,13 +20,13 @@ resolver = "2"
 edition = "2021"
 
 [workspace.dependencies]
-anyhow = "1.0.72"
-bitflags = "2.3.3"
+anyhow = "1.0.75"
+bitflags = "2.4.1"
 heck =  { version = "0.4", features = ["unicode"] }
 pulldown-cmark = { version = "0.9", default-features = false }
-clap = { version = "4.3.19", features = ["derive"] }
+clap = { version = "4.4.7", features = ["derive"] }
 env_logger = "0.10.0"
-indexmap = "2.0.0"
+indexmap = "2.0.2"
 
 wasm-encoder = "0.38.0"
 wasm-metadata = "0.10.13"

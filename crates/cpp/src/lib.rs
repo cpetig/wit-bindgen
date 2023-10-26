@@ -5,8 +5,8 @@ use wit_bindgen_core::{
     abi::{Bindgen, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Function, FunctionKind, InterfaceId, Resolve, TypeDefKind, TypeId, TypeOwner, WorldId,
-        WorldKey,
+        Function, FunctionKind, InterfaceId, Resolve, SizeAlign, TypeDefKind, TypeId, TypeOwner,
+        WorldId, WorldKey, Type,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -88,15 +88,21 @@ impl Cpp {
         name: &'a Option<&'a WorldKey>,
         in_import: bool,
     ) -> CppInterfaceGenerator<'a> {
+        let mut sizes = SizeAlign::default();
+        sizes.fill(resolve);
+
         CppInterfaceGenerator {
             src: Source::default(),
             gen: self,
             resolve,
             interface: None,
             name,
+            sizes,
             // public_anonymous_types: BTreeSet::new(),
             in_import,
             // export_funcs: Vec::new(),
+            return_pointer_area_size: 0,
+            return_pointer_area_align: 0,
         }
     }
 }
@@ -420,9 +426,12 @@ struct CppInterfaceGenerator<'a> {
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
     name: &'a Option<&'a WorldKey>,
+    sizes: SizeAlign,
     //    public_anonymous_types: BTreeSet<TypeId>,
     in_import: bool,
     //    export_funcs: Vec<(String, String)>,
+    return_pointer_area_size: usize,
+    return_pointer_area_align: usize,
 }
 
 impl CppInterfaceGenerator<'_> {
@@ -474,6 +483,53 @@ impl CppInterfaceGenerator<'_> {
         );
         self.gen.c_src.src.push_str("}\n");
     }
+
+    pub fn type_path(&self, id: TypeId, owned: bool) -> String {
+        self.type_path_with_name(
+            id,
+            if owned {
+                self.result_name(id)
+            } else {
+                self.param_name(id)
+            },
+        )
+    }
+
+    fn type_path_with_name(&self, id: TypeId, name: String) -> String {
+        if let TypeOwner::Interface(id) = self.resolve.types[id].owner {
+            if let Some(path) = self.path_to_interface(id) {
+                return format!("{path}::{name}");
+            }
+        }
+        name
+    }
+
+    fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
+        let iface = &self.resolve.interfaces[interface];
+        let name = iface.name.as_ref().unwrap();
+            let mut full_path = String::new();
+            full_path.push_str(name);
+            Some(full_path)
+    }
+
+    fn param_name(&self, ty: TypeId) -> String {
+        self.resolve.types[ty].name.as_ref().unwrap().to_upper_camel_case()
+    }
+
+    fn result_name(&self, ty: TypeId) -> String {
+        self.resolve.types[ty].name.as_ref().unwrap().to_upper_camel_case()
+    }
+
+    fn print_optional_ty(&mut self, ty: Option<&Type>, out: &mut String) {
+        match ty {
+            Some(ty) => self.push_ty_name(ty, out),
+            None => out.push_str("void"),
+        }
+    }
+
+    fn push_ty_name(&mut self, ty: &Type, out: &mut String) {
+        wit_bindgen_c::push_ty_name(self.resolve, ty, &Default::default(), &self.gen.world, out);
+    }
 }
 
 impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> {
@@ -488,7 +544,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         _record: &wit_bindgen_core::wit_parser::Record,
         _docs: &wit_bindgen_core::wit_parser::Docs,
     ) {
-        todo!()
+        //todo!()
     }
 
     fn type_resource(
@@ -641,7 +697,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         _ty: &wit_bindgen_core::wit_parser::Type,
         _docs: &wit_bindgen_core::wit_parser::Docs,
     ) {
-        todo!()
+        //todo!()
     }
 
     fn type_list(
@@ -668,11 +724,34 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
 struct FunctionBindgen<'a, 'b> {
     gen: &'b mut CppInterfaceGenerator<'a>,
     params: Vec<String>,
+    tmp: usize,
+    import_return_pointer_area_size: usize,
+    import_return_pointer_area_align: usize,
 }
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
     fn new(gen: &'b mut CppInterfaceGenerator<'a>, params: Vec<String>) -> Self {
-        Self { gen, params }
+        Self {
+            gen,
+            params,
+            tmp: 0,
+            import_return_pointer_area_size: 0,
+            import_return_pointer_area_align: 0,
+        }
+    }
+
+    fn tmp(&mut self) -> usize {
+        let ret = self.tmp;
+        self.tmp += 1;
+        ret
+    }
+
+    fn push_str(&mut self, s: &str) {
+        self.gen.gen.c_src.src.push_str(s);
+    }
+
+    fn typename_lift(&self, id: TypeId) -> String {
+        self.gen.type_path(id, true)
     }
 }
 
@@ -689,6 +768,34 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         let mut top_as = |cvt: &str| {
             results.push(format!("({cvt}({}))", operands.pop().unwrap()));
         };
+                // work around the fact that some functions only push
+                fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut CppInterfaceGenerator<'a>)>(
+                    slf: &'a mut FunctionBindgen<'b, 'c>,
+                    // resolve: &'a Resolve,
+                    f: T,
+                ) -> String {
+                    let mut sizes = SizeAlign::default();
+                    sizes.fill(slf.gen.resolve);
+                    let mut gen = CppInterfaceGenerator {
+                        // identifier: slf.gen.identifier.clone(),
+                        // wasm_import_module: slf.gen.wasm_import_module.clone(),
+                        src: Source::default(),
+                        in_import: slf.gen.in_import.clone(),
+                        gen: slf.gen.gen,
+                        sizes,
+                        resolve: slf.gen.resolve,
+                        return_pointer_area_size: 0,
+                        return_pointer_area_align: 0,
+                        interface: None,
+                        name: &None,
+                    };
+                    f(&mut gen);
+                    //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
+                    let mut ok_type = String::default();
+                    std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
+                    ok_type
+                }
+        
 
         //todo!()
         match inst {
@@ -705,8 +812,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                 }
             }
-            abi::Instruction::I32Load { offset: _ } => todo!(),
-            abi::Instruction::I32Load8U { offset: _ } => todo!(),
+            abi::Instruction::I32Load { offset } => {
+                let tmp = self.tmp();
+                uwriteln!(
+                    self.gen.gen.c_src.src,
+                    "int32_t l{tmp} = *((int32_t const*)({} + {offset}));",
+                    operands[0]
+                );
+                results.push(format!("l{tmp}"));
+            }
+            abi::Instruction::I32Load8U { offset } => {
+                results.push(format!(
+                    "(int32_t)(*((uint8_t const*)({} + {})))",
+                    operands[0], offset
+                ));
+            }
             abi::Instruction::I32Load8S { offset: _ } => todo!(),
             abi::Instruction::I32Load16U { offset: _ } => todo!(),
             abi::Instruction::I32Load16S { offset: _ } => todo!(),
@@ -734,7 +854,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::U8FromI32 => todo!(),
             abi::Instruction::S16FromI32 => todo!(),
             abi::Instruction::U16FromI32 => todo!(),
-            abi::Instruction::S32FromI32 => todo!(),
+            abi::Instruction::S32FromI32 => top_as("int32_t"),
             abi::Instruction::U32FromI32 => top_as("uint32_t"),
             abi::Instruction::S64FromI64 => todo!(),
             abi::Instruction::U64FromI64 => todo!(),
@@ -746,13 +866,39 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 element: _,
                 realloc: _,
             } => todo!(),
-            abi::Instruction::StringLower { realloc: _ } => todo!(),
+            abi::Instruction::StringLower { realloc } => {
+                let tmp = self.tmp();
+                let val = format!("vec{}", tmp);
+                let ptr = format!("ptr{}", tmp);
+                let len = format!("len{}", tmp);
+                if realloc.is_none() {
+                    self.push_str(&format!("auto {} = {};\n", val, operands[0]));
+                } else {
+                    todo!();
+                    // let op0 = format!("{}.into_bytes()", operands[0]);
+                    // self.push_str(&format!("let {} = ({}).into_boxed_slice();\n", val, op0));
+                }
+                self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
+                self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
+                if realloc.is_some() {
+                    todo!();
+                    //                    self.push_str(&format!("::core::mem::forget({});\n", val));
+                }
+                results.push(ptr);
+                results.push(len);
+            }
             abi::Instruction::ListLower {
                 element: _,
                 realloc: _,
             } => todo!(),
             abi::Instruction::ListCanonLift { element: _, ty: _ } => todo!(),
-            abi::Instruction::StringLift => todo!(),
+            abi::Instruction::StringLift => {
+                let tmp = self.tmp();
+                let len = format!("len{}", tmp);
+                uwriteln!(self.gen.gen.c_src.src, "auto {} = {};\n", len, operands[1]);
+                let result = format!("std::string((char const*)({}), {len})", operands[0]);
+                results.push(result);
+            }
             abi::Instruction::ListLift { element: _, ty: _ } => todo!(),
             abi::Instruction::IterElem { element: _ } => todo!(),
             abi::Instruction::IterBasePointer => todo!(),
@@ -762,10 +908,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ty: _,
             } => todo!(),
             abi::Instruction::RecordLift {
-                record: _,
-                name: _,
-                ty: _,
-            } => todo!(),
+                record,
+                name,
+                ty,
+            } => {
+                let mut result = self.typename_lift(*ty);
+                result.push_str("{");
+                for (_field, val) in record.fields.iter().zip(operands) {
+                    // result.push_str(&to_rust_ident(&field.name));
+                    // result.push_str(":");
+                    result.push_str(&val);
+                    result.push_str(", ");
+                }
+                result.push_str("}");
+                results.push(result);
+            }
             abi::Instruction::HandleLower {
                 handle: _,
                 name: _,
@@ -833,9 +990,33 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ty: _,
                 results: _,
             } => todo!(),
-            abi::Instruction::ResultLift { result: _, ty: _ } => todo!(),
+            abi::Instruction::ResultLift { result, ty: _ } => {
+                let mut err = String::default(); //self.blocks.pop().unwrap();
+                let mut ok = String::default(); //self.blocks.pop().unwrap();
+                if result.ok.is_none() {
+                    ok.clear();
+                } else {
+                    ok = format!("std::move({ok})");
+                }
+                if result.err.is_none() {
+                    err.clear();
+                } else {
+                    err = format!("std::move({err})");
+                }
+                let mut ok_type = String::default();
+                self.gen.print_optional_ty(result.ok.as_ref(), &mut ok_type);
+                let mut err_type = String::default();
+                self.gen.print_optional_ty(result.err.as_ref(), &mut err_type);
+                let type_name = format!("std::expected<{ok_type}, {err_type}>",);
+                let err_type = "std::unexpected";
+                let operand = &operands[0];
+                results.push(format!(
+                    "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
+                ));
+            }
             abi::Instruction::CallWasm { name: _, sig } => {
-                let func = "test"; //self.declare_import(
+                let func = "test";
+                 //self.declare_import(
                                    //                    self.gen.wasm_import_module.unwrap(),
                                    //     name,
                                    //     &sig.params,
@@ -882,20 +1063,42 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         }
     }
 
-    fn return_pointer(&mut self, _size: usize, _align: usize) -> Self::Operand {
-        todo!()
+    fn return_pointer(&mut self, size: usize, align: usize) -> Self::Operand {
+        let tmp = self.tmp();
+
+        // Imports get a per-function return area to facilitate using the
+        // stack whereas exports use a per-module return area to cut down on
+        // stack usage. Note that for imports this also facilitates "adapter
+        // modules" for components to not have data segments.
+        if self.gen.in_import {
+            self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
+            self.import_return_pointer_area_align =
+                self.import_return_pointer_area_align.max(align);
+            uwrite!(
+                self.gen.gen.c_src.src,
+                "int32_t ptr{tmp} = int32_t(&ret_area);"
+            );
+        } else {
+            self.gen.return_pointer_area_size = self.gen.return_pointer_area_size.max(size);
+            self.gen.return_pointer_area_align = self.gen.return_pointer_area_align.max(align);
+            uwriteln!(
+                self.gen.gen.c_src.src,
+                "int32_t ptr{tmp} = int32_t(&RET_AREA);"
+            );
+        }
+        format!("ptr{}", tmp)
     }
 
     fn push_block(&mut self) {
-        todo!()
+        //todo!()
     }
 
     fn finish_block(&mut self, _operand: &mut Vec<Self::Operand>) {
-        todo!()
+        //todo!()
     }
 
     fn sizes(&self) -> &wit_bindgen_core::wit_parser::SizeAlign {
-        todo!()
+        &self.gen.sizes
     }
 
     fn is_list_canonical(

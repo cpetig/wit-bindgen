@@ -5,8 +5,8 @@ use wit_bindgen_core::{
     abi::{Bindgen, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Function, FunctionKind, InterfaceId, Resolve, SizeAlign, TypeDefKind, TypeId, TypeOwner,
-        WorldId, WorldKey, Type,
+        Function, FunctionKind, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind, TypeId,
+        TypeOwner, WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -507,17 +507,25 @@ impl CppInterfaceGenerator<'_> {
     fn path_to_interface(&self, interface: InterfaceId) -> Option<String> {
         let iface = &self.resolve.interfaces[interface];
         let name = iface.name.as_ref().unwrap();
-            let mut full_path = String::new();
-            full_path.push_str(name);
-            Some(full_path)
+        let mut full_path = String::new();
+        full_path.push_str(name);
+        Some(full_path)
     }
 
     fn param_name(&self, ty: TypeId) -> String {
-        self.resolve.types[ty].name.as_ref().unwrap().to_upper_camel_case()
+        self.resolve.types[ty]
+            .name
+            .as_ref()
+            .unwrap()
+            .to_upper_camel_case()
     }
 
     fn result_name(&self, ty: TypeId) -> String {
-        self.resolve.types[ty].name.as_ref().unwrap().to_upper_camel_case()
+        self.resolve.types[ty]
+            .name
+            .as_ref()
+            .unwrap()
+            .to_upper_camel_case()
     }
 
     fn print_optional_ty(&mut self, ty: Option<&Type>, out: &mut String) {
@@ -768,34 +776,33 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         let mut top_as = |cvt: &str| {
             results.push(format!("({cvt}({}))", operands.pop().unwrap()));
         };
-                // work around the fact that some functions only push
-                fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut CppInterfaceGenerator<'a>)>(
-                    slf: &'a mut FunctionBindgen<'b, 'c>,
-                    // resolve: &'a Resolve,
-                    f: T,
-                ) -> String {
-                    let mut sizes = SizeAlign::default();
-                    sizes.fill(slf.gen.resolve);
-                    let mut gen = CppInterfaceGenerator {
-                        // identifier: slf.gen.identifier.clone(),
-                        // wasm_import_module: slf.gen.wasm_import_module.clone(),
-                        src: Source::default(),
-                        in_import: slf.gen.in_import.clone(),
-                        gen: slf.gen.gen,
-                        sizes,
-                        resolve: slf.gen.resolve,
-                        return_pointer_area_size: 0,
-                        return_pointer_area_align: 0,
-                        interface: None,
-                        name: &None,
-                    };
-                    f(&mut gen);
-                    //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
-                    let mut ok_type = String::default();
-                    std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
-                    ok_type
-                }
-        
+        // work around the fact that some functions only push
+        fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut CppInterfaceGenerator<'a>)>(
+            slf: &'a mut FunctionBindgen<'b, 'c>,
+            // resolve: &'a Resolve,
+            f: T,
+        ) -> String {
+            let mut sizes = SizeAlign::default();
+            sizes.fill(slf.gen.resolve);
+            let mut gen = CppInterfaceGenerator {
+                // identifier: slf.gen.identifier.clone(),
+                // wasm_import_module: slf.gen.wasm_import_module.clone(),
+                src: Source::default(),
+                in_import: slf.gen.in_import.clone(),
+                gen: slf.gen.gen,
+                sizes,
+                resolve: slf.gen.resolve,
+                return_pointer_area_size: 0,
+                return_pointer_area_align: 0,
+                interface: None,
+                name: &None,
+            };
+            f(&mut gen);
+            //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
+            let mut ok_type = String::default();
+            std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
+            ok_type
+        }
 
         //todo!()
         match inst {
@@ -907,11 +914,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 name: _,
                 ty: _,
             } => todo!(),
-            abi::Instruction::RecordLift {
-                record,
-                name,
-                ty,
-            } => {
+            abi::Instruction::RecordLift { record, name, ty } => {
                 let mut result = self.typename_lift(*ty);
                 result.push_str("{");
                 for (_field, val) in record.fields.iter().zip(operands) {
@@ -1006,7 +1009,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let mut ok_type = String::default();
                 self.gen.print_optional_ty(result.ok.as_ref(), &mut ok_type);
                 let mut err_type = String::default();
-                self.gen.print_optional_ty(result.err.as_ref(), &mut err_type);
+                self.gen
+                    .print_optional_ty(result.err.as_ref(), &mut err_type);
                 let type_name = format!("std::expected<{ok_type}, {err_type}>",);
                 let err_type = "std::unexpected";
                 let operand = &operands[0];
@@ -1016,12 +1020,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::CallWasm { name: _, sig } => {
                 let func = "test";
-                 //self.declare_import(
-                                   //                    self.gen.wasm_import_module.unwrap(),
-                                   //     name,
-                                   //     &sig.params,
-                                   //     &sig.results,
-                                   // );
+                //self.declare_import(
+                //                    self.gen.wasm_import_module.unwrap(),
+                //     name,
+                //     &sig.params,
+                //     &sig.results,
+                // );
 
                 // ... then call the function with all our operands
                 if sig.results.len() > 0 {

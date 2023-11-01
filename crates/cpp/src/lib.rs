@@ -1,4 +1,4 @@
-use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
+use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase, *};
 use std::{collections::HashMap, fmt::Write};
 use wit_bindgen_core::{
     abi::{self, AbiVariant, LiftLower},
@@ -462,11 +462,87 @@ impl CppInterfaceGenerator<'_> {
         }
     }
 
-    fn print_signature(&mut self, func: &Function) -> Vec<String> {
+    fn print_signature(
+        &mut self,
+        func: &Function, //, sig: &FnSig
+    ) -> Vec<String> {
         // Vec::default()
-        uwriteln!(self.gen.h_src.src, "void {}(...);", func.name);
-        uwriteln!(self.gen.c_src.src, "void {}(...)", func.name);
-        vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()]
+        // uwriteln!(self.gen.h_src.src, "void {}(...);", func.name);
+        // uwriteln!(self.gen.c_src.src, "void {}(...)", func.name);
+        // vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()]
+        if !matches!(func.kind, FunctionKind::Constructor(_)) {
+            //            self.print_results(&func.results, TypeMode::Owned);
+            self.src.push_str(" ");
+        }
+        let params = self.print_docs_and_params(func);
+        params
+    }
+
+    fn print_docs_and_params(
+        &mut self,
+        func: &Function,
+        // param_mode: TypeMode,
+        // sig: &FnSig,
+    ) -> Vec<String> {
+        // self.rustdoc(&func.docs);
+        // self.rustdoc_params(&func.params, "Parameters");
+        // TODO: re-add this when docs are back
+        // self.rustdoc_params(&func.results, "Return");
+
+        let object = match &func.kind {
+            FunctionKind::Freestanding => None,
+            FunctionKind::Method(i) => Some(i),
+            FunctionKind::Static(i) => Some(i),
+            FunctionKind::Constructor(i) => Some(i),
+        }
+        .map(|i| {
+            self.resolve.types[*i]
+                .name
+                .as_ref()
+                .unwrap()
+                .to_pascal_case()
+        })
+        .unwrap_or_default();
+        let func_name = if !matches!(&func.kind, FunctionKind::Freestanding) {
+            if let FunctionKind::Constructor(_i) = &func.kind {
+                format!("{object}::{object}")
+            } else {
+                format!("{object}::{}", func.item_name().to_pascal_case())
+            }
+        } else {
+            func.name.to_pascal_case()
+        };
+        self.src.push_str(&func_name);
+        // if let Some(generics) = &sig.generics {
+        //     self.push_str(generics);
+        // }
+        self.src.push_str("(");
+        // if let Some(arg) = &sig.self_arg {
+        //     self.push_str(arg);
+        //     self.push_str(",");
+        // }
+        let mut params = Vec::new();
+        for (i, (name, param)) in func.params.iter().enumerate() {
+            params.push(name.clone()); //to_rust_ident(name));
+                                       // if i == 0 && sig.self_is_first_param {
+                                       //     // params.push("self".to_string());
+                                       //     continue;
+                                       // }
+            if i == 0 && name == "self" {
+                continue;
+            }
+            // let name = to_rust_ident(name);
+            let mut s = String::default();
+            self.push_ty_name(param, &mut s); // self.gen.c_src.src.as_mut_string());
+            self.src.push_str(&s);
+            self.src.push_str(" ");
+            self.src.push_str(&name);
+            if i + 1 != func.params.len() {
+                self.src.push_str(",");
+            }
+        }
+        self.src.push_str(")");
+        params
     }
 
     fn generate_guest_import(&mut self, func: &Function) {

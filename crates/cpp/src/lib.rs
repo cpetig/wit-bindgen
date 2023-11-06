@@ -129,7 +129,9 @@ impl WorldGenerator for Cpp {
         // }
 
         for (_name, func) in resolve.interfaces[id].functions.iter() {
-            gen.generate_guest_import(func);
+            if matches!(func.kind, FunctionKind::Freestanding) {
+                gen.generate_guest_import(func);
+            }
         }
         // gen.finish();
     }
@@ -427,9 +429,7 @@ struct CppInterfaceGenerator<'a> {
     interface: Option<InterfaceId>,
     name: &'a Option<&'a WorldKey>,
     sizes: SizeAlign,
-    //    public_anonymous_types: BTreeSet<TypeId>,
     in_import: bool,
-    //    export_funcs: Vec<(String, String)>,
     return_pointer_area_size: usize,
     return_pointer_area_align: usize,
 }
@@ -462,14 +462,7 @@ impl CppInterfaceGenerator<'_> {
         }
     }
 
-    fn print_signature(
-        &mut self,
-        func: &Function, //, sig: &FnSig
-    ) -> Vec<String> {
-        // Vec::default()
-        // uwriteln!(self.gen.h_src.src, "void {}(...);", func.name);
-        // uwriteln!(self.gen.c_src.src, "void {}(...)", func.name);
-        // vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()]
+    fn print_signature(&mut self, func: &Function) -> Vec<String> {
         if !matches!(func.kind, FunctionKind::Constructor(_)) {
             //            self.print_results(&func.results, TypeMode::Owned);
             self.src.push_str(" ");
@@ -478,12 +471,7 @@ impl CppInterfaceGenerator<'_> {
         params
     }
 
-    fn print_docs_and_params(
-        &mut self,
-        func: &Function,
-        // param_mode: TypeMode,
-        // sig: &FnSig,
-    ) -> Vec<String> {
+    fn print_docs_and_params(&mut self, func: &Function) -> Vec<String> {
         // self.rustdoc(&func.docs);
         // self.rustdoc_params(&func.params, "Parameters");
         // TODO: re-add this when docs are back
@@ -503,7 +491,7 @@ impl CppInterfaceGenerator<'_> {
                 .to_pascal_case()
         })
         .unwrap_or_default();
-        let func_name = if !matches!(&func.kind, FunctionKind::Freestanding) {
+        let _func_name_c = if !matches!(&func.kind, FunctionKind::Freestanding) {
             if let FunctionKind::Constructor(_i) = &func.kind {
                 format!("{object}::{object}")
             } else {
@@ -512,41 +500,56 @@ impl CppInterfaceGenerator<'_> {
         } else {
             func.name.to_pascal_case()
         };
-        self.src.push_str(&func_name);
-        // if let Some(generics) = &sig.generics {
-        //     self.push_str(generics);
-        // }
-        self.src.push_str("(");
-        // if let Some(arg) = &sig.self_arg {
-        //     self.push_str(arg);
-        //     self.push_str(",");
-        // }
+        let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
+            if let FunctionKind::Constructor(_i) = &func.kind {
+                object.clone()
+            } else {
+                func.item_name().to_pascal_case()
+            }
+        } else {
+            func.name.to_pascal_case()
+        };
+        let mut sig = String::new();
+        if !matches!(&func.kind, FunctionKind::Constructor(_)) {
+            match &func.results {
+                wit_bindgen_core::wit_parser::Results::Named(n) => {
+                    if n.len() == 0 {
+                        sig.push_str("void");
+                    } else {
+                        todo!();
+                    }
+                }
+                wit_bindgen_core::wit_parser::Results::Anon(ty) => {
+                    sig.push_str(&self.type_name(ty))
+                }
+            }
+            sig.push_str(" ");
+        }
+        sig.push_str(&func_name_h);
+        sig.push_str("(");
         let mut params = Vec::new();
         for (i, (name, param)) in func.params.iter().enumerate() {
-            params.push(name.clone()); //to_rust_ident(name));
-                                       // if i == 0 && sig.self_is_first_param {
-                                       //     // params.push("self".to_string());
-                                       //     continue;
-                                       // }
+            params.push(name.clone());
             if i == 0 && name == "self" {
                 continue;
             }
-            // let name = to_rust_ident(name);
-            let mut s = String::default();
-            self.push_ty_name(param, &mut s); // self.gen.c_src.src.as_mut_string());
-            self.src.push_str(&s);
-            self.src.push_str(" ");
-            self.src.push_str(&name);
+            sig.push_str(&self.type_name(param));
+            sig.push_str(" ");
+            sig.push_str(&name);
             if i + 1 != func.params.len() {
-                self.src.push_str(",");
+                sig.push_str(",");
             }
         }
-        self.src.push_str(")");
+        sig.push_str(")");
+        if matches!(func.kind, FunctionKind::Method(_)) {
+            sig.push_str("const");
+        }
+        sig.push_str(";\n");
+        self.gen.h_src.src.push_str(&sig);
         params
     }
 
     fn generate_guest_import(&mut self, func: &Function) {
-        //        let mut sig = FnSig::default();
         let params = self.print_signature(func);
         self.gen.c_src.src.push_str("{\n");
         let mut f = FunctionBindgen::new(self, params);
@@ -611,6 +614,25 @@ impl CppInterfaceGenerator<'_> {
         }
     }
 
+    fn type_name(&mut self, ty: &Type) -> String {
+        match ty {
+            Type::Bool => "bool".into(),
+            Type::Char => "uint32_t".into(),
+            Type::U8 => "uint8_t".into(),
+            Type::S8 => "int8_t".into(),
+            Type::U16 => "uint16_t".into(),
+            Type::S16 => "int16_t".into(),
+            Type::U32 => "uint32_t".into(),
+            Type::S32 => "int32_t".into(),
+            Type::U64 => "uint64_t".into(),
+            Type::S64 => "int64_t".into(),
+            Type::Float32 => "float".into(),
+            Type::Float64 => "double".into(),
+            Type::String => todo!(),
+            Type::Id(_) => todo!(),
+        }
+    }
+
     fn push_ty_name(&mut self, ty: &Type, out: &mut String) {
         wit_bindgen_c::push_ty_name(self.resolve, ty, &Default::default(), &self.gen.world, out);
     }
@@ -637,6 +659,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         name: &str,
         _docs: &wit_bindgen_core::wit_parser::Docs,
     ) {
+        let import = true;
         let type_ = &self.resolve.types[id];
         if let TypeOwner::Interface(intf) = type_.owner {
             let mut world_name = self.gen.world.to_snake_case();
@@ -650,7 +673,8 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
 
             let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
             uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
-            if self.gen.opts.host {
+            if !import {
+                // TODO: Replace with virtual functions
                 uwriteln!(
                     self.gen.h_src.src,
                     "  // private implementation data\n  struct pImpl;\n  pImpl * p_impl;\n"
@@ -666,7 +690,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 self.generate_guest_import(func);
             }
 
-            if !self.gen.opts.host {
+            if import {
                 // consuming constructor from handle (bindings)
                 uwriteln!(
                     self.gen.h_src.src,

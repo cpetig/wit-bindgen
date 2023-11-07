@@ -484,15 +484,6 @@ impl CppInterfaceGenerator<'_> {
     }
 
     fn print_signature(&mut self, func: &Function) -> Vec<String> {
-        if !matches!(func.kind, FunctionKind::Constructor(_)) {
-            //            self.print_results(&func.results, TypeMode::Owned);
-            self.src.push_str(" ");
-        }
-        let params = self.print_docs_and_params(func);
-        params
-    }
-
-    fn print_docs_and_params(&mut self, func: &Function) -> Vec<String> {
         // self.rustdoc(&func.docs);
         // self.rustdoc_params(&func.params, "Parameters");
         // TODO: re-add this when docs are back

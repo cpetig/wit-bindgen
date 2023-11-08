@@ -6,7 +6,7 @@ use wit_bindgen_core::{
     uwrite, uwriteln,
     wit_parser::{
         Function, FunctionKind, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind, TypeId,
-        TypeOwner, WorldId, WorldKey,
+        TypeOwner, WorldId, WorldKey, TypeDef,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -441,6 +441,22 @@ impl SourceWithState {
             self.namespace.push(i.clone());
         }
     }
+
+    fn qualify(&mut self, target: &Vec<String>) {
+        let mut same = 0;
+        // itertools::fold_while?
+        for (a, b) in self.namespace.iter().zip(target.iter()) {
+            if a == b {
+                same += 1;
+            } else {
+                break;
+            }
+        }
+        if same==0 { self.src.push_str("::"); }
+        for i in target.iter().skip(same) {
+            uwrite!(self.src, "{i}::");
+        }
+    }
 }
 
 struct CppInterfaceGenerator<'a> {
@@ -489,30 +505,26 @@ impl CppInterfaceGenerator<'_> {
         // TODO: re-add this when docs are back
         // self.rustdoc_params(&func.results, "Return");
 
-        let object = match &func.kind {
+        let (object, owner) = match &func.kind {
             FunctionKind::Freestanding => None,
             FunctionKind::Method(i) => Some(i),
             FunctionKind::Static(i) => Some(i),
             FunctionKind::Constructor(i) => Some(i),
         }
         .map(|i| {
-            self.resolve.types[*i]
+            let ty = &self.resolve.types[*i];
+            (ty
                 .name
                 .as_ref()
                 .unwrap()
-                .to_pascal_case()
+                .to_pascal_case(),
+                ty.owner)
         })
-        .unwrap_or_default();
-        let _func_name_c = if !matches!(&func.kind, FunctionKind::Freestanding) {
-            if let FunctionKind::Constructor(_i) = &func.kind {
-                format!("{object}::{object}")
-            } else {
-                format!("{object}::{}", func.item_name().to_pascal_case())
-            }
-        } else {
-            func.name.to_pascal_case()
-        };
+        .unwrap_or((Default::default(), TypeOwner::None));
+        let mut namespace = namespace(self.resolve, &owner);
+        // uwriteln!(self.gen.c_src.src, "namespace {namespace:?}");
         let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
+            namespace.push(object.clone());
             if let FunctionKind::Constructor(_i) = &func.kind {
                 object.clone()
             } else {
@@ -537,6 +549,11 @@ impl CppInterfaceGenerator<'_> {
             }
             sig.push_str(" ");
         }
+//        let mut csig = sig.clone();
+        self.gen.c_src.src.push_str(&sig);
+        self.gen.c_src.qualify(&namespace);
+        self.gen.h_src.src.push_str(&sig);
+        sig.clear();
         sig.push_str(&func_name_h);
         sig.push_str("(");
         let mut params = Vec::new();
@@ -556,6 +573,8 @@ impl CppInterfaceGenerator<'_> {
         if matches!(func.kind, FunctionKind::Method(_)) {
             sig.push_str("const");
         }
+        self.gen.c_src.src.push_str(&sig);
+        self.gen.c_src.src.push_str("\n");
         sig.push_str(";\n");
         self.gen.h_src.src.push_str(&sig);
         params

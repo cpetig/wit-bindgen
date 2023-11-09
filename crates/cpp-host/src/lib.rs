@@ -44,12 +44,12 @@ enum Context {
 enum Direction {
     #[default]
     Import,
-    Export,
+    _Export,
 }
 
 #[derive(Default)]
 struct ResourceInfo {
-    direction: Direction,
+    _direction: Direction,
     owned: bool,
     docs: Docs,
 }
@@ -3775,13 +3775,13 @@ pub fn is_arg_by_pointer(resolve: &Resolve, ty: &Type) -> bool {
     wit_bindgen_c::is_arg_by_pointer(resolve, ty)
 }
 
-pub fn is_empty_type(resolve: &Resolve, ty: &Type) -> bool {
-    wit_bindgen_c::is_empty_type(resolve, ty)
-}
+// pub fn is_empty_type(resolve: &Resolve, ty: &Type) -> bool {
+//     wit_bindgen_c::is_empty_type(resolve, ty)
+// }
 
-pub fn get_nonempty_type<'o>(resolve: &Resolve, ty: Option<&'o Type>) -> Option<&'o Type> {
-    wit_bindgen_c::get_nonempty_type(resolve, ty)
-}
+// pub fn get_nonempty_type<'o>(resolve: &Resolve, ty: Option<&'o Type>) -> Option<&'o Type> {
+//     wit_bindgen_c::get_nonempty_type(resolve, ty)
+// }
 
 pub fn owns_anything(
     resolve: &Resolve,

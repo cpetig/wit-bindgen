@@ -6,7 +6,7 @@ use wit_bindgen_core::{
     uwrite, uwriteln,
     wit_parser::{
         Function, FunctionKind, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind, TypeId,
-        TypeOwner, WorldId, WorldKey, TypeDef,
+        TypeOwner, WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -92,11 +92,11 @@ impl Cpp {
         sizes.fill(resolve);
 
         CppInterfaceGenerator {
-            src: Source::default(),
+            _src: Source::default(),
             gen: self,
             resolve,
             interface: None,
-            name,
+            _name: name,
             sizes,
             // public_anonymous_types: BTreeSet::new(),
             in_import,
@@ -452,7 +452,9 @@ impl SourceWithState {
                 break;
             }
         }
-        if same==0 { self.src.push_str("::"); }
+        if same == 0 {
+            self.src.push_str("::");
+        }
         for i in target.iter().skip(same) {
             uwrite!(self.src, "{i}::");
         }
@@ -460,11 +462,11 @@ impl SourceWithState {
 }
 
 struct CppInterfaceGenerator<'a> {
-    src: Source,
+    _src: Source,
     gen: &'a mut Cpp,
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
-    name: &'a Option<&'a WorldKey>,
+    _name: &'a Option<&'a WorldKey>,
     sizes: SizeAlign,
     in_import: bool,
     return_pointer_area_size: usize,
@@ -513,12 +515,7 @@ impl CppInterfaceGenerator<'_> {
         }
         .map(|i| {
             let ty = &self.resolve.types[*i];
-            (ty
-                .name
-                .as_ref()
-                .unwrap()
-                .to_pascal_case(),
-                ty.owner)
+            (ty.name.as_ref().unwrap().to_pascal_case(), ty.owner)
         })
         .unwrap_or((Default::default(), TypeOwner::None));
         let mut namespace = namespace(self.resolve, &owner);
@@ -549,7 +546,7 @@ impl CppInterfaceGenerator<'_> {
             }
             sig.push_str(" ");
         }
-//        let mut csig = sig.clone();
+        //        let mut csig = sig.clone();
         self.gen.c_src.src.push_str(&sig);
         self.gen.c_src.qualify(&namespace);
         self.gen.h_src.src.push_str(&sig);
@@ -665,7 +662,7 @@ impl CppInterfaceGenerator<'_> {
     }
 
     fn push_ty_name(&mut self, ty: &Type, out: &mut String) {
-        wit_bindgen_c::push_ty_name(self.resolve, ty, &Default::default(), &self.gen.world, out);
+        wit_bindgen_c::push_ty_name(self.resolve, ty, &Default::default(), out);
     }
 }
 
@@ -908,32 +905,32 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             results.push(format!("({cvt}({}))", operands.pop().unwrap()));
         };
         // work around the fact that some functions only push
-        fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut CppInterfaceGenerator<'a>)>(
-            slf: &'a mut FunctionBindgen<'b, 'c>,
-            // resolve: &'a Resolve,
-            f: T,
-        ) -> String {
-            let mut sizes = SizeAlign::default();
-            sizes.fill(slf.gen.resolve);
-            let mut gen = CppInterfaceGenerator {
-                // identifier: slf.gen.identifier.clone(),
-                // wasm_import_module: slf.gen.wasm_import_module.clone(),
-                src: Source::default(),
-                in_import: slf.gen.in_import.clone(),
-                gen: slf.gen.gen,
-                sizes,
-                resolve: slf.gen.resolve,
-                return_pointer_area_size: 0,
-                return_pointer_area_align: 0,
-                interface: None,
-                name: &None,
-            };
-            f(&mut gen);
-            //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
-            let mut ok_type = String::default();
-            std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
-            ok_type
-        }
+        // fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut CppInterfaceGenerator<'a>)>(
+        //     slf: &'a mut FunctionBindgen<'b, 'c>,
+        //     // resolve: &'a Resolve,
+        //     f: T,
+        // ) -> String {
+        //     let mut sizes = SizeAlign::default();
+        //     sizes.fill(slf.gen.resolve);
+        //     let mut gen = CppInterfaceGenerator {
+        //         // identifier: slf.gen.identifier.clone(),
+        //         // wasm_import_module: slf.gen.wasm_import_module.clone(),
+        //         src: Source::default(),
+        //         in_import: slf.gen.in_import.clone(),
+        //         gen: slf.gen.gen,
+        //         sizes,
+        //         resolve: slf.gen.resolve,
+        //         return_pointer_area_size: 0,
+        //         return_pointer_area_align: 0,
+        //         interface: None,
+        //         name: &None,
+        //     };
+        //     f(&mut gen);
+        //     //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
+        //     let mut ok_type = String::default();
+        //     std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
+        //     ok_type
+        // }
 
         //todo!()
         match inst {
@@ -1045,7 +1042,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 name: _,
                 ty: _,
             } => todo!(),
-            abi::Instruction::RecordLift { record, name, ty } => {
+            abi::Instruction::RecordLift {
+                record,
+                name: _,
+                ty,
+            } => {
                 let mut result = self.typename_lift(*ty);
                 result.push_str("{");
                 for (_field, val) in record.fields.iter().zip(operands) {

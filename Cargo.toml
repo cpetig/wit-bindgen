@@ -75,7 +75,6 @@ default = [
   'go',
   'csharp-naot',
   'cpp',
-  'cpp-host',
 ]
 c = ['dep:wit-bindgen-c']
 c-host = ['dep:wit-bindgen-c-host']

@@ -664,6 +664,34 @@ impl CppInterfaceGenerator<'_> {
     fn push_ty_name(&mut self, ty: &Type, out: &mut String) {
         wit_bindgen_c::push_ty_name(self.resolve, ty, &Default::default(), out);
     }
+
+    fn make_export_name(input: &str) -> String {
+        input
+            .chars()
+            .map(|c| match c {
+                'A'..='Z' | 'a'..='z' | '0'..='9' => c,
+                _ => '_',
+            })
+            .collect()
+    }
+
+    fn export_name2(module_name: &str, name: &str) -> String {
+        let mut res = Self::make_export_name(module_name);
+        res.push('_');
+        res.push_str(&Self::make_export_name(name));
+        res
+    }
+
+    fn declare_import2(
+        module_name: &str,
+        name: &str,
+        args: &str,
+        result: &str,
+    ) -> (String, String) {
+        let extern_name = Self::export_name2(module_name, name);
+        let import = format!("extern __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n");
+        (extern_name, import)
+    }
 }
 
 impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> {
@@ -888,6 +916,30 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
 
     fn typename_lift(&self, id: TypeId) -> String {
         self.gen.type_path(id, true)
+    }
+
+    fn declare_import(
+        &mut self,
+        module_name: &str,
+        name: &str,
+        params: &[WasmType],
+        results: &[WasmType],
+    ) -> String {
+        let mut args = String::default();
+        for (n, param) in params.iter().enumerate() {
+            args.push_str(wasm_type(*param));
+            if n + 1 != params.len() {
+                args.push_str(", ");
+            }
+        }
+        let result = if results.is_empty() {
+            "void"
+        } else {
+            wasm_type(results[0])
+        };
+        let (name, code) = CppInterfaceGenerator::declare_import2(module_name, name, &args, result);
+        self.gen.gen.c_src.src.push_str(&code);
+        name
     }
 }
 
@@ -1150,14 +1202,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
                 ));
             }
-            abi::Instruction::CallWasm { name: _, sig } => {
+            abi::Instruction::CallWasm { name, sig } => {
                 let func = "test";
-                //self.declare_import(
-                //                    self.gen.wasm_import_module.unwrap(),
-                //     name,
-                //     &sig.params,
-                //     &sig.results,
-                // );
+                self.declare_import(
+                    "", // self.gen.wasm_import_module.unwrap(),
+                    name,
+                    &sig.params,
+                    &sig.results,
+                );
 
                 // ... then call the function with all our operands
                 if sig.results.len() > 0 {
@@ -1243,5 +1295,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         _element: &wit_bindgen_core::wit_parser::Type,
     ) -> bool {
         todo!()
+    }
+}
+
+fn wasm_type(ty: WasmType) -> &'static str {
+    match ty {
+        WasmType::I32 => "int32_t",
+        WasmType::I64 => "int64_t",
+        WasmType::F32 => "float",
+        WasmType::F64 => "double",
     }
 }

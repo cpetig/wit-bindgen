@@ -1203,8 +1203,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ));
             }
             abi::Instruction::CallWasm { name, sig } => {
-                let func = "test";
-                self.declare_import(
+                let func = self.declare_import(
                     "", // self.gen.wasm_import_module.unwrap(),
                     name,
                     &sig.params,

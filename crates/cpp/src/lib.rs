@@ -1,5 +1,10 @@
 use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase, *};
-use std::{collections::HashMap, fmt::Write};
+use std::{
+    collections::HashMap,
+    fmt::Write as FmtWrite,
+    io::{Read, Write},
+    process::{Command, Stdio},
+};
 use wit_bindgen_core::{
     abi::{self, AbiVariant, LiftLower},
     abi::{Bindgen, WasmType},
@@ -63,6 +68,9 @@ pub struct Opts {
     /// Generate code for directly linking to guest code
     #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
     pub short_cut: bool,
+    /// Call clang-format on the generated code
+    #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
+    pub format: bool,
 }
 
 impl Opts {
@@ -390,6 +398,49 @@ impl WorldGenerator for Cpp {
             "
             #endif"
         );
+
+        if self.opts.format {
+            let mut child = Command::new("clang-format")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to spawn `clang-format`");
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(c_str.src.as_bytes())
+                .unwrap();
+            c_str.src.as_mut_string().truncate(0);
+            child
+                .stdout
+                .take()
+                .unwrap()
+                .read_to_string(c_str.src.as_mut_string())
+                .unwrap();
+            let status = child.wait().unwrap();
+            assert!(status.success());
+            child = Command::new("clang-format")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .spawn()
+                .expect("failed to spawn `clang-format`");
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(h_str.src.as_bytes())
+                .unwrap();
+            h_str.src.as_mut_string().truncate(0);
+            child
+                .stdout
+                .take()
+                .unwrap()
+                .read_to_string(h_str.src.as_mut_string())
+                .unwrap();
+            let status = child.wait().unwrap();
+            assert!(status.success());
+        }
 
         if !self.opts.host {
             files.push(&format!("{snake}.cpp"), c_str.src.as_bytes());

@@ -747,6 +747,30 @@ impl CppInterfaceGenerator<'_> {
         let import = format!("extern __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n");
         (extern_name, import)
     }
+
+    fn declare_import(
+        &mut self,
+        module_name: &str,
+        name: &str,
+        params: &[WasmType],
+        results: &[WasmType],
+    ) -> String {
+        let mut args = String::default();
+        for (n, param) in params.iter().enumerate() {
+            args.push_str(wasm_type(*param));
+            if n + 1 != params.len() {
+                args.push_str(", ");
+            }
+        }
+        let result = if results.is_empty() {
+            "void"
+        } else {
+            wasm_type(results[0])
+        };
+        let (name, code) = Self::declare_import2(module_name, name, &args, result);
+        self.gen.c_src.src.push_str(&code);
+        name
+    }
 }
 
 impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> {
@@ -781,6 +805,26 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();
+
+            if import {
+                self.gen.c_src.qualify(&namespc);
+                let params = [WasmType::I32];
+                let results = [];
+                let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+                uwriteln!(self.gen.c_src.src, "{pascal}::~{pascal}() {{");
+                let name = self.declare_import(
+                    &module_name,
+                    &("[resource-drop]".to_string() + &name),
+                    &params,
+                    &results,
+                );
+                uwriteln!(
+                    self.gen.c_src.src,
+                    "   if (handle>=0)
+                            {name}(handle);
+                    }}"
+                );
+            }
 
             let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
             uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
@@ -973,29 +1017,29 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         self.gen.type_path(id, true)
     }
 
-    fn declare_import(
-        &mut self,
-        module_name: &str,
-        name: &str,
-        params: &[WasmType],
-        results: &[WasmType],
-    ) -> String {
-        let mut args = String::default();
-        for (n, param) in params.iter().enumerate() {
-            args.push_str(wasm_type(*param));
-            if n + 1 != params.len() {
-                args.push_str(", ");
-            }
-        }
-        let result = if results.is_empty() {
-            "void"
-        } else {
-            wasm_type(results[0])
-        };
-        let (name, code) = CppInterfaceGenerator::declare_import2(module_name, name, &args, result);
-        self.gen.gen.c_src.src.push_str(&code);
-        name
-    }
+    // fn declare_import(
+    //     &mut self,
+    //     module_name: &str,
+    //     name: &str,
+    //     params: &[WasmType],
+    //     results: &[WasmType],
+    // ) -> String {
+    //     let mut args = String::default();
+    //     for (n, param) in params.iter().enumerate() {
+    //         args.push_str(wasm_type(*param));
+    //         if n + 1 != params.len() {
+    //             args.push_str(", ");
+    //         }
+    //     }
+    //     let result = if results.is_empty() {
+    //         "void"
+    //     } else {
+    //         wasm_type(results[0])
+    //     };
+    //     let (name, code) = CppInterfaceGenerator::declare_import2(module_name, name, &args, result);
+    //     self.gen.gen.c_src.src.push_str(&code);
+    //     name
+    // }
 }
 
 impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
@@ -1264,7 +1308,9 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .as_ref()
                     .map(|e| e.clone())
                     .unwrap();
-                let func = self.declare_import(&module_name, name, &sig.params, &sig.results);
+                let func = self
+                    .gen
+                    .declare_import(&module_name, name, &sig.params, &sig.results);
 
                 // ... then call the function with all our operands
                 if sig.results.len() > 0 {

@@ -87,6 +87,7 @@ impl Cpp {
         resolve: &'a Resolve,
         name: &'a Option<&'a WorldKey>,
         in_import: bool,
+        wasm_import_module: Option<String>,
     ) -> CppInterfaceGenerator<'a> {
         let mut sizes = SizeAlign::default();
         sizes.fill(resolve);
@@ -103,6 +104,7 @@ impl Cpp {
             // export_funcs: Vec::new(),
             return_pointer_area_size: 0,
             return_pointer_area_align: 0,
+            wasm_import_module,
         }
     }
 }
@@ -142,8 +144,9 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) {
+        let wasm_import_module = resolve.name_world_key(name);
         let binding = Some(name);
-        let mut gen = self.interface(resolve, &binding, true);
+        let mut gen = self.interface(resolve, &binding, true, Some(wasm_import_module));
         gen.interface = Some(id);
         // if self.gen.interfaces_with_types_printed.insert(id) {
         gen.types(id);
@@ -471,6 +474,7 @@ struct CppInterfaceGenerator<'a> {
     in_import: bool,
     return_pointer_area_size: usize,
     return_pointer_area_align: usize,
+    pub wasm_import_module: Option<String>,
 }
 
 impl CppInterfaceGenerator<'_> {
@@ -1203,12 +1207,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ));
             }
             abi::Instruction::CallWasm { name, sig } => {
-                let func = self.declare_import(
-                    "", // self.gen.wasm_import_module.unwrap(),
-                    name,
-                    &sig.params,
-                    &sig.results,
-                );
+                let module_name = self
+                    .gen
+                    .wasm_import_module
+                    .as_ref()
+                    .map(|e| e.clone())
+                    .unwrap();
+                let func = self.declare_import(&module_name, name, &sig.params, &sig.results);
 
                 // ... then call the function with all our operands
                 if sig.results.len() > 0 {

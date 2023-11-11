@@ -10,7 +10,7 @@ use wit_bindgen_core::{
     abi::{Bindgen, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Function, FunctionKind, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind, TypeId,
+        Function, FunctionKind, Handle, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind, TypeId,
         TypeOwner, WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
@@ -308,6 +308,7 @@ impl WorldGenerator for Cpp {
                 );
             } else {
                 // somehow spaces get removed, newlines remain (problem occurs before const&)
+                // TODO: should into_handle become && ???
                 uwriteln!(
                     h_str.src,
                     "class {RESOURCE_BASE_CLASS_NAME} {{
@@ -324,7 +325,7 @@ impl WorldGenerator for Cpp {
                                 const&) = delete;
                             void set_handle(int32_t h) {{ handle=h; }}
                             int32_t get_handle() const {{ return handle; }}
-                            int32_t into_raw() {{
+                            int32_t into_handle() {{
                                 int32_t h= handle;
                                 handle= invalid;
                                 return h;
@@ -1012,7 +1013,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         };
 
         match inst {
-            abi::Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
+            abi::Instruction::GetArg { nth } => {
+                if *nth == 0 && self.params[0].as_str() == "self" {
+                    results.push("(*this)".to_string());
+                } else {
+                    results.push(self.params[*nth].clone());
+                }
+            }
             abi::Instruction::I32Const { val } => results.push(format!("(int32_t({}))", val)),
             abi::Instruction::Bitcasts { casts: _ } => todo!(),
             abi::Instruction::ConstZero { tys } => {
@@ -1132,12 +1139,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 results.push(result);
             }
             abi::Instruction::HandleLower {
-                handle: _,
-                name: _,
-                ty: _,
+                handle: Handle::Own(_),
+                ..
             } => {
                 let op = &operands[0];
-                results.push(format!("({op}).into_handle()"));
+                results.push(format!("{op}.into_handle()"));
+            }
+            abi::Instruction::HandleLower {
+                handle: Handle::Borrow(_),
+                ..
+            } => {
+                let op = &operands[0];
+                results.push(format!("{op}.get_handle()"));
             }
             abi::Instruction::HandleLift {
                 handle: _,

@@ -868,28 +868,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
                 let _wasm_name = format!("[resource-drop]{resource}");
                 uwriteln!(self.gen.c_src.src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
-                // let remember = HostFunction {
-                //     wasm_name,
-                //     wamr_signature: "(i)".into(),
-                //     host_name,
-                // };
-                // let module_name = self.resolve.name_world_key(name);
-                // self.gen
-                //     .host_functions
-                //     .entry(module_name)
-                //     .and_modify(|v| v.push(remember.clone()))
-                //     .or_insert(vec![remember]);
             }
-
-            // let entry = self
-            //     .gen
-            //     .resources
-            //     .entry(dealias(self.resolve, id))
-            //     .or_default();
-            // if !self.in_import {
-            //     entry.direction = Direction::Export;
-            // }
-            // entry.docs = docs.clone();
         }
     }
 
@@ -1016,30 +995,6 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     fn typename_lift(&self, id: TypeId) -> String {
         self.gen.type_path(id, true)
     }
-
-    // fn declare_import(
-    //     &mut self,
-    //     module_name: &str,
-    //     name: &str,
-    //     params: &[WasmType],
-    //     results: &[WasmType],
-    // ) -> String {
-    //     let mut args = String::default();
-    //     for (n, param) in params.iter().enumerate() {
-    //         args.push_str(wasm_type(*param));
-    //         if n + 1 != params.len() {
-    //             args.push_str(", ");
-    //         }
-    //     }
-    //     let result = if results.is_empty() {
-    //         "void"
-    //     } else {
-    //         wasm_type(results[0])
-    //     };
-    //     let (name, code) = CppInterfaceGenerator::declare_import2(module_name, name, &args, result);
-    //     self.gen.gen.c_src.src.push_str(&code);
-    //     name
-    // }
 }
 
 impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
@@ -1055,35 +1010,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         let mut top_as = |cvt: &str| {
             results.push(format!("({cvt}({}))", operands.pop().unwrap()));
         };
-        // work around the fact that some functions only push
-        // fn print_to_result<'a, 'b, 'c, T: FnOnce(&mut CppInterfaceGenerator<'a>)>(
-        //     slf: &'a mut FunctionBindgen<'b, 'c>,
-        //     // resolve: &'a Resolve,
-        //     f: T,
-        // ) -> String {
-        //     let mut sizes = SizeAlign::default();
-        //     sizes.fill(slf.gen.resolve);
-        //     let mut gen = CppInterfaceGenerator {
-        //         // identifier: slf.gen.identifier.clone(),
-        //         // wasm_import_module: slf.gen.wasm_import_module.clone(),
-        //         src: Source::default(),
-        //         in_import: slf.gen.in_import.clone(),
-        //         gen: slf.gen.gen,
-        //         sizes,
-        //         resolve: slf.gen.resolve,
-        //         return_pointer_area_size: 0,
-        //         return_pointer_area_align: 0,
-        //         interface: None,
-        //         name: &None,
-        //     };
-        //     f(&mut gen);
-        //     //gen.print_optional_ty(result.ok.as_ref(), TypeMode::Owned);
-        //     let mut ok_type = String::default();
-        //     std::mem::swap(gen.src.as_mut_string(), &mut ok_type);
-        //     ok_type
-        // }
 
-        //todo!()
         match inst {
             abi::Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
             abi::Instruction::I32Const { val } => results.push(format!("(int32_t({}))", val)),
@@ -1161,14 +1088,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {};\n", val, operands[0]));
                 } else {
                     todo!();
-                    // let op0 = format!("{}.into_bytes()", operands[0]);
-                    // self.push_str(&format!("let {} = ({}).into_boxed_slice();\n", val, op0));
                 }
                 self.push_str(&format!("auto {} = (int32_t)({}.data());\n", ptr, val));
                 self.push_str(&format!("auto {} = (int32_t)({}.size());\n", len, val));
                 if realloc.is_some() {
                     todo!();
-                    //                    self.push_str(&format!("::core::mem::forget({});\n", val));
                 }
                 results.push(ptr);
                 results.push(len);
@@ -1201,8 +1125,6 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let mut result = self.typename_lift(*ty);
                 result.push_str("{");
                 for (_field, val) in record.fields.iter().zip(operands) {
-                    // result.push_str(&to_rust_ident(&field.name));
-                    // result.push_str(":");
                     result.push_str(&val);
                     result.push_str(", ");
                 }
@@ -1223,12 +1145,6 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ty: _,
             } => {
                 let op = &operands[0];
-                // let (prefix, resource, _owned) = match handle {
-                //     Handle::Borrow(resource) => ("&", resource, false),
-                //     Handle::Own(resource) => ("", resource, true),
-                // };
-                // let resource = dealias(resolve, *resource);
-
                 results.push(op.clone());
             }
             abi::Instruction::TupleLower { tuple: _, ty: _ } => todo!(),

@@ -719,7 +719,7 @@ impl CppInterfaceGenerator<'_> {
     }
 
     fn push_ty_name(&mut self, ty: &Type, out: &mut String) {
-        wit_bindgen_c::push_ty_name(self.resolve, ty, &Default::default(), out);
+        wit_bindgen_c::push_ty_name(self.resolve, ty, out);
     }
 
     fn make_export_name(input: &str) -> String {

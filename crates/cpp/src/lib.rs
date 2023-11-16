@@ -1,6 +1,6 @@
 use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase, *};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Write as FmtWrite,
     io::{Read, Write},
     process::{Command, Stdio},
@@ -57,6 +57,7 @@ struct Cpp {
     includes: Vec<String>,
     host_functions: HashMap<String, Vec<HostFunction>>,
     world: String,
+    imported_interfaces: HashSet<InterfaceId>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -153,6 +154,7 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) {
+        self.imported_interfaces.insert(id);
         let wasm_import_module = resolve.name_world_key(name);
         let binding = Some(name);
         let mut gen = self.interface(resolve, &binding, true, Some(wasm_import_module));
@@ -558,7 +560,7 @@ impl CppInterfaceGenerator<'_> {
         }
     }
 
-    fn print_signature(&mut self, func: &Function) -> Vec<String> {
+    fn print_signature(&mut self, func: &Function, import: bool) -> Vec<String> {
         // self.rustdoc(&func.docs);
         // self.rustdoc_params(&func.params, "Parameters");
         // TODO: re-add this when docs are back
@@ -624,7 +626,8 @@ impl CppInterfaceGenerator<'_> {
             }
         }
         sig.push_str(")");
-        if matches!(func.kind, FunctionKind::Method(_)) {
+        // default to non-const when exporting a method
+        if matches!(func.kind, FunctionKind::Method(_)) && import {
             sig.push_str("const");
         }
         self.gen.c_src.src.push_str(&sig);
@@ -635,7 +638,7 @@ impl CppInterfaceGenerator<'_> {
     }
 
     fn generate_guest_import(&mut self, func: &Function) {
-        let params = self.print_signature(func);
+        let params = self.print_signature(func, !self.gen.opts.host);
         self.gen.c_src.src.push_str("{\n");
         let mut f = FunctionBindgen::new(self, params);
         abi::call(
@@ -796,9 +799,9 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         name: &str,
         _docs: &wit_bindgen_core::wit_parser::Docs,
     ) {
-        let import = true;
         let type_ = &self.resolve.types[id];
         if let TypeOwner::Interface(intf) = type_.owner {
+            let import = self.gen.imported_interfaces.contains(&intf) ^ self.gen.opts.host;
             let mut world_name = self.gen.world.to_snake_case();
             world_name.push_str("::");
             let funcs = self.resolve.interfaces[intf].functions.values();

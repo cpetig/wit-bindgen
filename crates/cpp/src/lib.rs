@@ -57,6 +57,7 @@ struct Cpp {
     includes: Vec<String>,
     host_functions: HashMap<String, Vec<HostFunction>>,
     world: String,
+    world_id: Option<WorldId>,
     imported_interfaces: HashSet<InterfaceId>,
 }
 
@@ -122,6 +123,7 @@ impl WorldGenerator for Cpp {
     fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
         let name = &resolve.worlds[world].name;
         self.world = name.to_string();
+        self.world_id = Some(world);
         //        self.sizes.fill(resolve);
         if !self.opts.host {
             uwriteln!(
@@ -576,7 +578,7 @@ impl CppInterfaceGenerator<'_> {
             let ty = &self.resolve.types[*i];
             (ty.name.as_ref().unwrap().to_pascal_case(), ty.owner)
         })
-        .unwrap_or((Default::default(), TypeOwner::None));
+        .unwrap_or((Default::default(), TypeOwner::World(self.gen.world_id.unwrap())));
         let mut namespace = namespace(self.resolve, &owner);
         // uwriteln!(self.gen.c_src.src, "namespace {namespace:?}");
         let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
@@ -589,6 +591,7 @@ impl CppInterfaceGenerator<'_> {
         } else {
             func.name.to_pascal_case()
         };
+        // we might want to separate c_sig and h_sig
         let mut sig = String::new();
         if !matches!(&func.kind, FunctionKind::Constructor(_)) {
             match &func.results {
@@ -606,16 +609,43 @@ impl CppInterfaceGenerator<'_> {
             sig.push_str(" ");
         }
         //        let mut csig = sig.clone();
-        self.gen.c_src.src.push_str(&sig);
-        self.gen.c_src.qualify(&namespace);
+        if import {
+            self.gen.c_src.src.push_str(&sig);
+            self.gen.c_src.qualify(&namespace);
+            self.gen.c_src.src.push_str(&func_name_h);
+        } else {
+            self.gen.c_src.src.push_str("static ");
+            if matches!(&func.kind, FunctionKind::Constructor(_)) {
+                self.gen.c_src.src.push_str("int32_t ");
+            } else {
+                self.gen.c_src.src.push_str(&sig);
+            }
+            let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+            let full_name = "host_".to_string() + &Self::export_name2(&module_name, &func.name);
+            self.gen.c_src.src.push_str(&full_name);
+        }
+        sig.push_str(&func_name_h);
         self.gen.h_src.src.push_str(&sig);
         sig.clear();
-        sig.push_str(&func_name_h);
-        sig.push_str("(");
+//        sig.push_str("(");
+        self.gen.c_src.src.push_str("(");
+        if self.gen.opts.host {
+            self.gen.c_src.src.push_str("wasm_exec_env_t exec_env");
+            if func.params.len()>0 {
+                self.gen.c_src.src.push_str(", ");
+            }
+        }
         let mut params = Vec::new();
         for (i, (name, param)) in func.params.iter().enumerate() {
             params.push(name.clone());
             if i == 0 && name == "self" {
+                if !import {
+                    self.gen.c_src.src.push_str("int32_t ");
+                    sig.push_str(&name);
+                    if i + 1 != func.params.len() {
+                        sig.push_str(", ");
+                    }
+                }
                 continue;
             }
             sig.push_str(&self.type_name(param));
@@ -632,6 +662,7 @@ impl CppInterfaceGenerator<'_> {
         }
         self.gen.c_src.src.push_str(&sig);
         self.gen.c_src.src.push_str("\n");
+        self.gen.h_src.src.push_str("(");
         sig.push_str(";\n");
         self.gen.h_src.src.push_str(&sig);
         params
@@ -717,7 +748,7 @@ impl CppInterfaceGenerator<'_> {
             Type::Float32 => "float".into(),
             Type::Float64 => "double".into(),
             Type::String => todo!(),
-            Type::Id(_) => todo!(),
+            Type::Id(_id) => todo!(),
         }
     }
 

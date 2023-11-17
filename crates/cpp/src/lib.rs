@@ -578,7 +578,10 @@ impl CppInterfaceGenerator<'_> {
             let ty = &self.resolve.types[*i];
             (ty.name.as_ref().unwrap().to_pascal_case(), ty.owner)
         })
-        .unwrap_or((Default::default(), TypeOwner::World(self.gen.world_id.unwrap())));
+        .unwrap_or((
+            Default::default(),
+            TypeOwner::World(self.gen.world_id.unwrap()),
+        ));
         let mut namespace = namespace(self.resolve, &owner);
         // uwriteln!(self.gen.c_src.src, "namespace {namespace:?}");
         let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
@@ -623,15 +626,27 @@ impl CppInterfaceGenerator<'_> {
             let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
             let full_name = "host_".to_string() + &Self::export_name2(&module_name, &func.name);
             self.gen.c_src.src.push_str(&full_name);
+            if self.gen.opts.host {
+                let remember = HostFunction {
+                    wasm_name: func.name.clone(),
+                    wamr_signature: "(i)".into(),
+                    host_name: full_name,
+                };
+                self.gen
+                    .host_functions
+                    .entry(module_name)
+                    .and_modify(|v| v.push(remember.clone()))
+                    .or_insert(vec![remember]);
+            }
         }
         sig.push_str(&func_name_h);
         self.gen.h_src.src.push_str(&sig);
         sig.clear();
-//        sig.push_str("(");
+        //        sig.push_str("(");
         self.gen.c_src.src.push_str("(");
         if self.gen.opts.host {
             self.gen.c_src.src.push_str("wasm_exec_env_t exec_env");
-            if func.params.len()>0 {
+            if func.params.len() > 0 {
                 self.gen.c_src.src.push_str(", ");
             }
         }
@@ -671,11 +686,16 @@ impl CppInterfaceGenerator<'_> {
     fn generate_guest_import(&mut self, func: &Function) {
         let params = self.print_signature(func, !self.gen.opts.host);
         self.gen.c_src.src.push_str("{\n");
+        let lift_lower = if self.gen.opts.host {
+            LiftLower::LiftArgsLowerResults
+        } else {
+            LiftLower::LowerArgsLiftResults
+        };
         let mut f = FunctionBindgen::new(self, params);
         abi::call(
             f.gen.resolve,
             AbiVariant::GuestImport,
-            LiftLower::LowerArgsLiftResults,
+            lift_lower,
             func,
             &mut f,
         );
@@ -1031,6 +1051,21 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     fn typename_lift(&self, id: TypeId) -> String {
         self.gen.type_path(id, true)
     }
+
+    fn let_results(&mut self, amt: usize, results: &mut Vec<String>) {
+        match amt {
+            0 => {}
+            1 => {
+                let tmp = self.tmp();
+                let res = format!("result{}", tmp);
+                self.push_str("auto ");
+                self.push_str(&res);
+                results.push(res);
+                self.push_str(" = ");
+            }
+            n => todo!(),
+        }
+    }
 }
 
 impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
@@ -1286,7 +1321,27 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.gen.gen.c_src.src.push_str(&operands.join(", "));
                 self.gen.gen.c_src.src.push_str(");\n");
             }
-            abi::Instruction::CallInterface { func: _ } => todo!(),
+            abi::Instruction::CallInterface { func } => {
+                dbg!(func);
+                self.let_results(func.results.len(), results);
+                match &func.kind {
+                    FunctionKind::Freestanding => todo!(),
+                    FunctionKind::Method(m) => {
+                        self.gen.gen.c_src.src.push_str("Name");
+                        self.push_str("(");
+                        self.push_str(&operands.join(", "));
+                        self.push_str(");");
+                    }
+                    FunctionKind::Static(_) => todo!(),
+                    FunctionKind::Constructor(t) => {
+                        self.gen.gen.c_src.src.push_str("Name");
+                        self.push_str("(");
+                        self.push_str(&operands.join(", "));
+                        self.push_str(");");
+                        // results.push("handle".into());
+                    }
+                }
+            }
             abi::Instruction::Return { amt, func } => {
                 match amt {
                     0 => {}

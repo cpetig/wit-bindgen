@@ -6,6 +6,12 @@ pub struct WamrSig {
     wamr_result: String,
 }
 
+impl ToString for WamrSig {
+    fn to_string(&self) -> String {
+        "(".to_string() + &self.wamr_types + ")" + &self.wamr_result
+    }
+}
+
 fn push_wamr(ty: &Type, resolve: &Resolve, params_str: &mut String) {
     match ty {
         Type::Bool

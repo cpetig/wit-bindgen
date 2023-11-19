@@ -627,9 +627,10 @@ impl CppInterfaceGenerator<'_> {
             let full_name = "host_".to_string() + &Self::export_name2(&module_name, &func.name);
             self.gen.c_src.src.push_str(&full_name);
             if self.gen.opts.host {
+                let signature = wamr::wamr_signature(self.resolve, func);
                 let remember = HostFunction {
                     wasm_name: func.name.clone(),
-                    wamr_signature: "(i)".into(),
+                    wamr_signature: signature.to_string(),
                     host_name: full_name,
                 };
                 self.gen

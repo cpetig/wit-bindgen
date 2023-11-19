@@ -583,14 +583,15 @@ impl CppInterfaceGenerator<'_> {
             TypeOwner::World(self.gen.world_id.unwrap()),
         ));
         let mut namespace = namespace(self.resolve, &owner);
+        let is_drop = is_drop_method(func);
         // uwriteln!(self.gen.c_src.src, "namespace {namespace:?}");
         let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
             namespace.push(object.clone());
             if let FunctionKind::Constructor(_i) = &func.kind {
                 object.clone()
             } else {
-                if is_drop_method(func) {
-                    String::new()
+                if is_drop {
+                    "~".to_string() + &object
                 } else {
                     func.item_name().to_pascal_case()
                 }
@@ -600,7 +601,7 @@ impl CppInterfaceGenerator<'_> {
         };
         // we might want to separate c_sig and h_sig
         let mut sig = String::new();
-        if !matches!(&func.kind, FunctionKind::Constructor(_)) {
+        if !matches!(&func.kind, FunctionKind::Constructor(_)) && !is_drop {
             match &func.results {
                 wit_bindgen_core::wit_parser::Results::Named(n) => {
                     if n.len() == 0 {
@@ -697,6 +698,24 @@ impl CppInterfaceGenerator<'_> {
             LiftLower::LowerArgsLiftResults
         };
         if is_drop_method(func) {
+            match lift_lower {
+                LiftLower::LiftArgsLowerResults => {
+                    self.gen
+                        .c_src
+                        .src
+                        .push_str("  delete lookup_resource(self);\n");
+                }
+                LiftLower::LowerArgsLiftResults => {
+                    let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+                    let name = self.declare_import(&module_name, &func.name, &[WasmType::I32], &[]);
+                    uwriteln!(
+                        self.gen.c_src.src,
+                        "   if (handle>=0) {{
+                                {name}(handle);
+                            }}"
+                    );
+                }
+            }
         } else {
             let mut f = FunctionBindgen::new(self, params);
             abi::call(
@@ -869,27 +888,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();
-
-            // if import {
-            //     // would creating a Func simplify this code?
-            //     self.gen.c_src.qualify(&namespc);
-            //     let params = [WasmType::I32];
-            //     let results = [];
-            //     let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
-            //     uwriteln!(self.gen.c_src.src, "{pascal}::~{pascal}() {{");
-            //     let name = self.declare_import(
-            //         &module_name,
-            //         &("[resource-drop]".to_string() + &name),
-            //         &params,
-            //         &results,
-            //     );
-            //     uwriteln!(
-            //         self.gen.c_src.src,
-            //         "   if (handle>=0)
-            //                 {name}(handle);
-            //         }}"
-            //     );
-            // }
 
             let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
             uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");

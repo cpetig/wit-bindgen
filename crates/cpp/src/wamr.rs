@@ -55,7 +55,9 @@ fn push_wamr(ty: &Type, resolve: &Resolve, params_str: &mut String) {
             TypeDefKind::Future(_) => todo!(),
             TypeDefKind::Stream(_) => todo!(),
             TypeDefKind::Unknown => todo!(),
-            TypeDefKind::Resource => todo!(),
+            TypeDefKind::Resource => {
+                params_str.push('i');
+            }
             TypeDefKind::Handle(_h) => {
                 params_str.push('i');
             }

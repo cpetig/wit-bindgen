@@ -10,8 +10,8 @@ use wit_bindgen_core::{
     abi::{Bindgen, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Function, FunctionKind, Handle, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind, TypeId,
-        TypeOwner, WorldId, WorldKey,
+        Docs, Function, FunctionKind, Handle, InterfaceId, Resolve, Results, SizeAlign, Type,
+        TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -589,7 +589,11 @@ impl CppInterfaceGenerator<'_> {
             if let FunctionKind::Constructor(_i) = &func.kind {
                 object.clone()
             } else {
-                func.item_name().to_pascal_case()
+                if is_drop_method(func) {
+                    String::new()
+                } else {
+                    func.item_name().to_pascal_case()
+                }
             }
         } else {
             func.name.to_pascal_case()
@@ -692,14 +696,17 @@ impl CppInterfaceGenerator<'_> {
         } else {
             LiftLower::LowerArgsLiftResults
         };
-        let mut f = FunctionBindgen::new(self, params);
-        abi::call(
-            f.gen.resolve,
-            AbiVariant::GuestImport,
-            lift_lower,
-            func,
-            &mut f,
-        );
+        if is_drop_method(func) {
+        } else {
+            let mut f = FunctionBindgen::new(self, params);
+            abi::call(
+                f.gen.resolve,
+                AbiVariant::GuestImport,
+                lift_lower,
+                func,
+                &mut f,
+            );
+        }
         self.gen.c_src.src.push_str("}\n");
     }
 
@@ -863,25 +870,26 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();
 
-            if import {
-                self.gen.c_src.qualify(&namespc);
-                let params = [WasmType::I32];
-                let results = [];
-                let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
-                uwriteln!(self.gen.c_src.src, "{pascal}::~{pascal}() {{");
-                let name = self.declare_import(
-                    &module_name,
-                    &("[resource-drop]".to_string() + &name),
-                    &params,
-                    &results,
-                );
-                uwriteln!(
-                    self.gen.c_src.src,
-                    "   if (handle>=0)
-                            {name}(handle);
-                    }}"
-                );
-            }
+            // if import {
+            //     // would creating a Func simplify this code?
+            //     self.gen.c_src.qualify(&namespc);
+            //     let params = [WasmType::I32];
+            //     let results = [];
+            //     let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+            //     uwriteln!(self.gen.c_src.src, "{pascal}::~{pascal}() {{");
+            //     let name = self.declare_import(
+            //         &module_name,
+            //         &("[resource-drop]".to_string() + &name),
+            //         &params,
+            //         &results,
+            //     );
+            //     uwriteln!(
+            //         self.gen.c_src.src,
+            //         "   if (handle>=0)
+            //                 {name}(handle);
+            //         }}"
+            //     );
+            // }
 
             let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
             uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
@@ -896,7 +904,18 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             }
             uwriteln!(self.gen.h_src.src, "public:\n");
             // destructor
-            uwriteln!(self.gen.h_src.src, "~{pascal}();\n");
+            {
+                let name = "[resource-drop]".to_string() + &name;
+                let func = Function {
+                    name: name,
+                    kind: FunctionKind::Static(id),
+                    params: vec![("self".into(), Type::Id(id))],
+                    results: Results::Named(vec![]),
+                    docs: Docs::default(),
+                };
+                self.generate_guest_import(&func);
+            }
+            //uwriteln!(self.gen.h_src.src, "~{pascal}();\n");
             for func in funcs {
                 // Some(name),
                 self.generate_guest_import(func);
@@ -1426,4 +1445,8 @@ fn wasm_type(ty: WasmType) -> &'static str {
         WasmType::F32 => "float",
         WasmType::F64 => "double",
     }
+}
+
+fn is_drop_method(func: &Function) -> bool {
+    matches!(func.kind, FunctionKind::Static(_)) && func.name.starts_with("[resource-drop]")
 }

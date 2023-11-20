@@ -662,9 +662,9 @@ impl CppInterfaceGenerator<'_> {
             if i == 0 && name == "self" {
                 if !import {
                     self.gen.c_src.src.push_str("int32_t ");
-                    sig.push_str(&name);
+                    self.gen.c_src.src.push_str(&name);
                     if i + 1 != func.params.len() {
-                        sig.push_str(", ");
+                        self.gen.c_src.src.push_str(", ");
                     }
                 }
                 continue;
@@ -929,20 +929,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             }
             uwriteln!(self.gen.h_src.src, "}};\n");
 
-            if self.gen.opts.host {
-                let iface = &self.resolve.interfaces[intf];
-                let pkg = &self.resolve.packages[iface.package.unwrap()];
-                let mut interface_name = pkg.name.namespace.to_snake_case();
-                interface_name.push_str("_");
-                interface_name.push_str(&pkg.name.name.to_snake_case());
-                interface_name.push_str("_");
-                interface_name.push_str(&iface.name.as_ref().unwrap().to_snake_case());
-                let resource = self.resolve.types[id].name.as_deref().unwrap();
-                let resource_snake = resource.to_snake_case();
-                let host_name = format!("host_{interface_name}_resource_drop_{resource_snake}");
-                let _wasm_name = format!("[resource-drop]{resource}");
-                uwriteln!(self.gen.c_src.src, "static void {host_name}(wasm_exec_env_t exec_env, int32_t self) {{\n  delete {world_name}{RESOURCE_BASE_CLASS_NAME}::lookup_resource(self);\n}}\n", );
-            }
         }
     }
 

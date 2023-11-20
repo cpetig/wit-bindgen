@@ -625,6 +625,8 @@ impl CppInterfaceGenerator<'_> {
             self.gen.c_src.src.push_str("static ");
             if matches!(&func.kind, FunctionKind::Constructor(_)) {
                 self.gen.c_src.src.push_str("int32_t ");
+            } else if is_drop {
+                self.gen.c_src.src.push_str("void ");
             } else {
                 self.gen.c_src.src.push_str(&sig);
             }
@@ -898,7 +900,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     "  // private implementation data\n  struct pImpl;\n  pImpl * p_impl;\n"
                 );
             } else {
-                //gen.src.h_defs("  int32_t handle;\nbool owned;\n");
             }
             uwriteln!(self.gen.h_src.src, "public:\n");
             // destructor
@@ -913,7 +914,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 };
                 self.generate_guest_import(&func);
             }
-            //uwriteln!(self.gen.h_src.src, "~{pascal}();\n");
             for func in funcs {
                 // Some(name),
                 self.generate_guest_import(func);

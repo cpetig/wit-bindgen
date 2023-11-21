@@ -562,12 +562,7 @@ impl CppInterfaceGenerator<'_> {
         }
     }
 
-    fn print_signature(&mut self, func: &Function, import: bool) -> Vec<String> {
-        // self.rustdoc(&func.docs);
-        // self.rustdoc_params(&func.params, "Parameters");
-        // TODO: re-add this when docs are back
-        // self.rustdoc_params(&func.results, "Return");
-
+    fn func_namespace_name(&self, func: &Function) -> (Vec<String>, String) {
         let (object, owner) = match &func.kind {
             FunctionKind::Freestanding => None,
             FunctionKind::Method(i) => Some(i),
@@ -584,21 +579,29 @@ impl CppInterfaceGenerator<'_> {
         ));
         let mut namespace = namespace(self.resolve, &owner);
         let is_drop = is_drop_method(func);
-        // uwriteln!(self.gen.c_src.src, "namespace {namespace:?}");
         let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
             namespace.push(object.clone());
             if let FunctionKind::Constructor(_i) = &func.kind {
                 object.clone()
+            } else if is_drop {
+                "~".to_string() + &object
             } else {
-                if is_drop {
-                    "~".to_string() + &object
-                } else {
-                    func.item_name().to_pascal_case()
-                }
+                func.item_name().to_pascal_case()
             }
         } else {
             func.name.to_pascal_case()
         };
+        (namespace, func_name_h)
+    }
+
+    fn print_signature(&mut self, func: &Function, import: bool) -> Vec<String> {
+        // self.rustdoc(&func.docs);
+        // self.rustdoc_params(&func.params, "Parameters");
+        // TODO: re-add this when docs are back
+        // self.rustdoc_params(&func.results, "Return");
+
+        let (namespace, func_name_h) = self.func_namespace_name(func);
+        let is_drop = is_drop_method(func);
         // we might want to separate c_sig and h_sig
         let mut sig = String::new();
         if !matches!(&func.kind, FunctionKind::Constructor(_)) && !is_drop {
@@ -616,7 +619,6 @@ impl CppInterfaceGenerator<'_> {
             }
             sig.push_str(" ");
         }
-        //        let mut csig = sig.clone();
         if import {
             self.gen.c_src.src.push_str(&sig);
             self.gen.c_src.qualify(&namespace);
@@ -650,7 +652,6 @@ impl CppInterfaceGenerator<'_> {
         sig.push_str(&func_name_h);
         self.gen.h_src.src.push_str(&sig);
         sig.clear();
-        //        sig.push_str("(");
         self.gen.c_src.src.push_str("(");
         if self.gen.opts.host {
             self.gen.c_src.src.push_str("wasm_exec_env_t exec_env");
@@ -928,7 +929,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 uwriteln!(self.gen.h_src.src, "{pascal}({pascal}&&) = default;\n");
             }
             uwriteln!(self.gen.h_src.src, "}};\n");
-
         }
     }
 
@@ -1089,7 +1089,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         match inst {
             abi::Instruction::GetArg { nth } => {
                 if *nth == 0 && self.params[0].as_str() == "self" {
-                    results.push("(*this)".to_string());
+                    if self.gen.in_import ^ self.gen.gen.opts.host {
+                        results.push("(*this)".to_string());
+                    } else {
+                        results.push("(*lookup_resource(self))".to_string());
+                    }
                 } else {
                     results.push(self.params[*nth].clone());
                 }
@@ -1326,32 +1330,25 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.gen.gen.c_src.src.push_str(");\n");
             }
             abi::Instruction::CallInterface { func } => {
-                dbg!(func);
+                // dbg!(func);
                 self.let_results(func.results.len(), results);
-                match &func.kind {
-                    FunctionKind::Freestanding => todo!(),
-                    FunctionKind::Method(_m) => {
-                        self.gen.gen.c_src.src.push_str("Name");
-                        self.push_str("(");
-                        self.push_str(&operands.join(", "));
-                        self.push_str(");");
-                    }
-                    FunctionKind::Static(_) => todo!(),
-                    FunctionKind::Constructor(_t) => {
-                        self.gen.gen.c_src.src.push_str("Name");
-                        self.push_str("(");
-                        self.push_str(&operands.join(", "));
-                        self.push_str(");");
-                        // results.push("handle".into());
-                    }
+                let (mut namespace, func_name_h) = self.gen.func_namespace_name(func);
+                if matches!(func.kind, FunctionKind::Constructor(_)) {
+                    let _ = namespace.pop();
                 }
+                self.gen.gen.c_src.qualify(&namespace);
+                self.gen.gen.c_src.src.push_str(&func_name_h);
+                self.push_str("(");
+                self.push_str(&operands.join(", "));
+                self.push_str(");");
             }
             abi::Instruction::Return { amt, func } => {
+                let import = !self.gen.gen.opts.host;
                 match amt {
                     0 => {}
                     1 => {
                         match &func.kind {
-                            FunctionKind::Constructor(_) => {
+                            FunctionKind::Constructor(_) if import => {
                                 // strange but works
                                 self.gen.gen.c_src.src.push_str("this->handle = ");
                             }

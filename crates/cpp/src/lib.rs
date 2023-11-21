@@ -703,10 +703,15 @@ impl CppInterfaceGenerator<'_> {
         if is_drop_method(func) {
             match lift_lower {
                 LiftLower::LiftArgsLowerResults => {
+                    let owner = &self.resolve.types[match &func.kind {
+                        FunctionKind::Static(id) => *id,
+                        _ => panic!("drop should be static"),
+                    }];
+                    self.gen.c_src.src.push_str("  delete ");
                     self.gen
                         .c_src
-                        .src
-                        .push_str("  delete lookup_resource(self);\n");
+                        .qualify(&namespace(self.resolve, &owner.owner));
+                    self.gen.c_src.src.push_str("lookup_resource(self);\n");
                 }
                 LiftLower::LowerArgsLiftResults => {
                     let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
@@ -1333,10 +1338,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 // dbg!(func);
                 self.let_results(func.results.len(), results);
                 let (mut namespace, func_name_h) = self.gen.func_namespace_name(func);
-                if matches!(func.kind, FunctionKind::Constructor(_)) {
-                    let _ = namespace.pop();
+                if matches!(func.kind, FunctionKind::Method(_)) {
+                    let _ = operands.remove(0);
+                    self.gen.gen.c_src.qualify(&namespace);
+                    self.gen.gen.c_src.src.push_str("lookup_resource(self)->");
+                } else {
+                    if matches!(func.kind, FunctionKind::Constructor(_)) {
+                        let _ = namespace.pop();
+                    }
+                    self.gen.gen.c_src.qualify(&namespace);
                 }
-                self.gen.gen.c_src.qualify(&namespace);
                 self.gen.gen.c_src.src.push_str(&func_name_h);
                 self.push_str("(");
                 self.push_str(&operands.join(", "));

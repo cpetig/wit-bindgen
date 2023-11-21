@@ -263,6 +263,9 @@ impl WorldGenerator for Cpp {
         if !self.opts.host && self.dependencies.needs_resources {
             self.include("<cassert>");
         }
+        if self.opts.host && self.dependencies.needs_resources {
+            self.include("<map>");
+        }
 
         for include in self.includes.iter() {
             uwriteln!(h_str.src, "#include {include}");
@@ -302,17 +305,17 @@ impl WorldGenerator for Cpp {
                 uwriteln!(
                     h_str.src,
                     "template <class R>
-                     class {RESOURCE_BASE_CLASS_NAME}<R> {{
+                     class {RESOURCE_BASE_CLASS_NAME} {{
                             static std::map<int32_t, R> resources;
                         public:
-                            static T* lookup_resource(int32_t id) {{
-                                auto result = resource.find(id);
-                                return result == resouce.end() ? nullptr : &result.second;
+                            static R* lookup_resource(int32_t id) {{
+                                auto result = resources.find(id);
+                                return result == resources.end() ? nullptr : &result->second;
                             }}
-                            static int32_t store_resource(T && value) {{
-                                auto last = resource.rbegin();
-                                int32_t id = last == resource.rend() ? 0 : last.first+1;
-                                resources.insert(std::pair<int32_t&&, T &&>(id, std::move(value));
+                            static int32_t store_resource(R && value) {{
+                                auto last = resources.rbegin();
+                                int32_t id = last == resources.rend() ? 0 : last->first+1;
+                                resources.insert(std::pair<int32_t, R>(id, std::move(value)));
                                 return id;
                             }}
                             static void remove_resource(int32_t id) {{
@@ -720,9 +723,9 @@ impl CppInterfaceGenerator<'_> {
                         _ => panic!("drop should be static"),
                     }];
                     self.gen.c_src.src.push_str("  ");
-                    self.gen
-                        .c_src
-                        .qualify(&namespace(self.resolve, &owner.owner));
+                    let mut namespace = namespace(self.resolve, &owner.owner);
+                    namespace.push(owner.name.as_ref().unwrap().to_upper_camel_case());
+                    self.gen.c_src.qualify(&namespace);
                     self.gen.c_src.src.push_str("remove_resource(self);\n");
                 }
                 LiftLower::LowerArgsLiftResults => {
@@ -909,6 +912,10 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();
 
+            if !import {
+                uwriteln!(self.gen.c_src.src, "template <class R> std::map<int32_t, R> {world_name}{RESOURCE_BASE_CLASS_NAME}<R>::resources;");
+            }
+
             let base_type = if !import {
                 format!("<{pascal}>")
             } else {
@@ -924,6 +931,13 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 );
             }
             uwriteln!(self.gen.h_src.src, "public:\n");
+            if !import {
+                // because of pimpl
+                uwriteln!(
+                    self.gen.h_src.src,
+                    "  {pascal}({pascal}&&);\n{pascal}(const {pascal}&) = delete;\nvoid operator=({pascal}&&);\nvoid operator=(const {pascal}&) = delete;"
+                );
+            }
             // destructor
             {
                 let name = "[resource-drop]".to_string() + &name;
@@ -1248,7 +1262,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 //     code.push_str(&n);
                 //     code.push_str("::");
                 // }
-                results.push(format!("{op}.store_resource(std::move(op))"));
+                results.push(format!("{op}.store_resource(std::move({op}))"));
             }
             abi::Instruction::HandleLower {
                 handle: Handle::Borrow(_),

@@ -1067,7 +1067,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 results.push(res);
                 self.push_str(" = ");
             }
-            n => todo!(),
+            _n => todo!(),
         }
     }
 }
@@ -1330,14 +1330,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.let_results(func.results.len(), results);
                 match &func.kind {
                     FunctionKind::Freestanding => todo!(),
-                    FunctionKind::Method(m) => {
+                    FunctionKind::Method(_m) => {
                         self.gen.gen.c_src.src.push_str("Name");
                         self.push_str("(");
                         self.push_str(&operands.join(", "));
                         self.push_str(");");
                     }
                     FunctionKind::Static(_) => todo!(),
-                    FunctionKind::Constructor(t) => {
+                    FunctionKind::Constructor(_t) => {
                         self.gen.gen.c_src.src.push_str("Name");
                         self.push_str("(");
                         self.push_str(&operands.join(", "));

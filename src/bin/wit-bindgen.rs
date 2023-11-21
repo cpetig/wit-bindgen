@@ -39,26 +39,10 @@ enum Opt {
         args: Common,
     },
     /// Generates bindings for C/CPP host modules.
-    #[cfg(feature = "c-host")]
-    CHost {
-        #[clap(flatten)]
-        opts: wit_bindgen_c_host::Opts,
-        #[clap(flatten)]
-        args: Common,
-    },
-    /// Generates bindings for C/CPP host modules.
     #[cfg(feature = "cpp")]
     Cpp {
         #[clap(flatten)]
         opts: wit_bindgen_cpp::Opts,
-        #[clap(flatten)]
-        args: Common,
-    },
-    /// Generates bindings for C/CPP host modules.
-    #[cfg(feature = "cpp-host")]
-    CppHost {
-        #[clap(flatten)]
-        opts: wit_bindgen_cpp_host::Opts,
         #[clap(flatten)]
         args: Common,
     },

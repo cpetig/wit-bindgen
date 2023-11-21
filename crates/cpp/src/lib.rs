@@ -297,15 +297,27 @@ impl WorldGenerator for Cpp {
         if self.dependencies.needs_resources {
             let namespace = namespace(resolve, &TypeOwner::World(world_id));
             h_str.change_namespace(&namespace);
+            // this is export, not host
             if self.opts.host {
                 uwriteln!(
                     h_str.src,
-                    "class {RESOURCE_BASE_CLASS_NAME} {{
-                            public:
-                            int32_t id;
-                            virtual ~{RESOURCE_BASE_CLASS_NAME}();
-                            {RESOURCE_BASE_CLASS_NAME}();
-                            static {RESOURCE_BASE_CLASS_NAME}* lookup_resource(int32_t id);
+                    "template <class R>
+                     class {RESOURCE_BASE_CLASS_NAME}<R> {{
+                            static std::map<int32_t, R> resources;
+                        public:
+                            static T* lookup_resource(int32_t id) {{
+                                auto result = resource.find(id);
+                                return result == resouce.end() ? nullptr : &result.second;
+                            }}
+                            static int32_t store_resource(T && value) {{
+                                auto last = resource.rbegin();
+                                int32_t id = last == resource.rend() ? 0 : last.first+1;
+                                resources.insert(std::pair<int32_t&&, T &&>(id, std::move(value));
+                                return id;
+                            }}
+                            static void remove_resource(int32_t id) {{
+                                resources.erase(id);
+                            }}
                         }}; 
                         template <typename T> struct {OWNED_CLASS_NAME} {{
                             T *ptr;
@@ -707,11 +719,11 @@ impl CppInterfaceGenerator<'_> {
                         FunctionKind::Static(id) => *id,
                         _ => panic!("drop should be static"),
                     }];
-                    self.gen.c_src.src.push_str("  delete ");
+                    self.gen.c_src.src.push_str("  ");
                     self.gen
                         .c_src
                         .qualify(&namespace(self.resolve, &owner.owner));
-                    self.gen.c_src.src.push_str("lookup_resource(self);\n");
+                    self.gen.c_src.src.push_str("remove_resource(self);\n");
                 }
                 LiftLower::LowerArgsLiftResults => {
                     let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
@@ -897,7 +909,12 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
             self.gen.dependencies.needs_resources = true;
             let pascal = name.to_upper_camel_case();
 
-            let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}");
+            let base_type = if !import {
+                format!("<{pascal}>")
+            } else {
+                String::default()
+            };
+            let derive = format!(" : public {world_name}{RESOURCE_BASE_CLASS_NAME}{base_type}");
             uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
             if !import {
                 // TODO: Replace with virtual functions
@@ -905,7 +922,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     self.gen.h_src.src,
                     "  // private implementation data\n  struct pImpl;\n  pImpl * p_impl;\n"
                 );
-            } else {
             }
             uwriteln!(self.gen.h_src.src, "public:\n");
             // destructor
@@ -1222,11 +1238,17 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 results.push(result);
             }
             abi::Instruction::HandleLower {
-                handle: Handle::Own(_),
+                handle: Handle::Own(_ty),
                 ..
             } => {
                 let op = &operands[0];
-                results.push(format!("{op}.into_handle()"));
+                // let namespace = namespace(self.gen.resolve, &self.gen.resolve.types[*ty].owner);
+                // let mut code = String::default();
+                // for n in namespace {
+                //     code.push_str(&n);
+                //     code.push_str("::");
+                // }
+                results.push(format!("{op}.store_resource(std::move(op))"));
             }
             abi::Instruction::HandleLower {
                 handle: Handle::Borrow(_),

@@ -22,6 +22,20 @@ mod wamr;
 pub const RESOURCE_BASE_CLASS_NAME: &str = "ResourceBase";
 pub const OWNED_CLASS_NAME: &str = "Owned";
 
+type CppType = String;
+
+#[derive(Default)]
+struct HighlevelSignature {
+    /// this is a constructor or destructor without a written type
+    // implicit_result: bool, -> empty result
+    const_member: bool,
+    static_member: bool,
+    result: CppType,
+    arguments: Vec<(String, CppType)>,
+    name: String,
+    namespace: Vec<String>,
+}
+
 // follows https://google.github.io/styleguide/cppguide.html
 
 #[derive(Default)]
@@ -610,7 +624,186 @@ impl CppInterfaceGenerator<'_> {
         (namespace, func_name_h)
     }
 
+    // print the signature of the lowered (wasm) function calling into highlevel
+    fn export_signature(&mut self, func: &Function) -> Vec<String> {
+        const import: bool = false;
+        let (namespace, func_name_h) = self.func_namespace_name(func);
+        let is_drop = is_drop_method(func);
+        // we might want to separate c_sig and h_sig
+        let mut sig = String::new();
+        let mut result_ptr: Option<Type> = None;
+        if !matches!(&func.kind, FunctionKind::Constructor(_)) && !is_drop {
+            match &func.results {
+                wit_bindgen_core::wit_parser::Results::Named(n) => {
+                    if n.len() == 0 {
+                        sig.push_str("void");
+                    } else {
+                        todo!();
+                    }
+                }
+                wit_bindgen_core::wit_parser::Results::Anon(ty) => {
+                    if is_arg_by_pointer(self.resolve, ty) {
+                        sig.push_str("void");
+                        result_ptr = Some(ty.clone());
+                    } else {
+                        sig.push_str(&self.type_name(ty));
+                    }
+                }
+            }
+            sig.push_str(" ");
+        }
+        if import {
+            self.gen.c_src.src.push_str(&sig);
+            self.gen.c_src.qualify(&namespace);
+            self.gen.c_src.src.push_str(&func_name_h);
+        } else {
+            self.gen.c_src.src.push_str("static ");
+            if matches!(&func.kind, FunctionKind::Constructor(_)) {
+                self.gen.c_src.src.push_str("int32_t ");
+            } else if is_drop {
+                self.gen.c_src.src.push_str("void ");
+            } else {
+                self.gen.c_src.src.push_str(&sig);
+            }
+            let module_name = self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+            let full_name = "host_".to_string() + &Self::export_name2(&module_name, &func.name);
+            self.gen.c_src.src.push_str(&full_name);
+            if self.gen.opts.host {
+                let signature = wamr::wamr_signature(self.resolve, func);
+                let remember = HostFunction {
+                    wasm_name: func.name.clone(),
+                    wamr_signature: signature.to_string(),
+                    host_name: full_name,
+                };
+                self.gen
+                    .host_functions
+                    .entry(module_name)
+                    .and_modify(|v| v.push(remember.clone()))
+                    .or_insert(vec![remember]);
+            }
+        }
+        sig.push_str(&func_name_h);
+        self.gen.h_src.src.push_str(&sig);
+        sig.clear();
+        self.gen.c_src.src.push_str("(");
+        if self.gen.opts.host {
+            self.gen.c_src.src.push_str("wasm_exec_env_t exec_env");
+            if func.params.len() > 0 {
+                self.gen.c_src.src.push_str(", ");
+            }
+        }
+        let mut params = Vec::new();
+        for (i, (name, param)) in func.params.iter().enumerate() {
+            if is_arg_by_pointer(self.resolve, param) {
+                params.push(name.clone() + "_ptr");
+                sig.push_str(&self.type_name(param));
+                sig.push_str("* ");
+                sig.push_str(&(name.clone() + "_ptr"));
+            } else {
+                params.push(name.clone());
+                if i == 0 && name == "self" {
+                    if !import {
+                        self.gen.c_src.src.push_str("int32_t ");
+                        self.gen.c_src.src.push_str(&name);
+                        if i + 1 != func.params.len() {
+                            self.gen.c_src.src.push_str(", ");
+                        }
+                    }
+                    continue;
+                }
+                sig.push_str(&self.type_name(param));
+                sig.push_str(" ");
+                sig.push_str(&name);
+            }
+            if i + 1 != func.params.len() {
+                sig.push_str(",");
+            }
+        }
+        if let Some(result_ptr) = &result_ptr {
+            params.push("result_ptr".into());
+            sig.push_str(&self.type_name(result_ptr));
+            sig.push_str("* ");
+            sig.push_str("result_ptr");
+        }
+        sig.push_str(")");
+        // default to non-const when exporting a method
+        if matches!(func.kind, FunctionKind::Method(_)) && import {
+            sig.push_str("const");
+        }
+        self.gen.c_src.src.push_str(&sig);
+        self.gen.c_src.src.push_str("\n");
+        self.gen.h_src.src.push_str("(");
+        sig.push_str(";\n");
+        self.gen.h_src.src.push_str(&sig);
+        params
+    }
+
+    fn high_level_signature(&mut self, func: &Function, import: bool) -> HighlevelSignature {
+        let mut res = HighlevelSignature::default();
+
+        let (namespace, func_name_h) = self.func_namespace_name(func);
+        res.name = func_name_h;
+        res.namespace = namespace;
+        let is_drop = is_drop_method(func);
+        // we might want to separate c_sig and h_sig
+        // let mut sig = String::new();
+        let mut result_ptr: Option<Type> = None;
+        if !matches!(&func.kind, FunctionKind::Constructor(_)) && !is_drop {
+            match &func.results {
+                wit_bindgen_core::wit_parser::Results::Named(n) => {
+                    if n.is_empty() {
+                        res.result = "void".into();
+                    } else {
+                        todo!();
+                    }
+                }
+                wit_bindgen_core::wit_parser::Results::Anon(ty) => {
+                    res.result = self.type_name(ty);
+                }
+            }
+        }
+        if matches!(func.kind, FunctionKind::Static(_)) {
+            res.static_member = true;
+        }
+        for (i, (name, param)) in func.params.iter().enumerate() {
+            if i == 0 && name == "self" {
+                continue;
+            }
+            res.arguments.push((name, self.type_name(param)));
+        }
+        // default to non-const when exporting a method
+        if matches!(func.kind, FunctionKind::Method(_)) && import {
+            res.const_member = true;
+        }
+        res
+    }
+
     fn print_signature(&mut self, func: &Function, import: bool) -> Vec<String> {
+        let cpp_sig = self.high_level_signature(func, import);
+        if cpp_sig.static_member {
+            self.gen.h_src.src.push_str("static ");
+        }
+        self.gen.h_src.src.push_str(&cpp_sig.result);
+        if !cpp_sig_result.is_empty() {
+            self.gen.h_src.src.push(' ');
+        }
+        self.gen.h_src.src.push_str(&cpp_sig.name);
+        self.gen.h_src.src.push('(');
+        for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
+            if num > 0 {
+                self.gen.h_src.src.push_str(", ");
+            }
+            self.gen.h_src.src.push_str(typ);
+            self.gen.h_src.src.push(' ');
+            self.gen.h_src.src.push_str(arg);
+        }
+        self.gen.h_src.src.push_str(");\n");
+
+        // we want to separate the lowered signature (wasm) and the high level signature
+        if (!import) {
+            return self.export_signature(func);
+        }
+
         // self.rustdoc(&func.docs);
         // self.rustdoc_params(&func.params, "Parameters");
         // TODO: re-add this when docs are back

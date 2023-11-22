@@ -5,6 +5,7 @@ use std::{
     io::{Read, Write},
     process::{Command, Stdio},
 };
+use wit_bindgen_c::{to_c_ident, wasm_type};
 use wit_bindgen_core::{
     abi::{self, AbiVariant, LiftLower},
     abi::{Bindgen, WasmType},
@@ -619,6 +620,7 @@ impl CppInterfaceGenerator<'_> {
         let is_drop = is_drop_method(func);
         // we might want to separate c_sig and h_sig
         let mut sig = String::new();
+        let mut result_ptr: Option<Type> = None;
         if !matches!(&func.kind, FunctionKind::Constructor(_)) && !is_drop {
             match &func.results {
                 wit_bindgen_core::wit_parser::Results::Named(n) => {
@@ -629,7 +631,12 @@ impl CppInterfaceGenerator<'_> {
                     }
                 }
                 wit_bindgen_core::wit_parser::Results::Anon(ty) => {
-                    sig.push_str(&self.type_name(ty))
+                    if is_arg_by_pointer(self.resolve, ty) {
+                        sig.push_str("void");
+                        result_ptr = Some(ty.clone());
+                    } else {
+                        sig.push_str(&self.type_name(ty));
+                    }
                 }
             }
             sig.push_str(" ");
@@ -676,23 +683,36 @@ impl CppInterfaceGenerator<'_> {
         }
         let mut params = Vec::new();
         for (i, (name, param)) in func.params.iter().enumerate() {
-            params.push(name.clone());
-            if i == 0 && name == "self" {
-                if !import {
-                    self.gen.c_src.src.push_str("int32_t ");
-                    self.gen.c_src.src.push_str(&name);
-                    if i + 1 != func.params.len() {
-                        self.gen.c_src.src.push_str(", ");
+            if is_arg_by_pointer(self.resolve, param) {
+                params.push(name.clone() + "_ptr");
+                sig.push_str(&self.type_name(param));
+                sig.push_str("* ");
+                sig.push_str(&(name.clone() + "_ptr"));
+            } else {
+                params.push(name.clone());
+                if i == 0 && name == "self" {
+                    if !import {
+                        self.gen.c_src.src.push_str("int32_t ");
+                        self.gen.c_src.src.push_str(&name);
+                        if i + 1 != func.params.len() {
+                            self.gen.c_src.src.push_str(", ");
+                        }
                     }
+                    continue;
                 }
-                continue;
+                sig.push_str(&self.type_name(param));
+                sig.push_str(" ");
+                sig.push_str(&name);
             }
-            sig.push_str(&self.type_name(param));
-            sig.push_str(" ");
-            sig.push_str(&name);
             if i + 1 != func.params.len() {
                 sig.push_str(",");
             }
+        }
+        if let Some(result_ptr) = &result_ptr {
+            params.push("result_ptr".into());
+            sig.push_str(&self.type_name(result_ptr));
+            sig.push_str("* ");
+            sig.push_str("result_ptr");
         }
         sig.push_str(")");
         // default to non-const when exporting a method
@@ -818,7 +838,24 @@ impl CppInterfaceGenerator<'_> {
             Type::Float32 => "float".into(),
             Type::Float64 => "double".into(),
             Type::String => todo!(),
-            Type::Id(_id) => todo!(),
+            Type::Id(id) => match &self.resolve.types[*id].kind {
+                TypeDefKind::Record(_r) => {
+                    format!("record.{}", self.resolve.types[*id].name.as_ref().unwrap())
+                }
+                TypeDefKind::Resource => todo!(),
+                TypeDefKind::Handle(_) => todo!(),
+                TypeDefKind::Flags(_) => todo!(),
+                TypeDefKind::Tuple(_) => todo!(),
+                TypeDefKind::Variant(_) => todo!(),
+                TypeDefKind::Enum(_) => todo!(),
+                TypeDefKind::Option(_) => todo!(),
+                TypeDefKind::Result(_) => todo!(),
+                TypeDefKind::List(_) => todo!(),
+                TypeDefKind::Future(_) => todo!(),
+                TypeDefKind::Stream(_) => todo!(),
+                TypeDefKind::Type(ty) => self.type_name(ty),
+                TypeDefKind::Unknown => todo!(),
+            },
         }
     }
 
@@ -1105,6 +1142,27 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             _n => todo!(),
         }
     }
+
+    fn load(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+        results.push(format!("*(({}*) ({} + {}))", ty, operands[0], offset));
+    }
+
+    // fn load_ext(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+    //     self.load(ty, offset, operands, results);
+    //     let result = results.pop().unwrap();
+    //     results.push(format!("(int32_t) ({})", result));
+    // }
+
+    fn store(&mut self, ty: &str, offset: i32, operands: &[String]) {
+        uwriteln!(
+            self.gen.gen.c_src.src,
+            "*(({}*)({} + {})) = {};",
+            ty,
+            operands[1],
+            offset,
+            operands[0]
+        );
+    }
 }
 
 impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
@@ -1166,10 +1224,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::I64Load { offset: _ } => todo!(),
             abi::Instruction::F32Load { offset: _ } => todo!(),
             abi::Instruction::F64Load { offset: _ } => todo!(),
-            abi::Instruction::I32Store { offset: _ } => todo!(),
+            abi::Instruction::I32Store { offset } => self.store("int32_t", *offset, operands),
             abi::Instruction::I32Store8 { offset: _ } => todo!(),
             abi::Instruction::I32Store16 { offset: _ } => todo!(),
-            abi::Instruction::I64Store { offset: _ } => todo!(),
+            abi::Instruction::I64Store { offset } => self.store("int64_t", *offset, operands),
             abi::Instruction::F32Store { offset: _ } => todo!(),
             abi::Instruction::F64Store { offset: _ } => todo!(),
             abi::Instruction::I32FromChar
@@ -1232,11 +1290,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::ListLift { element: _, ty: _ } => todo!(),
             abi::Instruction::IterElem { element: _ } => todo!(),
             abi::Instruction::IterBasePointer => todo!(),
-            abi::Instruction::RecordLower {
-                record: _,
-                name: _,
-                ty: _,
-            } => todo!(),
+            abi::Instruction::RecordLower { record, .. } => {
+                let op = &operands[0];
+                for f in record.fields.iter() {
+                    results.push(format!("({}).{}", op, to_c_ident(&f.name)));
+                }
+            }
             abi::Instruction::RecordLift {
                 record,
                 name: _,
@@ -1466,15 +1525,27 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
     }
 }
 
-fn wasm_type(ty: WasmType) -> &'static str {
-    match ty {
-        WasmType::I32 => "int32_t",
-        WasmType::I64 => "int64_t",
-        WasmType::F32 => "float",
-        WasmType::F64 => "double",
-    }
-}
+// fn wasm_type(ty: WasmType) -> &'static str {
+//     match ty {
+//         WasmType::I32 => "int32_t",
+//         WasmType::I64 => "int64_t",
+//         WasmType::F32 => "float",
+//         WasmType::F64 => "double",
+//     }
+// }
 
 fn is_drop_method(func: &Function) -> bool {
     matches!(func.kind, FunctionKind::Static(_)) && func.name.starts_with("[resource-drop]")
+}
+
+fn is_arg_by_pointer(resolve: &Resolve, ty: &Type) -> bool {
+    match ty {
+        Type::Id(id) => match resolve.types[*id].kind {
+            TypeDefKind::Type(t) => is_arg_by_pointer(resolve, &t),
+            // this is different from C
+            TypeDefKind::Resource => false,
+            _ => wit_bindgen_c::is_arg_by_pointer(resolve, ty),
+        },
+        _ => wit_bindgen_c::is_arg_by_pointer(resolve, ty),
+    }
 }

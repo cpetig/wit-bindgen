@@ -90,7 +90,7 @@ fn wamr_add_result(sig: &mut WamrSig, resolve: &Resolve, ty: &Type) {
             sig.wamr_types.push('*');
         }
         Type::Id(id) => match &resolve.types[*id].kind {
-            TypeDefKind::Record(_) => todo!(),
+            TypeDefKind::Record(_r) => sig.wamr_types.push('R'),
             TypeDefKind::Flags(_) => todo!(),
             TypeDefKind::Tuple(_) => todo!(),
             TypeDefKind::Variant(_) => todo!(),

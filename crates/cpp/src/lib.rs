@@ -683,7 +683,7 @@ impl CppInterfaceGenerator<'_> {
             }
         }
         sig.push_str(&func_name_h);
-        self.gen.h_src.src.push_str(&sig);
+        // self.gen.h_src.src.push_str(&sig);
         sig.clear();
         self.gen.c_src.src.push_str("(");
         if self.gen.opts.host {
@@ -732,9 +732,9 @@ impl CppInterfaceGenerator<'_> {
         }
         self.gen.c_src.src.push_str(&sig);
         self.gen.c_src.src.push_str("\n");
-        self.gen.h_src.src.push_str("(");
-        sig.push_str(";\n");
-        self.gen.h_src.src.push_str(&sig);
+        // self.gen.h_src.src.push_str("(");
+        // sig.push_str(";\n");
+        // self.gen.h_src.src.push_str(&sig);
         params
     }
 
@@ -762,14 +762,14 @@ impl CppInterfaceGenerator<'_> {
                 }
             }
         }
-        if matches!(func.kind, FunctionKind::Static(_)) {
+        if matches!(func.kind, FunctionKind::Static(_)) && !is_drop {
             res.static_member = true;
         }
         for (i, (name, param)) in func.params.iter().enumerate() {
             if i == 0 && name == "self" {
                 continue;
             }
-            res.arguments.push((name, self.type_name(param)));
+            res.arguments.push((name.clone(), self.type_name(param)));
         }
         // default to non-const when exporting a method
         if matches!(func.kind, FunctionKind::Method(_)) && import {
@@ -784,23 +784,27 @@ impl CppInterfaceGenerator<'_> {
             self.gen.h_src.src.push_str("static ");
         }
         self.gen.h_src.src.push_str(&cpp_sig.result);
-        if !cpp_sig_result.is_empty() {
-            self.gen.h_src.src.push(' ');
+        if !cpp_sig.result.is_empty() {
+            self.gen.h_src.src.push_str(" ");
         }
         self.gen.h_src.src.push_str(&cpp_sig.name);
-        self.gen.h_src.src.push('(');
+        self.gen.h_src.src.push_str("(");
         for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
             if num > 0 {
                 self.gen.h_src.src.push_str(", ");
             }
             self.gen.h_src.src.push_str(typ);
-            self.gen.h_src.src.push(' ');
+            self.gen.h_src.src.push_str(" ");
             self.gen.h_src.src.push_str(arg);
         }
-        self.gen.h_src.src.push_str(");\n");
+        self.gen.h_src.src.push_str(")");
+        if cpp_sig.const_member {
+            self.gen.h_src.src.push_str(" const");
+        }
+        self.gen.h_src.src.push_str(";\n");
 
         // we want to separate the lowered signature (wasm) and the high level signature
-        if (!import) {
+        if !import {
             return self.export_signature(func);
         }
 
@@ -865,7 +869,7 @@ impl CppInterfaceGenerator<'_> {
             }
         }
         sig.push_str(&func_name_h);
-        self.gen.h_src.src.push_str(&sig);
+        //self.gen.h_src.src.push_str(&sig);
         sig.clear();
         self.gen.c_src.src.push_str("(");
         if self.gen.opts.host {
@@ -914,9 +918,9 @@ impl CppInterfaceGenerator<'_> {
         }
         self.gen.c_src.src.push_str(&sig);
         self.gen.c_src.src.push_str("\n");
-        self.gen.h_src.src.push_str("(");
-        sig.push_str(";\n");
-        self.gen.h_src.src.push_str(&sig);
+        // self.gen.h_src.src.push_str("(");
+        // sig.push_str(";\n");
+        // self.gen.h_src.src.push_str(&sig);
         params
     }
 

@@ -92,6 +92,9 @@ pub struct Opts {
     /// Call clang-format on the generated code
     #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
     pub format: bool,
+    /// Use AUTOSAR Adaptive types instead of C++17+ (Option, Result)
+    #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
+    pub autosar: bool,
 }
 
 impl Opts {
@@ -306,16 +309,28 @@ impl WorldGenerator for Cpp {
             self.include("<string>");
         }
         if self.dependencies.needs_string_view {
-            self.include("<string_view>");
+            if self.opts.autosar {
+                self.include("<ara/core/string_view.h>");
+            } else {
+                self.include("<string_view>");
+            }
         }
         if self.dependencies.needs_vector {
             self.include("<vector>");
         }
         if self.dependencies.needs_expected {
-            self.include("<expected>");
+            if self.opts.autosar {
+                self.include("<ara/core/result.h>");
+            } else {
+                self.include("<expected>");
+            }
         }
         if self.dependencies.needs_optional {
-            self.include("<optional>");
+            if self.opts.autosar {
+                self.include("<ara/core/optional.h>");
+            } else {
+                self.include("<optional>");
+            }
         }
         if self.dependencies.needs_cstring {
             self.include("<cstring>");
@@ -981,11 +996,23 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::Enum(_e) => self.scoped_type_name(*id, from_namespace),
                 TypeDefKind::Option(o) => {
                     self.gen.dependencies.needs_optional = true;
-                    "std::optional<".to_string() + &self.type_name(o, from_namespace) + ">"
+                    (if self.gen.opts.autosar {
+                        "ara::core::Optional<"
+                    } else {
+                        "std::optional<"
+                    })
+                    .to_string()
+                        + &self.type_name(o, from_namespace)
+                        + ">"
                 }
                 TypeDefKind::Result(r) => {
                     self.gen.dependencies.needs_expected = true;
-                    "std::expected<".to_string()
+                    (if self.gen.opts.autosar {
+                        "ara::core::Result<"
+                    } else {
+                        "std::expected<"
+                    })
+                    .to_string()
                         + &self.optional_type_name(r.ok.as_ref(), from_namespace)
                         + ", "
                         + &self.optional_type_name(r.err.as_ref(), from_namespace)
@@ -1806,12 +1833,20 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let err_type = self
                     .gen
                     .optional_type_name(result.err.as_ref(), &self.namespace);
-                let type_name = format!("std::expected<{ok_type}, {err_type}>",);
-                let err_type = "std::unexpected";
-                let operand = &operands[0];
-                results.push(format!(
-                    "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
-                ));
+                if self.gen.gen.opts.autosar {
+                    let type_name = format!("ara::core::Result<{ok_type}, {err_type}>",);
+                    let operand = &operands[0];
+                    results.push(format!(
+                        "{operand}==0 \n? {type_name}::FromValue({ok}) \n: {type_name}::FromError({err})"
+                    ));
+                } else {
+                    let type_name = format!("std::expected<{ok_type}, {err_type}>",);
+                    let err_type = "std::unexpected";
+                    let operand = &operands[0];
+                    results.push(format!(
+                        "{operand}==0 \n? {type_name}({ok}) \n: {type_name}({err_type}({err}))"
+                    ));
+                }
             }
             abi::Instruction::CallWasm { name, sig } => {
                 let module_name = self

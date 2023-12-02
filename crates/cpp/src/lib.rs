@@ -997,7 +997,7 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::Option(o) => {
                     self.gen.dependencies.needs_optional = true;
                     (if self.gen.opts.autosar {
-                        "ara::core::Optional<"
+                        "::ara::core::Optional<"
                     } else {
                         "std::optional<"
                     })
@@ -1008,7 +1008,7 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::Result(r) => {
                     self.gen.dependencies.needs_expected = true;
                     (if self.gen.opts.autosar {
-                        "ara::core::Result<"
+                        "::ara::core::Result<"
                     } else {
                         "std::expected<"
                     })
@@ -1834,7 +1834,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .gen
                     .optional_type_name(result.err.as_ref(), &self.namespace);
                 if self.gen.gen.opts.autosar {
-                    let type_name = format!("ara::core::Result<{ok_type}, {err_type}>",);
+                    let type_name = format!("::ara::core::Result<{ok_type}, {err_type}>",);
                     let operand = &operands[0];
                     results.push(format!(
                         "{operand}==0 \n? {type_name}::FromValue({ok}) \n: {type_name}::FromError({err})"

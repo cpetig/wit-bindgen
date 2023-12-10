@@ -51,6 +51,7 @@ struct Includes {
     needs_guest_alloc: bool,
     needs_imported_resources: bool,
     needs_exported_resources: bool,
+    needs_variant: bool,
 }
 
 #[derive(Clone)]
@@ -340,6 +341,9 @@ impl WorldGenerator for Cpp {
         }
         if self.dependencies.needs_exported_resources {
             self.include("<map>");
+        }
+        if self.dependencies.needs_variant {
+            self.include("<variant>");
         }
 
         for include in self.includes.iter() {
@@ -699,6 +703,10 @@ impl CppInterfaceGenerator<'_> {
                 self.gen.c_src.src.push_str(", ");
             }
         }
+        if signature.retptr {
+            self.gen.c_src.src.push_str(", int32_t resultptr");
+            params.push("resultptr".into());
+        }
         self.gen.c_src.src.push_str(")\n");
         if self.gen.opts.host {
             let signature = wamr::wamr_signature(self.resolve, func);
@@ -988,6 +996,7 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::Flags(_) => "Flags".to_string(),
                 TypeDefKind::Tuple(_) => "Tuple".to_string(),
                 TypeDefKind::Variant(v) => {
+                    self.gen.dependencies.needs_variant = true;
                     let mut result = "std::variant<".to_string();
                     for (n, case) in v.cases.iter().enumerate() {
                         result += &self.optional_type_name(case.ty.as_ref(), from_namespace);

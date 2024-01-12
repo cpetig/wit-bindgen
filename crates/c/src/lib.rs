@@ -37,6 +37,24 @@ pub struct ResourceInfo {
     pub direction: Direction,
     own: String,
     borrow: String,
+    drop_fn: String,
+}
+
+#[derive(Default, Debug, Eq, PartialEq, Clone, Copy)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum Enabled {
+    #[default]
+    No,
+    Yes,
+}
+
+impl std::fmt::Display for Enabled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Yes => write!(f, "yes"),
+            Self::No => write!(f, "no"),
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -63,6 +81,19 @@ pub struct Opts {
     /// Rename the interface `K` to `V` in the generated source code.
     #[cfg_attr(feature = "clap", arg(long, name = "K=V", value_parser = parse_rename))]
     pub rename: Vec<(String, String)>,
+
+    /// Rename the world in the generated source code and file names.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub rename_world: Option<String>,
+
+    /// Add the specified suffix to the name of the custome section containing
+    /// the component type.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub type_section_suffix: Option<String>,
+
+    /// Configure the autodropping of borrows in exported functions.
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub autodrop_borrows: Enabled,
 }
 
 #[cfg(feature = "clap")]
@@ -107,8 +138,11 @@ enum Scalar {
 
 impl WorldGenerator for C {
     fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
-        let name = &resolve.worlds[world].name;
-        self.world = name.to_string();
+        self.world = self
+            .opts
+            .rename_world
+            .clone()
+            .unwrap_or_else(|| resolve.worlds[world].name.clone());
         self.sizes.fill(resolve);
         self.world_id = Some(world);
 
@@ -237,10 +271,9 @@ impl WorldGenerator for C {
     }
 
     fn finish(&mut self, resolve: &Resolve, id: WorldId, files: &mut Files) {
-        let world = &resolve.worlds[id];
-        let linking_symbol = component_type_object::linking_symbol(&world.name);
+        let linking_symbol = component_type_object::linking_symbol(&self.world);
         self.include("<stdlib.h>");
-        let snake = world.name.to_snake_case();
+        let snake = self.world.to_snake_case();
         uwrite!(
             self.src.c_adapters,
             "
@@ -335,7 +368,7 @@ impl WorldGenerator for C {
             #define __BINDINGS_{0}_H
             #ifdef __cplusplus
             extern \"C\" {{",
-            world.name.to_shouty_snake_case(),
+            self.world.to_shouty_snake_case(),
         );
 
         // Deindent the extern C { declaration
@@ -419,9 +452,15 @@ impl WorldGenerator for C {
         if !self.opts.no_object_file {
             files.push(
                 &format!("{snake}_component_type.o",),
-                component_type_object::object(resolve, id, self.opts.string_encoding)
-                    .unwrap()
-                    .as_slice(),
+                component_type_object::object(
+                    resolve,
+                    id,
+                    &self.world,
+                    self.opts.string_encoding,
+                    self.opts.type_section_suffix.as_deref(),
+                )
+                .unwrap()
+                .as_slice(),
             );
         }
     }
@@ -726,14 +765,21 @@ fn interface_identifier(
             ns.push_str("_");
             ns.push_str(&pkg.name.name.to_snake_case());
             ns.push_str("_");
-            if let Some(version) = &pkg.name.version {
-                let version = version
-                    .to_string()
-                    .replace('.', "_")
-                    .replace('-', "_")
-                    .replace('+', "_");
-                ns.push_str(&version);
-                ns.push_str("_");
+            let pkg_has_multiple_versions = resolve.packages.iter().any(|(_, p)| {
+                p.name.namespace == pkg.name.namespace
+                    && p.name.name == pkg.name.name
+                    && p.name.version != pkg.name.version
+            });
+            if pkg_has_multiple_versions {
+                if let Some(version) = &pkg.name.version {
+                    let version = version
+                        .to_string()
+                        .replace('.', "_")
+                        .replace('-', "_")
+                        .replace('+', "_");
+                    ns.push_str(&version);
+                    ns.push_str("_");
+                }
             }
             ns.push_str(&iface.name.as_ref().unwrap().to_snake_case());
             ns
@@ -897,14 +943,10 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
         borrow.push_str("_t");
 
         // All resources, whether or not they're imported or exported, get the
-        // ability to drop handles. Note that the component model only has a
-        // single drop intrinsic, but we're using two types to represents
-        // own/borrow, so generate two drop functions which both delegate tot he
-        // same intrinsic.
+        // ability to drop handles.
         self.src.h_helpers(&format!(
             "
 extern void {ns}_{snake}_drop_own({own} handle);
-extern void {ns}_{snake}_drop_borrow({own} handle);
             "
         ));
         let import_module = if self.in_import {
@@ -915,17 +957,16 @@ extern void {ns}_{snake}_drop_borrow({own} handle);
                 None => unimplemented!("resource exports from worlds"),
             }
         };
+
+        let drop_fn = format!("__wasm_import_{ns}_{snake}_drop");
+
         self.src.c_helpers(&format!(
             r#"
 __attribute__((__import_module__("{import_module}"), __import_name__("[resource-drop]{name}")))
-extern void __wasm_import_{ns}_{snake}_drop(int32_t handle);
+extern void {drop_fn}(int32_t handle);
 
 void {ns}_{snake}_drop_own({own} handle) {{
-    __wasm_import_{ns}_{snake}_drop(handle.__handle);
-}}
-
-void {ns}_{snake}_drop_borrow({own} handle) {{
-    __wasm_import_{ns}_{snake}_drop(handle.__handle);
+    {drop_fn}(handle.__handle);
 }}
             "#
         ));
@@ -943,6 +984,24 @@ void {ns}_{snake}_drop_borrow({own} handle) {{
             self.src.h_defs(&format!(
                 "\ntypedef struct {borrow} {{\nint32_t __handle;\n}} {borrow};\n"
             ));
+
+            if self.autodrop_enabled() {
+                // As we have two different types for owned vs borrowed resources,
+                // but owns and borrows are dropped using the same intrinsic we
+                // also generate a version of the drop function for borrows that we
+                // possibly acquire through our exports.
+                self.src.h_helpers(&format!(
+                    "\nextern void {ns}_{snake}_drop_borrow({borrow} handle);\n"
+                ));
+
+                self.src.c_helpers(&format!(
+                    "
+void {ns}_{snake}_drop_borrow({borrow} handle) {{
+    __wasm_import_{ns}_{snake}_drop(handle.__handle);
+}}
+                "
+                ));
+            }
 
             // To handle the two types generated for borrow/own this helper
             // function enables converting an own handle to a borrow handle
@@ -999,7 +1058,7 @@ void {ns}_{snake}_destructor({ty_name} *rep);
 __attribute__(( __import_module__("[export]{module}"), __import_name__("[resource-new]{name}")))
 extern int32_t __wasm_import_{ns}_{snake}_new(int32_t);
 
-__attribute__((__import_module__("[export]{module}"), __import_name__("[resource-rep]{snake}")))
+__attribute__((__import_module__("[export]{module}"), __import_name__("[resource-rep]{name}")))
 extern int32_t __wasm_import_{ns}_{snake}_rep(int32_t);
 
 {own} {ns}_{snake}_new({ty_name} *rep) {{
@@ -1028,6 +1087,7 @@ void __wasm_export_{ns}_{snake}_dtor({ns}_{snake}_t* arg) {{
                 } else {
                     Direction::Export
                 },
+                drop_fn,
             },
         );
     }
@@ -1840,6 +1900,83 @@ impl InterfaceGenerator<'_> {
             src.push_str("\n");
         }
     }
+
+    fn autodrop_enabled(&self) -> bool {
+        self.gen.opts.autodrop_borrows == Enabled::Yes
+    }
+
+    fn contains_droppable_borrow(&self, ty: &Type) -> bool {
+        if let Type::Id(id) = ty {
+            match &self.resolve.types[*id].kind {
+                TypeDefKind::Handle(h) => match h {
+                    // Handles to imported resources will need to be dropped, if the context
+                    // they're used in is an export.
+                    Handle::Borrow(id) => {
+                        !self.in_import
+                            && matches!(
+                                self.gen.resources[&dealias(self.resolve, *id)].direction,
+                                Direction::Import
+                            )
+                    }
+
+                    Handle::Own(_) => false,
+                },
+
+                TypeDefKind::Resource | TypeDefKind::Flags(_) | TypeDefKind::Enum(_) => false,
+
+                TypeDefKind::Record(r) => r
+                    .fields
+                    .iter()
+                    .any(|f| self.contains_droppable_borrow(&f.ty)),
+
+                TypeDefKind::Tuple(t) => {
+                    t.types.iter().any(|ty| self.contains_droppable_borrow(ty))
+                }
+
+                TypeDefKind::Variant(v) => v.cases.iter().any(|case| {
+                    case.ty
+                        .as_ref()
+                        .map_or(false, |ty| self.contains_droppable_borrow(ty))
+                }),
+
+                TypeDefKind::Option(ty) => self.contains_droppable_borrow(ty),
+
+                TypeDefKind::Result(r) => {
+                    r.ok.as_ref()
+                        .map_or(false, |ty| self.contains_droppable_borrow(ty))
+                        || r.err
+                            .as_ref()
+                            .map_or(false, |ty| self.contains_droppable_borrow(ty))
+                }
+
+                TypeDefKind::List(ty) => self.contains_droppable_borrow(ty),
+
+                TypeDefKind::Future(r) => r
+                    .as_ref()
+                    .map_or(false, |ty| self.contains_droppable_borrow(ty)),
+
+                TypeDefKind::Stream(s) => {
+                    s.element
+                        .as_ref()
+                        .map_or(false, |ty| self.contains_droppable_borrow(ty))
+                        || s.end
+                            .as_ref()
+                            .map_or(false, |ty| self.contains_droppable_borrow(ty))
+                }
+
+                TypeDefKind::Type(ty) => self.contains_droppable_borrow(ty),
+
+                TypeDefKind::Unknown => false,
+            }
+        } else {
+            false
+        }
+    }
+}
+
+struct DroppableBorrow {
+    name: String,
+    ty: TypeId,
 }
 
 struct FunctionBindgen<'a, 'b> {
@@ -1856,6 +1993,13 @@ struct FunctionBindgen<'a, 'b> {
     ret_store_cnt: usize,
     import_return_pointer_area_size: usize,
     import_return_pointer_area_align: usize,
+
+    /// Borrows observed during lifting an export, that will need to be dropped when the guest
+    /// function exits.
+    borrows: Vec<DroppableBorrow>,
+
+    /// Forward declarations for temporary storage of borrow copies.
+    borrow_decls: wit_bindgen_core::Source,
 }
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
@@ -1878,6 +2022,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             ret_store_cnt: 0,
             import_return_pointer_area_size: 0,
             import_return_pointer_area_align: 0,
+            borrow_decls: Default::default(),
+            borrows: Vec::new(),
         }
     }
 
@@ -1921,6 +2067,18 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         // Empty types have no state, so we don't emit stores for them. But we
         // do need to keep track of which return variable we're looking at.
         self.ret_store_cnt = self.ret_store_cnt + 1;
+    }
+
+    fn assert_no_droppable_borrows(&self, context: &str, ty: &Type) {
+        if !self.gen.in_import
+            && self.gen.autodrop_enabled()
+            && self.gen.contains_droppable_borrow(ty)
+        {
+            panic!(
+                "Unable to autodrop borrows in `{}` values, please disable autodrop",
+                context
+            )
+        }
     }
 }
 
@@ -2116,7 +2274,21 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 _ => {
                     let op = &operands[0];
                     let name = self.gen.gen.type_name(&Type::Id(*ty));
-                    results.push(format!("({name}) {{ {op} }}"))
+                    results.push(format!("({name}) {{ {op} }}"));
+
+                    if let Handle::Borrow(id) = handle {
+                        if !self.gen.in_import && self.gen.autodrop_enabled() {
+                            // Here we've received a borrow of an imported resource, which is the
+                            // kind we'll need to drop when the exported function is returning.
+                            let ty = dealias(self.gen.resolve, *id);
+
+                            let name = self.locals.tmp("borrow");
+                            uwriteln!(self.borrow_decls, "int32_t {name} = 0;");
+                            uwriteln!(self.src, "{name} = {op};");
+
+                            self.borrows.push(DroppableBorrow { name, ty });
+                        }
+                    }
                 }
             },
 
@@ -2420,6 +2592,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(format!("(int32_t) ({}).len", operands[0]));
             }
             Instruction::ListCanonLift { element, ty, .. } => {
+                self.assert_no_droppable_borrows("list", &Type::Id(*ty));
+
                 let list_name = self.gen.gen.type_name(&Type::Id(*ty));
                 let elem_name = self.gen.gen.type_name(element);
                 results.push(format!(
@@ -2445,6 +2619,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::ListLift { element, ty, .. } => {
+                self.assert_no_droppable_borrows("list", &Type::Id(*ty));
+
                 let _body = self.blocks.pop().unwrap();
                 let list_name = self.gen.gen.type_name(&Type::Id(*ty));
                 let elem_name = self.gen.gen.type_name(element);
@@ -2674,6 +2850,17 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
             },
             Instruction::Return { amt, .. } => {
+                // Emit all temporary borrow decls
+                let src = std::mem::replace(&mut self.src, std::mem::take(&mut self.borrow_decls));
+                self.src.append_src(&src);
+
+                for DroppableBorrow { name, ty } in self.borrows.iter() {
+                    let drop_fn = self.gen.gen.resources[ty].drop_fn.as_str();
+                    uwriteln!(self.src, "if ({name} != 0) {{");
+                    uwriteln!(self.src, "  {drop_fn}({name});");
+                    uwriteln!(self.src, "}}");
+                }
+
                 assert!(*amt <= 1);
                 if *amt == 1 {
                     uwriteln!(self.src, "return {};", operands[0]);

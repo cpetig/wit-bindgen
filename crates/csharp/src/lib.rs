@@ -25,8 +25,6 @@ use wit_component::StringEncoding;
 mod csproj;
 pub use csproj::CSProject;
 
-//cargo run c-sharp --out-dir testing-csharp tests/codegen/floats.wit
-
 //TODO remove unused
 const CSHARP_IMPORTS: &str = "\
 using System;
@@ -45,6 +43,10 @@ pub struct Opts {
     pub string_encoding: StringEncoding,
     #[cfg_attr(feature = "clap", arg(long))]
     pub generate_stub: bool,
+
+    // TODO: This should only temporarily needed until mono and native aot aligns.
+    #[cfg_attr(feature = "clap", arg(short, long, value_enum))]
+    pub runtime: CSharpRuntime,
 }
 
 impl Opts {
@@ -54,6 +56,14 @@ impl Opts {
             ..CSharp::default()
         })
     }
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+pub enum CSharpRuntime {
+    #[default]
+    NativeAOT,
+    Mono,
 }
 
 struct InterfaceFragment {
@@ -161,8 +171,8 @@ impl WorldGenerator for CSharp {
         let name = &format!("{}-world", resolve.worlds[world].name);
         let mut gen = self.interface(resolve, name, true);
 
-        for (_, func) in funcs {
-            gen.import(name, func);
+        for (import_module_name, func) in funcs {
+            gen.import(import_module_name, func);
         }
 
         gen.add_world_fragment();
@@ -355,22 +365,22 @@ impl WorldGenerator for CSharp {
                 uwrite!(
                     ret_area_str,
                     "
-                    [InlineArray({})]
-                    [StructLayout(LayoutKind.Sequential, Pack = {})]
+                    [InlineArray({0})]
+                    [StructLayout(LayoutKind.Sequential, Pack = {1})]
                     private struct ReturnArea
                     {{
                         private byte buffer;
     
                         private int GetS32(int offset)
                         {{
-                            ReadOnlySpan<byte> span = this;
+                            ReadOnlySpan<byte> span = MemoryMarshal.CreateSpan(ref buffer, {0});
 
                             return BitConverter.ToInt32(span.Slice(offset, 4));
                         }}
-                        
+
                         public void SetS32(int offset, int value)
                         {{
-                            Span<byte> span = this;
+                            Span<byte> span = MemoryMarshal.CreateSpan(ref buffer, {0});
 
                             BitConverter.TryWriteBytes(span.Slice(offset), value);
                         }}
@@ -393,7 +403,7 @@ impl WorldGenerator for CSharp {
                     private static ReturnArea returnArea = default;
                     ",
                     self.return_area_size,
-                    self.return_area_align,
+                    self.return_area_align
                 );
 
                 src.push_str(&ret_area_str);
@@ -409,40 +419,38 @@ impl WorldGenerator for CSharp {
         }
 
         src.push_str("\n");
-        src.push_str(
-            r#"
-                internal static class Intrinsics
-                {
-                    [UnmanagedCallersOnly(EntryPoint = "cabi_realloc")]
-                    internal static IntPtr cabi_realloc(IntPtr ptr, uint old_size, uint align, uint new_size)
-                    {
-                        if (new_size == 0)
-                        {
-                            if(old_size != 0)
-                            {
-                                Marshal.Release(ptr);
-                            }
-                            return new IntPtr((int)align);
-                        }
-                
-                        if (new_size > int.MaxValue)
-                        {
-                            throw new ArgumentException("Cannot allocate more that int.MaxValue", nameof(new_size));
-                        }
-                        
-                        if(old_size != 0)
-                        {
-                            return Marshal.ReAllocHGlobal(ptr, (int)new_size);
-                        }
 
-                        return Marshal.AllocHGlobal((int)new_size);
-                    }
-                }
-            "#,
-        );
         src.push_str("}\n");
 
         files.push(&format!("{name}.cs"), indent(&src).as_bytes());
+
+        let mut cabi_relloc_src = String::new();
+
+        cabi_relloc_src.push_str(
+            r#"
+                #include <stdlib.h>
+
+                /* Done in C so we can avoid initializing the dotnet runtime and hence WASI libc */
+                /* It would be preferable to do this in C# but the constrainst of cabi_realloc and the demands */
+                /* of WASI libc prevent us doing so. */
+                /* See https://github.com/bytecodealliance/wit-bindgen/issues/777  */
+                /* and https://github.com/WebAssembly/wasi-libc/issues/452 */
+                /* The component model `start` function might be an alternative to this depending on whether it 
+                /* has the same constraints as `cabi_realloc` */
+                __attribute__((__weak__, __export_name__("cabi_realloc")))
+                void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {
+                    (void) old_size;
+                    if (new_size == 0) return (void*) align;
+                    void *ret = realloc(ptr, new_size);
+                    if (!ret) abort();
+                    return ret;
+                }
+            "#,
+        );
+        files.push(
+            &format!("{name}_cabi_realloc.c"),
+            indent(&cabi_relloc_src).as_bytes(),
+        );
 
         let generate_stub = |name: String, files: &mut Files, stubs: Stubs| {
             let stub_file_name = format!("{name}Impl");
@@ -489,11 +497,44 @@ impl WorldGenerator for CSharp {
             );
         }
 
+        //TODO: This is currently neede for mono even if it's built as a library.
+        if self.opts.runtime == CSharpRuntime::Mono {
+            files.push(
+                &format!("MonoEntrypoint.cs",),
+                indent(
+                    r#"
+                public class MonoEntrypoint() {
+                    public static void Main() {
+                    }
+                }
+                "#,
+                )
+                .as_bytes(),
+            );
+        }
+
         files.push(
             &format!("{snake}_component_type.o",),
             component_type_object::object(resolve, id, self.opts.string_encoding)
                 .unwrap()
                 .as_slice(),
+        );
+
+        // TODO: remove when we switch to dotnet 9
+        let mut wasm_import_linakge_src = String::new();
+
+        wasm_import_linakge_src.push_str(
+            r#"
+            // temporarily add this attribute until it is available in dotnet 9
+            namespace System.Runtime.InteropServices
+            {
+                public class WasmImportLinkageAttribute : Attribute {}
+            }
+            "#,
+        );
+        files.push(
+            &format!("{snake}_wasm_import_linkage_attribute.cs"),
+            indent(&wasm_import_linakge_src).as_bytes(),
         );
 
         for (name, interface_type_and_fragments) in &self.interface_fragments {
@@ -535,10 +576,11 @@ impl WorldGenerator for CSharp {
                 "// Generated by `wit-bindgen` {version}. DO NOT EDIT!
                 {CSHARP_IMPORTS}
 
-                namespace {namespace}.{name};
-
-                public static class {interface_name}Interop {{
-                    {body}
+                namespace {namespace}.{name}
+                {{
+                  public static class {interface_name}Interop {{
+                      {body}
+                  }}
                 }}
                 "
             );
@@ -566,8 +608,12 @@ impl InterfaceGenerator<'_> {
     fn qualifier(&self, when: bool, ty: &TypeDef) -> String {
         if let TypeOwner::Interface(id) = &ty.owner {
             if let Some(name) = self.gen.interface_names.get(id) {
-                if name != self.name {
-                    return format!("{}.", name);
+                let name_with_interface = format!(
+                    "{name}.I{}",
+                    CSharp::get_class_name_from_qualified_name(name.clone())
+                );
+                if name_with_interface != self.name {
+                    return format!("{}.", name_with_interface);
                 }
             }
         }
@@ -601,25 +647,34 @@ impl InterfaceGenerator<'_> {
                 r#"
                 private unsafe struct ReturnArea
                 {{
-                    private int GetS32(IntPtr ptr, int offset)
+                    public static byte GetU8(IntPtr ptr)
                     {{
-                        var span = new Span<byte>((void*)ptr, {});
+                        var span = new Span<byte>((void*)ptr, 1);
 
-                        return BitConverter.ToInt32(span.Slice(offset, 4));
+                        return span[0];
                     }}
 
-                    public string GetUTF8String(IntPtr ptr)
+                    public static ushort GetU16(IntPtr ptr)
                     {{
-                        return Encoding.UTF8.GetString((byte*)GetS32(ptr, 0), GetS32(ptr, 4));
+                        var span = new Span<byte>((void*)ptr, 2);
+
+                        return BitConverter.ToUInt16(span);
+                    }}
+
+                    public static int GetS32(IntPtr ptr)
+                    {{
+                        var span = new Span<byte>((void*)ptr, 4);
+
+                        return BitConverter.ToInt32(span);
+                    }}
+
+                    public static string GetUTF8String(IntPtr ptr)
+                    {{
+                        return Encoding.UTF8.GetString((byte*)GetS32(ptr), GetS32(ptr + 4));
                     }}
 
                 }}
-
-                [ThreadStatic]
-                [FixedAddressValueType]
-                private static ReturnArea returnArea;
-            "#,
-                self.gen.return_area_size
+            "#
             );
         }
 
@@ -641,22 +696,36 @@ impl InterfaceGenerator<'_> {
             uwrite!(
                 ret_area_str,
                 "
-                    [InlineArray({})]
-                    [StructLayout(LayoutKind.Sequential, Pack = {})]
+                    [InlineArray({0})]
+                    [StructLayout(LayoutKind.Sequential, Pack = {1})]
                     private struct ReturnArea
                     {{
                         private byte buffer;
     
                         private int GetS32(int offset)
                         {{
-                            ReadOnlySpan<byte> span = this;
+                            ReadOnlySpan<byte> span = MemoryMarshal.CreateSpan(ref buffer, {0});
 
                             return BitConverter.ToInt32(span.Slice(offset, 4));
                         }}
                         
+                        public void SetS8(int offset, int value)
+                        {{
+                            Span<byte> span = MemoryMarshal.CreateSpan(ref buffer, {0});
+
+                            BitConverter.TryWriteBytes(span.Slice(offset), value);
+                        }}
+
+                        public void SetS16(int offset, short value)
+                        {{
+                            Span<byte> span = MemoryMarshal.CreateSpan(ref buffer, {0});
+
+                            BitConverter.TryWriteBytes(span.Slice(offset), value);
+                        }}
+
                         public void SetS32(int offset, int value)
                         {{
-                            Span<byte> span = this;
+                            Span<byte> span = MemoryMarshal.CreateSpan(ref buffer, {0});
 
                             BitConverter.TryWriteBytes(span.Slice(offset), value);
                         }}
@@ -679,7 +748,7 @@ impl InterfaceGenerator<'_> {
                     private static ReturnArea returnArea = default;
                     ",
                 self.gen.return_area_size,
-                self.gen.return_area_align,
+                self.gen.return_area_align
             );
 
             self.csharp_interop_src.push_str(&ret_area_str);
@@ -694,7 +763,7 @@ impl InterfaceGenerator<'_> {
         });
     }
 
-    fn import(&mut self, _module: &String, func: &Function) {
+    fn import(&mut self, import_module_name: &str, func: &Function) {
         if func.kind != FunctionKind::Freestanding {
             todo!("resources");
         }
@@ -711,9 +780,17 @@ impl InterfaceGenerator<'_> {
             0 => "void".to_string(),
             1 => {
                 let ty = func.results.iter_types().next().unwrap();
-                self.type_name(ty)
+                self.type_name_with_qualifier(ty, true)
             }
-            _ => unreachable!(), //TODO
+            _ => {
+                let types = func
+                    .results
+                    .iter_types()
+                    .map(|ty| self.type_name(ty))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("({})", types)
+            }
         };
 
         let camel_name = func.name.to_upper_camel_case();
@@ -761,12 +838,13 @@ impl InterfaceGenerator<'_> {
             .join(", ");
 
         let import_name = &func.name;
+
         uwrite!(
             self.csharp_interop_src,
             r#"
             internal static class {camel_name}WasmInterop
             {{
-                [DllImport("*", EntryPoint = "{import_name}")]
+                [DllImport("{import_module_name}", EntryPoint = "{import_name}"), WasmImportLinkage]
                 internal static extern {wasm_result_type} wasmImport{camel_name}({wasm_params});
             }}
             "#
@@ -814,12 +892,15 @@ impl InterfaceGenerator<'_> {
         let result_type = match func.results.len() {
             0 => "void".to_owned(),
             1 => self.type_name(func.results.iter_types().next().unwrap()),
-            _ => func
-                .results
-                .iter_types()
-                .map(|ty| self.type_name(ty))
-                .collect::<Vec<String>>()
-                .join(", "),
+            _ => {
+                let types = func
+                    .results
+                    .iter_types()
+                    .map(|ty| self.type_name(ty))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("({})", types)
+            }
         };
 
         let camel_name = func.name.to_upper_camel_case();
@@ -927,10 +1008,10 @@ impl InterfaceGenerator<'_> {
                         let count = tuple.types.len();
                         self.gen.tuple_counts.insert(count);
 
-                        let params = if count == 0 {
-                            String::new()
-                        } else {
-                            format!(
+                        let params = match count {
+                            0 => String::new(),
+                            1 => self.type_name_boxed(tuple.types.first().unwrap(), qualifier),
+                            _ => format!(
                                 "({})",
                                 tuple
                                     .types
@@ -938,7 +1019,7 @@ impl InterfaceGenerator<'_> {
                                     .map(|ty| self.type_name_boxed(ty, qualifier))
                                     .collect::<Vec<_>>()
                                     .join(", ")
-                            )
+                            ),
                         };
 
                         params
@@ -1124,7 +1205,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
         uwrite!(
             self.src,
             "
-            public static class {name} {{
+            public class {name} {{
                 {fields}
 
                 public {name}({parameters}) {{
@@ -1140,43 +1221,34 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
         let name = name.to_upper_camel_case();
 
-        let ty = match flags.repr() {
-            FlagsRepr::U8 => "byte",
-            FlagsRepr::U16 => "ushort",
-            FlagsRepr::U32(1) => "uint",
-            FlagsRepr::U32(2) => "ulong",
-            repr => todo!("flags {repr:?}"),
-        };
-
-        let flags = flags
+        let enum_elements = flags
             .flags
             .iter()
             .enumerate()
             .map(|(i, flag)| {
                 let flag_name = flag.name.to_shouty_snake_case();
                 let suffix = if matches!(flags.repr(), FlagsRepr::U32(2)) {
-                    "L"
+                    "UL"
                 } else {
                     ""
                 };
-                format!(
-                    "public static readonly {name} {flag_name} = new {name}(({ty}) (1{suffix} << {i}));"
-                )
+                format!("{flag_name} = 1{suffix} << {i},")
             })
             .collect::<Vec<_>>()
             .join("\n");
 
+        let enum_type = match flags.repr() {
+            FlagsRepr::U32(2) => ": ulong",
+            FlagsRepr::U16 => ": ushort",
+            FlagsRepr::U8 => ": byte",
+            _ => "",
+        };
+
         uwrite!(
             self.src,
             "
-            public static class {name} {{
-                public readonly {ty} value;
-
-                public {name}({ty} value) {{
-                    this.value = value;
-                }}
-
-                {flags}
+            public enum {name} {enum_type} {{
+                {enum_elements}
             }}
             "
         );
@@ -1410,15 +1482,29 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 .to_owned()
             })),
 
-            Instruction::I32Load { offset } => results.push(format!("returnArea.GetS32({offset})")),
+            Instruction::I32Load { offset } => {
+                if self.gen.in_import {
+                    results.push(format!("ReturnArea.GetS32(ptr + {offset})"))
+                } else {
+                    results.push(format!("returnArea.GetS32({offset})"))
+                }
+            }
             Instruction::I32Load8U { offset } => {
-                results.push(format!("returnArea.GetU8({offset})"))
+                if self.gen.in_import {
+                    results.push(format!("ReturnArea.GetU8(ptr + {offset})"))
+                } else {
+                    results.push(format!("returnArea.GetU8({offset})"))
+                }
             }
             Instruction::I32Load8S { offset } => {
                 results.push(format!("returnArea.GetS8({offset})"))
             }
             Instruction::I32Load16U { offset } => {
-                results.push(format!("returnArea.GetU16({offset})"))
+                if self.gen.in_import {
+                    results.push(format!("ReturnArea.GetU16(ptr + {offset})"))
+                } else {
+                    results.push(format!("returnArea.GetU16({offset})"))
+                }
             }
             Instruction::I32Load16S { offset } => {
                 results.push(format!("returnArea.GetS16({offset})"))
@@ -1430,8 +1516,17 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::I32Store { offset } => {
                 uwriteln!(self.src, "returnArea.SetS32({}, {});", offset, operands[0])
             }
-            Instruction::I32Store8 { .. } => todo!("I32Store8"),
-            Instruction::I32Store16 { .. } => todo!("I32Store16"),
+            Instruction::I32Store8 { offset } => {
+                uwriteln!(self.src, "returnArea.SetS8({}, {});", offset, operands[0])
+            }
+            Instruction::I32Store16 { offset } => {
+                uwriteln!(
+                    self.src,
+                    "returnArea.SetS16({}, unchecked((short){}));",
+                    offset,
+                    operands[0]
+                )
+            }
             Instruction::I64Store { .. } => todo!("I64Store"),
             Instruction::F32Store { .. } => todo!("F32Store"),
             Instruction::F64Store { .. } => todo!("F64Store"),
@@ -1466,31 +1561,83 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
             Instruction::BoolFromI32 => results.push(format!("({} != 0)", operands[0])),
 
-            Instruction::FlagsLower { .. } => todo!("FlagsLower"),
-
-            Instruction::FlagsLift { .. } => todo!("FlagsLift"),
-
-            Instruction::RecordLower { .. } => todo!("RecordLower"),
-            Instruction::RecordLift { .. } => todo!("RecordLift"),
-            Instruction::TupleLift { .. } => {
-                let ops = operands
-                    .iter()
-                    .map(|op| op.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-
-                results.push(format!("({ops})"));
+            Instruction::FlagsLower {
+                flags,
+                name: _,
+                ty: _,
+            } => {
+                if flags.flags.len() > 32 {
+                    results.push(format!(
+                        "unchecked((int)(((long){}) & uint.MaxValue))",
+                        operands[0].to_string()
+                    ));
+                    results.push(format!(
+                        "unchecked(((int)((long){} >> 32)))",
+                        operands[0].to_string()
+                    ));
+                } else {
+                    results.push(format!("(int){}", operands[0].to_string()));
+                }
             }
 
-            Instruction::TupleLower { tuple: _, ty } => {
-                let ops = operands
-                    .iter()
-                    .map(|op| op.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
+            Instruction::FlagsLift { flags, name, ty } => {
+                let id_type = &self.gen.resolve.types[*ty];
+                let qualified_type_name = format!(
+                    "{}{}",
+                    self.gen.qualifier(true, id_type),
+                    name.to_string().to_upper_camel_case()
+                );
+                if flags.flags.len() > 32 {
+                    results.push(format!(
+                        "({})(unchecked((uint)({})) | (ulong)(unchecked((uint)({}))) << 32)",
+                        qualified_type_name,
+                        operands[0].to_string(),
+                        operands[1].to_string()
+                    ));
+                } else {
+                    results.push(format!("({})({})", qualified_type_name, operands[0]))
+                }
+            }
 
-                results.push(format!("({ops})"));
-                results.push(format!("({:?})", ty));
+            Instruction::RecordLower { record, .. } => {
+                let op = &operands[0];
+                for f in record.fields.iter() {
+                    results.push(format!("({}).{}", op, f.name.to_csharp_ident()));
+                }
+            }
+            Instruction::RecordLift { ty, name, .. } => {
+                let id_type = &self.gen.resolve.types[*ty];
+                let qualified_type_name = format!(
+                    "{}{}",
+                    self.gen.qualifier(true, id_type),
+                    name.to_string().to_upper_camel_case()
+                );
+                let mut result = format!("new {} (\n", qualified_type_name);
+
+                result.push_str(&operands.join(","));
+                result.push_str(")");
+
+                results.push(result);
+            }
+            Instruction::TupleLift { .. } => {
+                let mut result = String::from("(");
+
+                uwriteln!(result, "{}", operands.join(","));
+
+                result.push_str(")");
+                results.push(result);
+            }
+
+            Instruction::TupleLower { tuple, ty: _ } => {
+                let op = &operands[0];
+                match tuple.types.len() {
+                    1 => results.push(format!("({})", op)),
+                    _ => {
+                        for i in 0..tuple.types.len() {
+                            results.push(format!("({}).Item{}", op, i + 1));
+                        }
+                    }
+                }
             }
 
             Instruction::VariantPayloadName => {
@@ -1528,7 +1675,6 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     IntPtr {interop_string} = InteropString.FromString({result_var}, out int length{result_var});"
                 );
 
-                //TODO: Oppertunity to optimize and not reallocate every call
                 if realloc.is_none() {
                     results.push(format!("{interop_string}.ToInt32()"));
                 } else {
@@ -1541,7 +1687,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::StringLift { .. } => {
                 if self.gen.in_import {
-                    results.push(format!("returnArea.GetUTF8String(ptr)"));
+                    results.push(format!("ReturnArea.GetUTF8String(ptr)"));
                 } else {
                     let address = &operands[0];
                     let length = &operands[1];
@@ -1603,8 +1749,26 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     0 => self
                         .src
                         .push_str(&format!("{class_name}Impl.{func_name}({oper});")),
-                    1 => results.push(format!("{class_name}Impl.{func_name}({oper})")),
-                    _ => results.push(format!("{class_name}Impl.{func_name}({oper})")),
+                    1 => {
+                        let ret = self.locals.tmp("ret");
+                        uwriteln!(
+                            self.src,
+                            "var {ret} = {class_name}Impl.{func_name}({oper});"
+                        );
+                        results.push(ret);
+                    }
+                    _ => {
+                        let ret = self.locals.tmp("ret");
+                        uwriteln!(
+                            self.src,
+                            "var {ret} = {class_name}Impl.{func_name}({oper});"
+                        );
+                        let mut i = 1;
+                        for _ in func.results.iter_types() {
+                            results.push(format!("{}.Item{}", ret, i));
+                            i += 1;
+                        }
+                    }
                 }
             }
 
@@ -1613,17 +1777,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 1 => uwriteln!(self.src, "return {};", operands[0]),
                 _ => {
                     let results = operands.join(", ");
-                    let sig = self
-                        .gen
-                        .resolve()
-                        .wasm_signature(AbiVariant::GuestExport, func);
-                    let cast = sig
-                        .results
-                        .into_iter()
-                        .map(|ty| wasm_type(ty))
-                        .collect::<Vec<&str>>()
-                        .join(", ");
-                    uwriteln!(self.src, "return ({cast})({results});")
+                    uwriteln!(self.src, "return ({results});")
                 }
             },
 
@@ -1736,33 +1890,6 @@ fn wasm_type(ty: WasmType) -> &'static str {
     }
 }
 
-//TODO: Implement Flags
-//fn flags_repr(flags: &Flags) -> Int {
-//    match flags.repr() {
-//        FlagsRepr::U8 => Int::U8,
-//        FlagsRepr::U16 => Int::U16,
-//        FlagsRepr::U32(1) => Int::U32,
-//        FlagsRepr::U32(2) => Int::U64,
-//        repr => panic!("unimplemented flags {repr:?}"),
-//    }
-//}
-
-//fn list_element_info(ty: &Type) -> (usize, &'static str) {
-//    match ty {
-//        Type::S8 => (1, "sbyte"),
-//        Type::S16 => (2, "short"),
-//        Type::S32 => (4, "int"),
-//        Type::S64 => (8, "long"),
-//        Type::U8 => (1, "byte"),
-//        Type::U16 => (2, "ushort"),
-//        Type::U32 => (4, "uint"),
-//        Type::U64 => (8, "ulong"),
-//        Type::Float32 => (4, "float"),
-//        Type::Float64 => (8, "double"),
-//        _ => unreachable!(),
-//    }
-//}
-
 fn indent(code: &str) -> String {
     let mut indented = String::with_capacity(code.len());
     let mut indent = 0;
@@ -1790,13 +1917,6 @@ fn indent(code: &str) -> String {
     }
     indented
 }
-
-// fn world_name(resolve: &Resolve, world: WorldId) -> String {
-//     format!(
-//         "wit.worlds.{}",
-//         resolve.worlds[world].name.to_upper_camel_case()
-//     )
-// }
 
 fn interface_name(resolve: &Resolve, name: &WorldKey, direction: Direction) -> String {
     let pkg = match name {

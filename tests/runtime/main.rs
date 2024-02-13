@@ -16,6 +16,7 @@ mod flavorful;
 mod lists;
 mod many_arguments;
 mod numbers;
+mod options;
 mod other_dependencies;
 mod ownership;
 mod records;
@@ -313,8 +314,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
         // Translate the canonical ABI module into a component.
 
         let mut module = fs::read(&out_wasm).expect("failed to read wasm file");
-        let encoded =
-            wit_component::metadata::encode(&resolve, world, StringEncoding::UTF8, None, None)?;
+        let encoded = wit_component::metadata::encode(&resolve, world, StringEncoding::UTF8, None)?;
 
         let section = wasm_encoder::CustomSection {
             name: Cow::Borrowed("component-type"),
@@ -509,7 +509,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
             }
 
             let snake = world_name.replace("-", "_");
-            let camel = snake.to_upper_camel_case();
+            let camel = format!("{}World", snake.to_upper_camel_case());
 
             let assembly_name = format!(
                 "csharp-{}",
@@ -661,7 +661,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
             }
 
             let snake = world_name.replace("-", "_");
-            let camel = snake.to_upper_camel_case();
+            let camel = format!("{}World", snake.to_upper_camel_case());
 
             let assembly_name = format!(
                 "csharp-{}",

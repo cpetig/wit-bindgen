@@ -91,9 +91,14 @@ fn wamr_add_result(sig: &mut WamrSig, resolve: &Resolve, ty: &Type) {
         }
         Type::Id(id) => match &resolve.types[*id].kind {
             TypeDefKind::Record(_r) => sig.wamr_types.push('R'),
-            TypeDefKind::Flags(_) => todo!(),
+            TypeDefKind::Flags(fl) => {
+                sig.wamr_types
+                    .push(if fl.flags.len() > 32 { 'I' } else { 'i' })
+            }
             TypeDefKind::Tuple(_) => sig.wamr_result.push('i'),
-            TypeDefKind::Variant(_) => todo!(),
+            TypeDefKind::Variant(_) => {
+                sig.wamr_types.push('*');
+            }
             TypeDefKind::Enum(_e) => {
                 sig.wamr_types.push('*');
             }
@@ -126,8 +131,8 @@ pub fn wamr_signature(resolve: &Resolve, func: &Function) -> WamrSig {
     match &func.results {
         Results::Named(p) => {
             if !p.is_empty() {
-                dbg!(p);
-                todo!()
+                // assume a pointer
+                result.wamr_types.push('*');
             }
         }
         Results::Anon(e) => wamr_add_result(&mut result, resolve, e),

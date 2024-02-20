@@ -61,8 +61,5 @@
 
 # Cpp
 
-* Use Resolve::wasm_signature ?
-
-* Reuse code between host and guest (RustFunctionGenerator like?)
-
-* Evaluate emit/call for host side code generation
+* Nested lists
+* Host: Strings inside records

@@ -48,6 +48,9 @@ struct RustWasm {
     resources: HashMap<TypeId, ResourceInfo>,
     import_funcs_called: bool,
     with_name_counter: usize,
+    // Track the with options that were used. Remapped interfaces provided via `with`
+    // are required to be used.
+    used_with_opts: HashSet<String>,
 }
 
 #[cfg(feature = "clap")]
@@ -288,6 +291,7 @@ impl RustWasm {
         let with_name = resolve.name_world_key(name);
         let entry = if let Some(remapped_path) = self.opts.with.get(&with_name) {
             let name = format!("__with_name{}", self.with_name_counter);
+            self.used_with_opts.insert(with_name);
             self.with_name_counter += 1;
             uwriteln!(self.src, "use {remapped_path} as {name};");
             InterfaceName {
@@ -358,6 +362,34 @@ fn name_package_module(resolve: &Resolve, id: PackageId) -> String {
 impl WorldGenerator for RustWasm {
     fn preprocess(&mut self, resolve: &Resolve, _world: WorldId) {
         wit_bindgen_core::generated_preamble(&mut self.src, env!("CARGO_PKG_VERSION"));
+
+        // Render some generator options to assist with debugging and/or to help
+        // recreate it if the original generation command is lost.
+        uwriteln!(self.src, "// Options used:");
+        if self.opts.std_feature {
+            uwriteln!(self.src, "//   * std_feature");
+        }
+        if self.opts.raw_strings {
+            uwriteln!(self.src, "//   * raw_strings");
+        }
+        if !self.opts.skip.is_empty() {
+            uwriteln!(self.src, "//   * skip: {:?}", self.opts.skip);
+        }
+        if !matches!(self.opts.ownership, Ownership::Owning) {
+            uwriteln!(self.src, "//   * ownership: {:?}", self.opts.ownership);
+        }
+        if !self.opts.additional_derive_attributes.is_empty() {
+            uwriteln!(
+                self.src,
+                "//   * additional derives {:?}",
+                self.opts.additional_derive_attributes
+            );
+        }
+        if !self.opts.with.is_empty() {
+            let mut with = self.opts.with.iter().collect::<Vec<_>>();
+            with.sort();
+            uwriteln!(self.src, "//   * with {with:?}");
+        }
         self.types.analyze(resolve);
     }
 
@@ -459,7 +491,7 @@ impl WorldGenerator for RustWasm {
         }
     }
 
-    fn finish(&mut self, resolve: &Resolve, world: WorldId, files: &mut Files) {
+    fn finish(&mut self, resolve: &Resolve, world: WorldId, files: &mut Files) -> Result<()> {
         let name = &resolve.worlds[world].name;
 
         let imports = mem::take(&mut self.import_modules);
@@ -582,6 +614,20 @@ impl WorldGenerator for RustWasm {
 
         let module_name = name.to_snake_case();
         files.push(&format!("{module_name}.rs"), src.as_bytes());
+
+        let remapping_keys = self.opts.with.keys().cloned().collect::<HashSet<String>>();
+
+        let mut unused_keys = remapping_keys
+            .difference(&self.used_with_opts)
+            .collect::<Vec<&String>>();
+
+        unused_keys.sort();
+
+        if !unused_keys.is_empty() {
+            bail!("unused remappings provided via `with`: {unused_keys:?}");
+        }
+
+        Ok(())
     }
 }
 
@@ -624,13 +670,6 @@ fn group_by_resource<'a>(
         }
     }
     by_resource
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-enum TypeMode {
-    Owned,
-    AllBorrowed(&'static str),
-    HandlesBorrowed(&'static str),
 }
 
 #[derive(Default, Debug, Clone, Copy)]

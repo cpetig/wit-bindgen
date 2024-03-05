@@ -73,4 +73,12 @@ public:
     return wit::span<T>(data_, length);
   }
 };
+
+template <class R> class ResourceExportBase {
+  public:
+    int32_t handle;
+
+    ResourceExportBase() : handle(R::ResourceNew(this)) {}
+    ~ResourceExportBase() { R::ResourceDrop(handle); }
+};
 } // namespace wit

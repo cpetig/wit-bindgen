@@ -2690,16 +2690,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     let resultname = self.tempname("result", tmp);
                     uwriteln!(
                         self.src,
-                        "{full_type} {resultname};
+                        "::ara::core::Optional<{full_type} > {resultname};
                         if ({operand}==0) {{
                             {ok}
-                            {resultname}.SetValue({ok_result});
+                            {resultname}.emplace({full_type}::FromValue({ok_result}));
                         }} else {{
                             {err}
-                            {resultname}.SetError({err_result});
+                            {resultname}.emplace({full_type}::FromError({err_result}));
                         }}"
                     );
-                    results.push(resultname);
+                    results.push(format!("std::move(*std::move({resultname}))"));
                 } else {
                     let full_type = format!("std::expected<{ok_type}, {err_type}>",);
                     let err_type = "std::unexpected";

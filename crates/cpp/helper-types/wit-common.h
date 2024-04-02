@@ -5,6 +5,8 @@
 #include <map>
 #if __cplusplus > 202001L
 #include <span>
+#else
+#include <vector>
 #endif
 
 namespace wit {
@@ -25,36 +27,11 @@ public:
   const_iterator begin() const { return address; }
   const_iterator end() const { return address + length; }
   T const &operator[](size_t index) { return address[index]; }
+  // create from any compatible vector (borrows data!)
+  template <class U>
+  span(std::vector<U> const&vec) : address(vec.data()), length(vec.size()) {}
 };
 #endif
-
-class ResourceImportBase {
-  static const int32_t invalid = -1;
-
-protected:
-  int32_t handle;
-
-public:
-  ResourceImportBase(int32_t h = invalid) : handle(h) {}
-  ResourceImportBase(ResourceImportBase &&r) : handle(r.handle) {
-    r.handle = invalid;
-  }
-  ResourceImportBase(ResourceImportBase const &) = delete;
-  void set_handle(int32_t h) { handle = h; }
-  int32_t get_handle() const { return handle; }
-  int32_t into_handle() {
-    int32_t h = handle;
-    handle = invalid;
-    return h;
-  }
-  ResourceImportBase &operator=(ResourceImportBase &&r) {
-    assert(handle < 0);
-    handle = r.handle;
-    r.handle = invalid;
-    return *this;
-  }
-  ResourceImportBase &operator=(ResourceImportBase const &r) = delete;
-};
 
 template <typename T> struct Owned {
   T *ptr;

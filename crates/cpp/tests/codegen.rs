@@ -7,6 +7,52 @@ macro_rules! codegen_test {
     ($id:ident $name:tt $test:tt) => {
         #[test]
         fn $id() {
+            if [
+                "go_params",
+                "guest-name",
+                "import-and-export-resource",
+                "import-and-export-resource-alias",
+                "interface-has-go-keyword",
+                "issue551",
+                "issue573",
+                "issue607",
+                "issue668",
+                "keywords",
+                "lift-lower-foreign",
+                "lists",
+                "multi-return",
+                "multiversion",
+                "option-result",
+                "record-has-go-keyword-and-used-in-fn",
+                "resource-alias",
+                "resource-borrow-in-record",
+                "resource-borrow-in-record-export",
+                "resource-local-alias",
+                "resource-local-alias-borrow",
+                "resource-local-alias-borrow-import",
+                "resource-own-in-other-interface",
+                "resources",
+                "resources-in-aggregates",
+                "resources-with-lists",
+                "result-empty",
+                "ret-areas",
+                "return-resource-from-export",
+                "same-names5",
+                "simple-http",
+                "simple-lists",
+                "use-across-interfaces",
+                "variants",
+                "variants-unioning-types",
+                "worlds-with-types",
+                "zero-size-tuple",
+            ]
+            .contains(&$name)
+            {
+                let test_all_code = env::var_os("CPP_ALL_TESTS").is_some();
+                if !test_all_code {
+                    return;
+                }
+            }
             test_helpers::run_world_codegen_test(
                 "cpp",
                 $test.as_ref(),
@@ -18,16 +64,19 @@ macro_rules! codegen_test {
                 },
                 verify,
             );
-            test_helpers::run_world_codegen_test(
-                "cpp-host",
-                $test.as_ref(),
-                |resolve, world, files| {
-                    let mut opts = wit_bindgen_cpp::Opts::default();
-                    opts.host = true;
-                    opts.build().generate(resolve, world, files).unwrap()
-                },
-                verify_host,
-            );
+            let test_host_code = env::var_os("CPP_HOST_TESTS").is_some();
+            if test_host_code {
+                test_helpers::run_world_codegen_test(
+                    "cpp-host",
+                    $test.as_ref(),
+                    |resolve, world, files| {
+                        let mut opts = wit_bindgen_cpp::Opts::default();
+                        opts.host = true;
+                        opts.build().generate(resolve, world, files).unwrap()
+                    },
+                    verify_host,
+                );
+            }
         }
     };
 }

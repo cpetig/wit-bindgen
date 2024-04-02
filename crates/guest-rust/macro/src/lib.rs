@@ -90,6 +90,9 @@ impl Parse for Config {
                     Opt::Stubs => {
                         opts.stubs = true;
                     }
+                    Opt::Wasm64 => {
+                        opts.wasm64 = true;
+                    }
                     Opt::ExportPrefix(prefix) => opts.export_prefix = Some(prefix.value()),
                     Opt::AdditionalDerives(paths) => {
                         opts.additional_derive_attributes = paths
@@ -101,8 +104,8 @@ impl Parse for Config {
                     Opt::TypeSectionSuffix(suffix) => {
                         opts.type_section_suffix = Some(suffix.value());
                     }
-                    Opt::RunCtorsOnceWorkaround(enable) => {
-                        opts.run_ctors_once_workaround = enable.value();
+                    Opt::DisableRunCtorsOnceWorkaround(enable) => {
+                        opts.disable_run_ctors_once_workaround = enable.value();
                     }
                     Opt::DefaultBindingsModule(enable) => {
                         opts.default_bindings_module = Some(enable.value());
@@ -112,6 +115,9 @@ impl Parse for Config {
                     }
                     Opt::PubExportMacro(enable) => {
                         opts.pub_export_macro = enable.value();
+                    }
+                    Opt::GenerateUnusedTypes(enable) => {
+                        opts.generate_unused_types = enable.value();
                     }
                 }
             }
@@ -227,10 +233,12 @@ mod kw {
     syn::custom_keyword!(additional_derives);
     syn::custom_keyword!(with);
     syn::custom_keyword!(type_section_suffix);
-    syn::custom_keyword!(run_ctors_once_workaround);
+    syn::custom_keyword!(disable_run_ctors_once_workaround);
     syn::custom_keyword!(default_bindings_module);
     syn::custom_keyword!(export_macro_name);
     syn::custom_keyword!(pub_export_macro);
+    syn::custom_keyword!(wasm64);
+    syn::custom_keyword!(generate_unused_types);
 }
 
 #[derive(Clone)]
@@ -276,10 +284,12 @@ enum Opt {
     AdditionalDerives(Vec<syn::Path>),
     With(HashMap<String, String>),
     TypeSectionSuffix(syn::LitStr),
-    RunCtorsOnceWorkaround(syn::LitBool),
+    DisableRunCtorsOnceWorkaround(syn::LitBool),
     DefaultBindingsModule(syn::LitStr),
     ExportMacroName(syn::LitStr),
     PubExportMacro(syn::LitBool),
+    Wasm64,
+    GenerateUnusedTypes(syn::LitBool),
 }
 
 impl Parse for Opt {
@@ -359,6 +369,9 @@ impl Parse for Opt {
         } else if l.peek(kw::stubs) {
             input.parse::<kw::stubs>()?;
             Ok(Opt::Stubs)
+        } else if l.peek(kw::wasm64) {
+            input.parse::<kw::wasm64>()?;
+            Ok(Opt::Wasm64)
         } else if l.peek(kw::export_prefix) {
             input.parse::<kw::export_prefix>()?;
             input.parse::<Token![:]>()?;
@@ -382,10 +395,10 @@ impl Parse for Opt {
             input.parse::<kw::type_section_suffix>()?;
             input.parse::<Token![:]>()?;
             Ok(Opt::TypeSectionSuffix(input.parse()?))
-        } else if l.peek(kw::run_ctors_once_workaround) {
-            input.parse::<kw::run_ctors_once_workaround>()?;
+        } else if l.peek(kw::disable_run_ctors_once_workaround) {
+            input.parse::<kw::disable_run_ctors_once_workaround>()?;
             input.parse::<Token![:]>()?;
-            Ok(Opt::RunCtorsOnceWorkaround(input.parse()?))
+            Ok(Opt::DisableRunCtorsOnceWorkaround(input.parse()?))
         } else if l.peek(kw::default_bindings_module) {
             input.parse::<kw::default_bindings_module>()?;
             input.parse::<Token![:]>()?;
@@ -398,6 +411,10 @@ impl Parse for Opt {
             input.parse::<kw::pub_export_macro>()?;
             input.parse::<Token![:]>()?;
             Ok(Opt::PubExportMacro(input.parse()?))
+        } else if l.peek(kw::generate_unused_types) {
+            input.parse::<kw::generate_unused_types>()?;
+            input.parse::<Token![:]>()?;
+            Ok(Opt::GenerateUnusedTypes(input.parse()?))
         } else {
             Err(l.error())
         }

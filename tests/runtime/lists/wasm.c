@@ -214,17 +214,17 @@ void lists_test_imports() {
   {
     float f32[4] = {-FLT_MAX, FLT_MAX, -INFINITY, INFINITY};
     double f64[4] = {-DBL_MAX, DBL_MAX, -INFINITY, INFINITY};
-    lists_list_float32_t list_float32 = { f32, 4 };
-    lists_list_float64_t list_float64 = { f64, 4 };
-    lists_list_float32_t list_float32_out;
-    lists_list_float64_t list_float64_out;
-    test_lists_test_list_minmax_float(&list_float32, &list_float64, &list_float32_out, &list_float64_out);
-    assert(list_float32_out.len == 4 && list_float32_out.ptr[0] == -FLT_MAX && list_float32_out.ptr[1] == FLT_MAX);
-    assert(list_float32_out.ptr[2] == -INFINITY && list_float32_out.ptr[3] == INFINITY);
-    assert(list_float64_out.len == 4 && list_float64_out.ptr[0] == -DBL_MAX && list_float64_out.ptr[1] == DBL_MAX);
-    assert(list_float64_out.ptr[2] == -INFINITY && list_float64_out.ptr[3] == INFINITY);
-    lists_list_float32_free(&list_float32_out);
-    lists_list_float64_free(&list_float64_out);
+    lists_list_f32_t list_f32 = { f32, 4 };
+    lists_list_f64_t list_f64 = { f64, 4 };
+    lists_list_f32_t list_f32_out;
+    lists_list_f64_t list_f64_out;
+    test_lists_test_list_minmax_float(&list_f32, &list_f64, &list_f32_out, &list_f64_out);
+    assert(list_f32_out.len == 4 && list_f32_out.ptr[0] == -FLT_MAX && list_f32_out.ptr[1] == FLT_MAX);
+    assert(list_f32_out.ptr[2] == -INFINITY && list_f32_out.ptr[3] == INFINITY);
+    assert(list_f64_out.len == 4 && list_f64_out.ptr[0] == -DBL_MAX && list_f64_out.ptr[1] == DBL_MAX);
+    assert(list_f64_out.ptr[2] == -INFINITY && list_f64_out.ptr[3] == INFINITY);
+    lists_list_f32_free(&list_f32_out);
+    lists_list_f64_free(&list_f64_out);
   }
 }
 
@@ -307,7 +307,7 @@ void exports_test_lists_test_list_param4(lists_list_list_string_t *a) {
 }
 
 void exports_test_lists_test_list_result(lists_list_u8_t *ret0) {
-  ret0->ptr = malloc(5);
+  ret0->ptr = (uint8_t *) malloc(5);
   ret0->len = 5;
   ret0->ptr[0] = 1;
   ret0->ptr[1] = 2;
@@ -322,7 +322,7 @@ void exports_test_lists_test_list_result2(lists_string_t *ret0) {
 
 void exports_test_lists_test_list_result3(lists_list_string_t *ret0) {
   ret0->len = 2;
-  ret0->ptr = malloc(2 * sizeof(lists_string_t));
+  ret0->ptr = (lists_string_t *) malloc(2 * sizeof(lists_string_t));
 
   lists_string_dup(&ret0->ptr[0], "hello,");
   lists_string_dup(&ret0->ptr[1], "world!");
@@ -352,6 +352,6 @@ void exports_test_lists_test_list_minmax64(lists_list_u64_t *a, lists_list_s64_t
   assert(0); // unimplemented
 }
 
-void exports_test_lists_test_list_minmax_float(lists_list_float32_t *a, lists_list_float64_t *b, lists_list_float32_t *ret0, lists_list_float64_t *ret1) {
+void exports_test_lists_test_list_minmax_float(lists_list_f32_t *a, lists_list_f64_t *b, lists_list_f32_t *ret0, lists_list_f64_t *ret1) {
   assert(0); // unimplemented
 }

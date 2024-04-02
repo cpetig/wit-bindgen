@@ -9,7 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
-use wit_bindgen_core::{dealias, uwrite, uwriteln, wit_parser::*, Source, TypeInfo};
+use wit_bindgen_core::{
+    dealias, make_external_component, make_external_symbol, uwrite, uwriteln, wit_parser::*,
+    Source, TypeInfo,
+};
 
 pub struct InterfaceGenerator<'a> {
     pub src: Source,
@@ -133,6 +136,7 @@ impl InterfaceGenerator<'_> {
     ) -> Result<String> {
         let mut traits = BTreeMap::new();
         let mut funcs_to_export = Vec::new();
+        let mut resources_to_drop = Vec::new();
 
         traits.insert(None, ("Guest".to_string(), Vec::new()));
 
@@ -142,6 +146,7 @@ impl InterfaceGenerator<'_> {
                     TypeDefKind::Resource => {}
                     _ => continue,
                 }
+                resources_to_drop.push(name);
                 let camel = name.to_upper_camel_case();
                 traits.insert(Some(*id), (format!("Guest{camel}"), Vec::new()));
             }
@@ -196,6 +201,16 @@ impl InterfaceGenerator<'_> {
             let resource_name = self.resolve.types[resource].name.as_ref().unwrap();
             let (_, interface_name) = interface.unwrap();
             let module = self.resolve.name_world_key(interface_name);
+            let external_new = make_external_symbol(
+                &(String::from("[export]") + &module),
+                &(String::from("[resource-new]") + &resource_name),
+                AbiVariant::GuestImport,
+            );
+            let external_rep = make_external_symbol(
+                &(String::from("[export]") + &module),
+                &(String::from("[resource-rep]") + &resource_name),
+                AbiVariant::GuestImport,
+            );
             uwriteln!(
                 self.src,
                 r#"
@@ -204,16 +219,19 @@ unsafe fn _resource_new(val: *mut u8) -> u32
     where Self: Sized
 {{
     #[cfg(not(target_arch = "wasm32"))]
-    unreachable!();
+    {{
+        let _ = val;
+        unreachable!();
+    }}
 
     #[cfg(target_arch = "wasm32")]
     {{
         #[link(wasm_import_module = "[export]{module}")]
         extern "C" {{
-            #[link_name = "[resource-new]{resource_name}"]
-            fn new(_: *mut u8) -> u32;
+            #[cfg_attr(target_arch = "wasm32", link_name = "[resource-new]{resource_name}")]
+            fn {external_new}(_: *mut u8) -> u32;
         }}
-        new(val)
+        {external_new}(val)
     }}
 }}
 
@@ -222,17 +240,20 @@ fn _resource_rep(handle: u32) -> *mut u8
     where Self: Sized
 {{
     #[cfg(not(target_arch = "wasm32"))]
-    unreachable!();
+    {{
+        let _ = handle;
+        unreachable!();
+    }}
 
     #[cfg(target_arch = "wasm32")]
     {{
         #[link(wasm_import_module = "[export]{module}")]
         extern "C" {{
-            #[link_name = "[resource-rep]{resource_name}"]
-            fn rep(_: u32) -> *mut u8;
+            #[cfg_attr(target_arch = "wasm32", link_name = "[resource-rep]{resource_name}")]
+            fn {external_rep}(_: u32) -> *mut u8;
         }}
         unsafe {{
-            rep(handle)
+            {external_rep}(handle)
         }}
     }}
 }}
@@ -295,6 +316,35 @@ macro_rules! {macro_name} {{
                 }
             };
             self.generate_raw_cabi_export(func, &ty, "$($path_to_types)*");
+        }
+        let export_prefix = self.gen.opts.export_prefix.as_deref().unwrap_or("");
+        for name in resources_to_drop {
+            let module = match self.identifier {
+                Identifier::Interface(_, key) => self.resolve.name_world_key(key),
+                Identifier::World(_) => unreachable!(),
+            };
+            let camel = name.to_upper_camel_case();
+            let dtor_symbol = make_external_symbol(
+                &module,
+                &(String::from("[dtor]") + &name),
+                AbiVariant::GuestExport,
+            );
+            uwriteln!(
+                self.src,
+                r#"
+                const _: () = {{
+                    #[doc(hidden)]
+                    #[cfg_attr(target_arch = "wasm32", export_name = "{export_prefix}{module}#[dtor]{name}")]
+                    #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                    #[allow(non_snake_case)]
+                    unsafe extern "C" fn {dtor_symbol}(rep: *mut u8) {{
+                        $($path_to_types)*::{camel}::dtor::<
+                            <$ty as $($path_to_types)*::Guest>::{camel}
+                        >(rep)
+                    }}
+                }};
+                "#
+            );
         }
         uwriteln!(self.src, "}};);");
         uwriteln!(self.src, "}}");
@@ -394,7 +444,7 @@ macro_rules! {macro_name} {{
         let path_to_root = self.path_to_root();
         let module = format!(
             "\
-                #[allow(clippy::all)]
+                #[allow(dead_code, clippy::all)]
                 pub mod {snake} {{
                     #[used]
                     #[doc(hidden)]
@@ -494,25 +544,19 @@ macro_rules! {macro_name} {{
         let params = self.print_export_sig(func);
         self.push_str(" {");
 
-        if self.gen.opts.run_ctors_once_workaround {
+        if !self.gen.opts.disable_run_ctors_once_workaround {
             let run_ctors_once = self.path_to_run_ctors_once();
+            // Before executing any other code, use this function to run all
+            // static constructors, if they have not yet been run. This is a
+            // hack required to work around wasi-libc ctors calling import
+            // functions to initialize the environment.
+            //
+            // See
+            // https://github.com/bytecodealliance/preview2-prototyping/issues/99
+            // for more details.
             uwrite!(
                 self.src,
-                "\
-                // Before executing any other code, use this function to run all static
-                // constructors, if they have not yet been run. This is a hack required
-                // to work around wasi-libc ctors calling import functions to initialize
-                // the environment.
-                //
-                // This functionality will be removed once rust 1.69.0 is stable, at which
-                // point wasi-libc will no longer have this behavior.
-                //
-                // See
-                // https://github.com/bytecodealliance/preview2-prototyping/issues/99
-                // for more details.
-                #[cfg(target_arch=\"wasm32\")]
-                {run_ctors_once}();
-",
+                "#[cfg(target_arch=\"wasm32\")]\n{run_ctors_once}();",
             );
         }
 
@@ -573,12 +617,14 @@ macro_rules! {macro_name} {{
         };
         let export_prefix = self.gen.opts.export_prefix.as_deref().unwrap_or("");
         let export_name = func.core_export_name(wasm_module_export_name.as_deref());
+        let external_name = make_external_component(&(String::from(export_prefix) + &export_name));
         uwrite!(
             self.src,
             "\
-                #[export_name = \"{export_prefix}{export_name}\"]
-                unsafe extern \"C\" fn export_{name_snake}\
-",
+                #[cfg_attr(target_arch = \"wasm32\", export_name = \"{export_prefix}{export_name}\")]
+                #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
+                unsafe extern \"C\" fn {external_name}\
+        ",
         );
 
         let params = self.print_export_sig(func);
@@ -592,12 +638,16 @@ macro_rules! {macro_name} {{
 
         if abi::guest_export_needs_post_return(self.resolve, func) {
             let export_prefix = self.gen.opts.export_prefix.as_deref().unwrap_or("");
+            let external_name = make_external_component(export_prefix)
+                + "cabi_post_"
+                + &make_external_component(&export_name);
             uwrite!(
                 self.src,
                 "\
-                    #[export_name = \"{export_prefix}cabi_post_{export_name}\"]
-                    unsafe extern \"C\" fn _post_return_{name_snake}\
-"
+                    #[cfg_attr(target_arch = \"wasm32\", export_name = \"{export_prefix}cabi_post_{export_name}\")]
+                    #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
+                    unsafe extern \"C\" fn {external_name}\
+            "
             );
             let params = self.print_post_return_sig(func);
             self.src.push_str("{\n");
@@ -1082,8 +1132,8 @@ macro_rules! {macro_name} {{
             Type::S16 => self.push_str("i16"),
             Type::S32 => self.push_str("i32"),
             Type::S64 => self.push_str("i64"),
-            Type::Float32 => self.push_str("f32"),
-            Type::Float64 => self.push_str("f64"),
+            Type::F32 => self.push_str("f32"),
+            Type::F64 => self.push_str("f64"),
             Type::Char => self.push_str("char"),
             Type::String => {
                 assert_eq!(mode.lists_borrowed, mode.lifetime.is_some());
@@ -1304,12 +1354,13 @@ macro_rules! {macro_name} {{
 
     fn modes_of(&self, ty: TypeId) -> Vec<(String, TypeMode)> {
         let info = self.info(ty);
-        // If this type isn't actually used, no need to generate it.
-        if !info.owned && !info.borrowed {
-            return Vec::new();
-        }
         let mut result = Vec::new();
-
+        if !self.gen.opts.generate_unused_types {
+            // If this type isn't actually used, no need to generate it.
+            if !info.owned && !info.borrowed {
+                return result;
+            }
+        }
         // Generate one mode for when the type is owned and another for when
         // it's borrowed.
         let a = self.type_mode_for_id(ty, TypeOwnershipStyle::Owned, "'a");
@@ -1892,7 +1943,7 @@ macro_rules! {macro_name} {{
     }
 
     fn path_to_run_ctors_once(&mut self) -> String {
-        self.path_from_runtime_module(RuntimeItem::RunCtorsOnce, "bool_lift")
+        self.path_from_runtime_module(RuntimeItem::RunCtorsOnce, "run_ctors_once")
     }
 
     pub fn path_to_vec(&mut self) -> String {
@@ -2054,9 +2105,15 @@ impl {camel} {{
         }}
     }}
 
+    #[doc(hidden)]
+    pub unsafe fn dtor<T: 'static>(handle: *mut u8) {{
+        Self::type_guard::<T>();
+        let _ = {box_path}::from_raw(handle as *mut _{camel}Rep<T>);
+    }}
+
     fn as_ptr<T: Guest{camel}>(&self) -> *mut _{camel}Rep<T> {{
        {camel}::type_guard::<T>();
-       unsafe {{ T::_resource_rep(self.handle()).cast() }}
+       T::_resource_rep(self.handle()).cast()
     }}
 }}
 
@@ -2098,24 +2155,25 @@ impl<'a> {camel}Borrow<'a>{{
         };
 
         let wasm_resource = self.path_to_wasm_resource();
+        let export_name = make_external_symbol(
+            &wasm_import_module,
+            &format!("[resource-drop]{name}"),
+            AbiVariant::GuestImport,
+        );
         uwriteln!(
             self.src,
             r#"
                 unsafe impl {wasm_resource} for {camel} {{
                      #[inline]
                      unsafe fn drop(_handle: u32) {{
-                         #[cfg(not(target_arch = "wasm32"))]
-                         unreachable!();
-
-                         #[cfg(target_arch = "wasm32")]
                          {{
                              #[link(wasm_import_module = "{wasm_import_module}")]
                              extern "C" {{
-                                 #[link_name = "[resource-drop]{name}"]
-                                 fn drop(_: u32);
+                                 #[cfg_attr(target_arch = "wasm32", link_name = "[resource-drop]{name}")]
+                                 fn {export_name}(_: u32);
                              }}
 
-                             drop(_handle);
+                             {export_name}(_handle);
                          }}
                      }}
                 }}

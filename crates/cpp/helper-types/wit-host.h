@@ -17,7 +17,7 @@
 
 namespace wit {
 #ifdef WIT_HOST_DIRECT
-typedef intptr_t guest_address;
+typedef uint8_t* guest_address;
 typedef size_t guest_size;
 extern "C" void *cabi_realloc(void *ptr, size_t old_size, size_t align,
                               size_t new_size);
@@ -139,7 +139,7 @@ public:
 #ifdef WIT_HOST_WAMR
       wasm_val_t *wasm_results = nullptr;
       wasm_val_t wasm_args[1] = {
-          WASM_I32_VAL(data_),
+          WASM_I32_VAL((int32_t)data_),
       };
       wasm_runtime_call_wasm_a(exec_env, free_func, 0, wasm_results, 1,
                                wasm_args);
@@ -182,7 +182,7 @@ public:
 #endif
 };
 
-template <class R> class ResourceExportBase {
+template <class R> class ResourceTable {
   static std::map<int32_t, R> resources;
 
 public:
@@ -200,10 +200,49 @@ public:
     auto iter = resources.find(id);
     std::optional<R> result;
     if (iter!=resources.end()) {
-      result = std::move(*iter);
+      result = std::move(iter->second);
       resources.erase(iter);
     }
     return std::move(result);
   }
 };
+
+// guest exported resource
+class ResourceExportBase : public ResourceTable<guest_address> {
+  protected:
+    guest_address rep;
+    int32_t index;
+  public:
+    ResourceExportBase() : rep(0), index(-1) {}
+    ResourceExportBase(int32_t i) : rep(*lookup_resource(i)), index(i) {}
+    ResourceExportBase(ResourceExportBase &&b) : rep(b.rep), index(b.index) {b.rep=0;}
+    ResourceExportBase(ResourceExportBase const&) = delete;
+    ResourceExportBase& operator=(ResourceExportBase const&)=delete;
+    ResourceExportBase& operator=(ResourceExportBase &&b) {
+      assert(rep==0);
+      rep = b.rep;
+      index = b.index;
+      b.rep = 0;
+    }
+    int32_t get_handle() const { return index; }
+    guest_address get_rep() const { return rep; }
+    guest_address take_rep() { guest_address res = rep; rep=0; return res; }
+};
+
+template <class R>
+class ResourceImportBase : public ResourceTable<R*> {
+    int32_t index;
+  public:
+    static const int32_t invalid=-1;
+    ResourceImportBase() : index(this->store_resource((R*)this)) {}
+    ~ResourceImportBase() {}
+    ResourceImportBase(ResourceImportBase &&b) = delete;
+    ResourceImportBase(ResourceImportBase const&) = delete;
+    ResourceImportBase& operator=(ResourceImportBase const&)=delete;
+    ResourceImportBase& operator=(ResourceImportBase &&)=delete;
+    int32_t get_handle() {
+      return index;
+    }
+};
+
 } // namespace wit

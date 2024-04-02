@@ -2569,12 +2569,22 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let ty = self
                     .gen
                     .type_name(payload, &self.namespace, Flavor::InStruct);
-                let bind_some = format!("{ty} {some_payload} = (std::move({op0})).value();");
+                let value = if self.gen.gen.opts.autosar {
+                    "Value"
+                } else {
+                    "value"
+                };
+                let bind_some = format!("{ty} {some_payload} = (std::move({op0})).{value}();");
 
+                let has_value = if self.gen.gen.opts.autosar {
+                    "HasValue"
+                } else {
+                    "has_value"
+                };
                 uwrite!(
                     self.src,
                     "\
-                    if (({op0}).has_value()) {{
+                    if (({op0}).{has_value}()) {{
                         {bind_some}
                         {some}}} else {{
                         {none}}}
@@ -2642,20 +2652,35 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     Flavor::InStruct,
                 );
                 let bind_ok = if let Some(_ok) = result.ok.as_ref() {
-                    format!("{ok_ty} {ok_payload} = std::move({op0}).value();")
+                    let value = if self.gen.gen.opts.autosar {
+                        "Value"
+                    } else {
+                        "value"
+                    };
+                    format!("{ok_ty} {ok_payload} = std::move({op0}).{value}();")
                 } else {
                     String::new()
                 };
                 let bind_err = if let Some(_err) = result.err.as_ref() {
-                    format!("{err_ty} {err_payload} = std::move({op0}).error();")
+                    let error = if self.gen.gen.opts.autosar {
+                        "Error"
+                    } else {
+                        "error"
+                    };
+                    format!("{err_ty} {err_payload} = std::move({op0}).{error}();")
                 } else {
                     String::new()
                 };
 
+                let has_value = if self.gen.gen.opts.autosar {
+                    "HasValue"
+                } else {
+                    "has_value"
+                };
                 uwrite!(
                     self.src,
                     "\
-                    if (({op0}).has_value()) {{
+                    if (({op0}).{has_value}()) {{
                         {bind_ok}
                         {ok}}} else {{
                         {bind_err}

@@ -1407,7 +1407,11 @@ impl CppInterfaceGenerator<'_> {
             Type::String => match flavor {
                 Flavor::Argument(AbiVariant::GuestImport) => {
                     self.gen.dependencies.needs_string_view = true;
-                    "std::string_view".into()
+                    if self.gen.opts.autosar {
+                        "::ara::core::StringView".into()
+                    } else {
+                        "std::string_view".into()
+                    }
                 }
                 Flavor::Argument(AbiVariant::GuestExport) if !self.gen.opts.host_side() => {
                     self.gen.dependencies.needs_wit = true;
@@ -1415,7 +1419,11 @@ impl CppInterfaceGenerator<'_> {
                 }
                 Flavor::Result(AbiVariant::GuestExport) if self.gen.opts.host_side() => {
                     self.gen.dependencies.needs_string_view = true;
-                    "std::string_view".into()
+                    if self.gen.opts.autosar {
+                        "::ara::core::StringView".into()
+                    } else {
+                        "std::string_view".into()
+                    }
                 }
                 _ => {
                     self.gen.dependencies.needs_wit = true;
@@ -2245,11 +2253,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 let len = format!("len{}", tmp);
                 uwriteln!(self.src, "auto {} = {};\n", len, operands[1]);
+                let string_view = if self.gen.gen.opts.autosar {
+                    "::ara::core::StringView"
+                } else {
+                    "std::string_view"
+                };
                 let result = if self.gen.gen.opts.host {
                     uwriteln!(self.src, "char const* ptr{} = (char const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", tmp, operands[0]);
-                    format!("std::string_view(ptr{}, {len})", tmp)
+                    format!("{string_view}(ptr{}, {len})", tmp)
                 } else if self.gen.gen.opts.short_cut {
-                    format!("std::string_view((char const*)({}), {len})", operands[0])
+                    format!("{string_view}((char const*)({}), {len})", operands[0])
                 } else {
                     format!("wit::string((char const*)({}), {len})", operands[0])
                 };

@@ -1,4 +1,4 @@
-mod component_type_object;
+pub mod component_type_object;
 
 use anyhow::Result;
 use heck::*;
@@ -1040,10 +1040,11 @@ extern void {ns}_{snake}_drop_own({own} handle);
         let import_module = if self.in_import {
             self.wasm_import_module.unwrap().to_string()
         } else {
-            match self.interface {
+            let module = match self.interface {
                 Some((_, key)) => self.resolve.name_world_key(key),
                 None => unimplemented!("resource exports from worlds"),
-            }
+            };
+            format!("[export]{module}")
         };
 
         let drop_fn = format!("__wasm_import_{ns}_{snake}_drop");

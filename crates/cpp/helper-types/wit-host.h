@@ -5,6 +5,7 @@
 #include <string.h>
 #include <string_view>
 #include <optional>
+#include <memory> // unique_ptr
 #include "wit-common.h"
 
 #ifndef WIT_HOST_DIRECT
@@ -233,6 +234,11 @@ template <class R>
 class ResourceImportBase : public ResourceTable<R*> {
     int32_t index;
   public:
+    struct Deleter {
+      void operator()(R* ptr) const { R::Dtor(ptr); }
+    };
+    typedef std::unique_ptr<R, Deleter> Owned;
+
     static const int32_t invalid=-1;
     ResourceImportBase() : index(this->store_resource((R*)this)) {}
     ~ResourceImportBase() {}

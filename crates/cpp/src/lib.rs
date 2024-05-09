@@ -2944,22 +2944,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let ty = self
                     .gen
                     .type_name(payload, &self.namespace, Flavor::InStruct);
-                let value = if self.gen.gen.opts.autosar {
-                    "Value"
-                } else {
-                    "value"
-                };
-                let bind_some = format!("{ty} {some_payload} = (std::move({op0})).{value}();");
+                let bind_some = format!("{ty} {some_payload} = (std::move({op0})).value();");
 
-                let has_value = if self.gen.gen.opts.autosar {
-                    "HasValue"
-                } else {
-                    "has_value"
-                };
                 uwrite!(
                     self.src,
                     "\
-                    if (({op0}).{has_value}()) {{
+                    if (({op0}).has_value()) {{
                         {bind_some}
                         {some}}} else {{
                         {none}}}
@@ -2975,7 +2965,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let type_name = self
                     .gen
                     .type_name(*payload, &self.namespace, Flavor::InStruct);
-                let full_type = format!("std::optional<{type_name}>");
+                let full_type = if self.gen.gen.opts.autosar {
+                    format!("::ata::core::Optional<{type_name}>")
+                } else {
+                    format!("std::optional<{type_name}>")
+                };
                 let op0 = &operands[0];
 
                 let tmp = self.tmp();

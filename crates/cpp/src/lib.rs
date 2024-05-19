@@ -2966,7 +2966,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .gen
                     .type_name(*payload, &self.namespace, Flavor::InStruct);
                 let full_type = if self.gen.gen.opts.autosar {
-                    format!("::ata::core::Optional<{type_name}>")
+                    format!("::ara::core::Optional<{type_name}>")
                 } else {
                     format!("std::optional<{type_name}>")
                 };

@@ -2700,12 +2700,19 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let op = &operands[0];
                 if self.gen.gen.opts.host_side() {
                     if matches!(self.variant, AbiVariant::GuestImport) {
-                        results.push(format!("{op}.get_handle()"));
+                        results.push(format!("{op}.release()->get_handle()"));
                     } else {
-                        results.push(format!("{op}.store_resource(std::move({op}))"));
+                        let tmp = self.tmp();
+                        let var = self.tempname("rep", tmp);
+                        uwriteln!(self.src, "auto {var} = {op}.take_rep();");
+                        results.push(format!("{op}.get_handle()"));
                     }
                 } else {
-                    results.push(format!("{op}.into_handle()"));
+                    if matches!(self.variant, AbiVariant::GuestImport) {
+                        results.push(format!("{op}.into_handle()"));
+                    } else {
+                        results.push(format!("{op}.release()->handle"));
+                    }
                 }
             }
             abi::Instruction::HandleLower {
@@ -2714,21 +2721,80 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             } => {
                 let op = &operands[0];
                 if self.gen.gen.opts.host_side() {
-                    results.push(format!("{op}.get_rep()"));
-                } else {
+                    if op == "(*this)" {
+                        results.push(format!("{op}.get_rep()"));
+                    } else {
+                        results.push(format!("{op}.get().get_rep()"));
+                    }
+                } else if op == "(*this)" {
+                    // TODO is there a better way to decide?
                     results.push(format!("{op}.get_handle()"));
+                } else {
+                    results.push(format!("{op}.get().get_handle()"));
                 }
             }
             abi::Instruction::HandleLift { handle, .. } => {
                 let op = &operands[0];
                 match (handle, self.gen.gen.opts.host_side()) {
-                    (Handle::Own(_), true) => {
-                        results.push(format!("wit::{RESOURCE_EXPORT_BASE_CLASS_NAME}{{{op}}}"))
+                    (Handle::Own(ty), true) => match self.variant {
+                        AbiVariant::GuestExport => {
+                            results.push(format!("wit::{RESOURCE_EXPORT_BASE_CLASS_NAME}{{{op}}}"))
+                        }
+                        AbiVariant::GuestImport => {
+                            let tmp = self.tmp();
+                            let var = self.tempname("obj", tmp);
+                            let tname = self.gen.type_name(
+                                &Type::Id(*ty),
+                                &self.namespace,
+                                Flavor::Argument(self.variant),
+                            );
+                            uwriteln!(
+                                self.src,
+                                "auto {var} = {tname}::remove_resource({op});
+                                assert({var}.has_value());"
+                            );
+                            results.push(format!("{tname}::Owned(*{var})"));
+                        }
+                    },
+                    (Handle::Own(ty), false) => match self.variant {
+                        AbiVariant::GuestImport => {
+                            results.push(format!("wit::{RESOURCE_IMPORT_BASE_CLASS_NAME}{{{op}}}"))
+                        }
+                        AbiVariant::GuestExport => {
+                            let tmp = self.tmp();
+                            let var = self.tempname("obj", tmp);
+                            let tname = self.gen.type_name(
+                                &Type::Id(*ty),
+                                &self.namespace,
+                                Flavor::Argument(self.variant),
+                            );
+                            uwriteln!(
+                                self.src,
+                                "auto {var} = {tname}::Owned({tname}::ResourceRep({op}));
+                                {var}->into_handle();"
+                            );
+                            results.push(format!("std::move({var})"))
+                        }
+                    },
+                    (Handle::Borrow(ty), true) => {
+                        let tname = self.gen.type_name(
+                            &Type::Id(*ty),
+                            &self.namespace,
+                            Flavor::Argument(self.variant),
+                        );
+                        results.push(format!("**{tname}::lookup_resource({op})"));
                     }
-                    (Handle::Own(_), false) => {
-                        results.push(format!("wit::{RESOURCE_IMPORT_BASE_CLASS_NAME}{{{op}}}"))
-                    }
-                    (Handle::Borrow(_), _) => results.push(op.clone()),
+                    (Handle::Borrow(ty), false) => match self.variant {
+                        AbiVariant::GuestImport => results.push(op.clone()),
+                        AbiVariant::GuestExport => {
+                            let tname = self.gen.type_name(
+                                &Type::Id(*ty),
+                                &self.namespace,
+                                Flavor::Argument(self.variant),
+                            );
+                            results.push(format!("std::ref(*({tname} *){op})"));
+                        }
+                    },
                 }
             }
             abi::Instruction::TupleLower { tuple, .. } => {
@@ -3225,19 +3291,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         .func_namespace_name(func, !self.gen.gen.opts.host_side(), true);
                 if matches!(func.kind, FunctionKind::Method(_)) {
                     let this = operands.remove(0);
-                    //self.gen.gen.c_src.qualify(&namespace);
-                    // relative.namespace = self.namespace.clone();
                     if self.gen.gen.opts.host_side() {
-                        let mut relative = SourceWithState::default();
-                        relative.qualify(&namespace);
-                        uwrite!(
-                            self.src,
-                            "(*{}lookup_resource({this}))->",
-                            relative.src.to_string()
-                        );
+                        uwrite!(self.src, "({this}).");
                     } else {
-                        let objtype = namespace.join("::");
-                        uwrite!(self.src, "(({objtype}*){this})->",);
+                        //let objtype = namespace.join("::");
+                        uwrite!(self.src, "({this}).get().");
+                        // uwrite!(self.src, "(({objtype}*){this})->",);
                     }
                 } else {
                     if matches!(func.kind, FunctionKind::Constructor(_))
@@ -3267,7 +3326,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                 }
                 self.push_str(&operands.join(", "));
-                if matches!(func.kind, FunctionKind::Constructor(_))
+                if false
+                    && matches!(func.kind, FunctionKind::Constructor(_))
                     && !self.gen.gen.opts.is_only_handle(self.variant)
                 {
                     // acquire object from unique_ptr

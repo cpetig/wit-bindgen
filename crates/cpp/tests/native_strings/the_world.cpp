@@ -34,7 +34,7 @@ fooX3AfooX2FstringsX00b(uint8_t *);
 extern "C" __attribute__((import_module("foo:foo/strings")))
 __attribute__((import_name("c"))) void
 fooX3AfooX2FstringsX00c(uint8_t *, size_t, uint8_t *, size_t, uint8_t *);
-void foo::foo::strings::A(std::string_view x) {
+void foo::foo::strings::A(std::string_view x) {  
   auto const &vec0 = x;
   auto ptr0 = (uint8_t *)(vec0.data());
   auto len0 = (size_t)(vec0.size());
@@ -64,8 +64,7 @@ wit::string foo::foo::strings::C(std::string_view a, std::string_view b) {
 }
 extern "C" __attribute__((__export_name__("foo:foo/strings#a"))) void
 fooX3AfooX2FstringsX23a(uint8_t *arg0, size_t arg1) { 
-  auto len0 = arg1;
-
+  auto len0 = arg1; 
   exports::foo::foo::strings::A(wit::string((char const *)(arg0), len0));
 }
 extern "C" __attribute__((__export_name__("foo:foo/strings#b"))) uint8_t *

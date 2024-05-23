@@ -4,7 +4,8 @@
 using namespace std;
 
 void foo::foo::strings::A(std::string_view x)
-{    
+{   
+    std::cout << "strings import call"  << std::endl;
     std::cout << x << std::endl;
 }
 wit::string foo::foo::strings::B()

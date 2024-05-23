@@ -15,7 +15,7 @@ fooX3AfooX2FstringsX23c(uint8_t *, size_t, uint8_t *, size_t);
 extern "C" __attribute__((import_module("cabi_post_foo:foo/strings")))
 __attribute__((import_name("c"))) void
 cabi_post_fooX3AfooX2FstringsX23c(uint8_t *);
-extern "C" void fooX3AfooX2FstringsX00a(uint8_t *arg0, size_t arg1) {
+extern "C" void fooX3AfooX2FstringsX00a(uint8_t *arg0, size_t arg1) { 
   auto len0 = arg1;
 
   foo::foo::strings::A(std::string_view((char const *)(arg0), len0));
@@ -47,9 +47,8 @@ extern "C" void fooX3AfooX2FstringsX00c(uint8_t *arg0, size_t arg1,
 void exports::foo::foo::strings::A(wit::string x) { 
   auto const &vec0 = x;
   auto ptr0 = vec0.data();
-  auto len0 = vec0.size();
+  auto len0 = vec0.size();  
   fooX3AfooX2FstringsX23a(ptr0, len0);
-  
 }
 wit::guest_owned<std::string_view> exports::foo::foo::strings::B() {
   auto ret = fooX3AfooX2FstringsX23b();

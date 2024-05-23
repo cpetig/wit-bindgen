@@ -3,13 +3,13 @@ WIT_BINDGEN=../../../../target/debug/wit-bindgen
 
 all: libstrings.so app-strings
 
-libstrings.so: the_world.pie.o guest_exports.pie.o
+libstrings.so: the_world.pie.o guest_1.pie.o
 	$(CXX) $(CXXFLAGS) -shared -o $@ $^ -Wl,--version-script=guest.lds
 	
 %.pie.o: %.cpp
 	$(CXX) $(CXXFLAGS) -fPIE -o $@ -c $^
 
-app-strings: the_world_native.o main.o guest_imports.o
+app-strings: the_world_native.o main.o guest_2.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -g -L. -lstrings
 
 bindgen: wit/strings.wit
@@ -17,10 +17,10 @@ bindgen: wit/strings.wit
 	$(WIT_BINDGEN) cpp wit --wasm64 --format --direct
 	cd rust/src ; ../../$(WIT_BINDGEN) rust ../../wit --wasm64
 
-guest.wasm: the_world.cpp guest_exports.cpp
+guest.wasm: the_world.cpp guest_1.cpp
 	/opt/wasi-sdk/bin/clang++ -o $@ $^ $(CXXFLAGS) 
 	
-guest_release.wasm: the_world.cpp guest_exports.cpp
+guest_release.wasm: the_world.cpp guest_1.cpp
 	/opt/wasi-sdk/bin/clang++ -o $@ $^ $(CXXFLAGS) -g0 -O3
 	
 clean:

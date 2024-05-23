@@ -3,6 +3,7 @@ use std::alloc::Layout;
 use the_world::exports::foo::foo::strings::Guest;
 
 mod the_world;
+mod the_world_native;
 
 struct MyWorld;
 
@@ -21,6 +22,7 @@ impl Guest for MyWorld {
 }
 
 the_world::export!(MyWorld with_types_in the_world);
+
 
 // the crate wit-bindgen-rt doesn't work on native
 #[no_mangle]

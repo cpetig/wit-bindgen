@@ -63,7 +63,7 @@ wit::string foo::foo::strings::C(std::string_view a, std::string_view b) {
   return wit::string((char const *)(*((uint8_t **)(ptr2 + 0))), len3);
 }
 extern "C" __attribute__((__export_name__("foo:foo/strings#a"))) void
-fooX3AfooX2FstringsX23a(uint8_t *arg0, size_t arg1) {
+fooX3AfooX2FstringsX23a(uint8_t *arg0, size_t arg1) { 
   auto len0 = arg1;
 
   exports::foo::foo::strings::A(wit::string((char const *)(arg0), len0));

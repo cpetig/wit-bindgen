@@ -44,11 +44,12 @@ extern "C" void fooX3AfooX2FstringsX00c(uint8_t *arg0, size_t arg1,
   *((size_t *)(arg4 + 8)) = len3;
   *((uint8_t **)(arg4 + 0)) = ptr3;
 }
-void exports::foo::foo::strings::A(wit::string x) {
+void exports::foo::foo::strings::A(wit::string x) { 
   auto const &vec0 = x;
   auto ptr0 = vec0.data();
   auto len0 = vec0.size();
   fooX3AfooX2FstringsX23a(ptr0, len0);
+  
 }
 wit::guest_owned<std::string_view> exports::foo::foo::strings::B() {
   auto ret = fooX3AfooX2FstringsX23b();

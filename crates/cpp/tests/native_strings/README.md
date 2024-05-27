@@ -1,9 +1,21 @@
 # Native string example
 
-In this example there are two guests, guest_1 and guest_2
-They use the mesh/native-host code to communicate to each other
+In this example, there is a guest, a native host (cpp_host) and an application.
+The `guest + native host` together form the actual `guest` code, which exports some APIs.
+Now the application which is `host`, will use the guest exported calls.
+The application/host also imports some calls, those are part of the `guest_imported_functions.cpp`
 
-The wit-bindgen creates the guest bindings and native-host code
+The directory strucutre is as below:
+```
+├── cpp_host (Native host code)
+├── guest    (Guest code)
+├── guest_imported_fns.cpp ( host application imported calls)
+├── main.cpp (Application)
+└── wit (Wit file that is used for generating the code)
+
+```
+
+# Call-graph for a function
 
 This is how the example works, call graph for the function `A` (communication between the guest_1 and guest_2 using the mesh/native host code)
 

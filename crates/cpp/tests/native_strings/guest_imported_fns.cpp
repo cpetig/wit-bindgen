@@ -1,11 +1,10 @@
-#include "the_world_cpp_native.h"
+#include "./cpp_host/the_world_cpp_native.h"
 #include <iostream>
 
 using namespace std;
 
 void foo::foo::strings::A(std::string_view x)
-{   
-    std::cout << "strings import call"  << std::endl;
+{
     std::cout << x << std::endl;
 }
 wit::string foo::foo::strings::B()

@@ -1,16 +1,16 @@
-CXXFLAGS=-g -O0 -I../../helper-types --std=c++17
+CXXFLAGS=-g -O0 -I../../helper-types -I../../cpp_host -I../../guest --std=c++17
 WIT_BINDGEN=../../../../target/debug/wit-bindgen
 
 all: libstrings.so app-strings
 
-libstrings.so: the_world.pie.o guest_1.pie.o
-	$(CXX) $(CXXFLAGS) -shared -o $@ $^ -Wl,--version-script=guest.lds
+libstrings.so:
+	cd guest && make $@
 	
-%.pie.o: %.cpp
-	$(CXX) $(CXXFLAGS) -fPIE -o $@ -c $^
+app-strings: ./cpp_host/the_world_native.o main.o guest_imported_fns.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ -g -L./guest -lstrings
 
-app-strings: the_world_native.o main.o guest_2.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ -g -L. -lstrings
+the_world_native.o:
+	cd cpp_host && make $@
 
 bindgen: wit/strings.wit
 	$(WIT_BINDGEN) cpp wit --wasm64 --format
@@ -24,7 +24,9 @@ guest_release.wasm: the_world.cpp guest_1.cpp
 	/opt/wasi-sdk/bin/clang++ -o $@ $^ $(CXXFLAGS) -g0 -O3
 	
 clean:
-	-rm *.o libstrings.so app-strings
+	-rm *.o app-strings
+	cd guest && make clean
+	cd cpp_host && make clean
 
 run:
 	LD_LIBRARY_PATH=. ./app-strings

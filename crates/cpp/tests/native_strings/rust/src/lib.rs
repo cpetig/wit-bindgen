@@ -2,6 +2,8 @@ use std::alloc::Layout;
 
 use the_world::exports::foo::foo::strings::Guest;
 
+use the_world::exports::foo::foo::strings;
+#[macro_use]
 mod the_world;
 mod the_world_native;
 
@@ -22,6 +24,8 @@ impl Guest for MyWorld {
 }
 
 the_world::export!(MyWorld with_types_in the_world);
+
+__export_foo_foo_strings_cabi!(MyWorld with_types_in strings);
 
 
 // the crate wit-bindgen-rt doesn't work on native

@@ -99,6 +99,8 @@ struct Cpp {
     c_src: SourceWithState,
     h_src: SourceWithState,
     c_src_head: Source,
+    // interface_includes: Vec<String>,
+    // interface_header: SourceWithState,
     extern_c_decls: Source,
     dependencies: Includes,
     includes: Vec<String>,
@@ -299,7 +301,7 @@ impl Cpp {
         }
     }
 
-    fn clang_format(code: &mut Source) {
+    fn clang_format(code: &mut String) {
         let mut child = Command::new("clang-format")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -311,13 +313,8 @@ impl Cpp {
             .unwrap()
             .write_all(code.as_bytes())
             .unwrap();
-        code.as_mut_string().truncate(0);
-        child
-            .stdout
-            .take()
-            .unwrap()
-            .read_to_string(code.as_mut_string())
-            .unwrap();
+        code.truncate(0);
+        child.stdout.take().unwrap().read_to_string(code).unwrap();
         let status = child.wait().unwrap();
         assert!(status.success());
     }
@@ -356,6 +353,107 @@ impl Cpp {
             }
         }
     }
+
+    fn finish_includes(&mut self) {
+        self.include("<cstdint>");
+        self.include("<utility>"); // for std::move
+        if self.dependencies.needs_string {
+            self.include("<string>");
+        }
+        if self.dependencies.needs_string_view {
+            if self.opts.autosar {
+                self.include("<ara/core/string_view.h>");
+            } else {
+                self.include("<string_view>");
+            }
+        }
+        if self.dependencies.needs_vector {
+            self.include("<vector>");
+        }
+        if self.dependencies.needs_expected {
+            if self.opts.autosar {
+                self.include("<ara/core/result.h>");
+            } else {
+                self.include("<expected>");
+            }
+        }
+        if self.dependencies.needs_optional {
+            if self.opts.autosar {
+                self.include("<ara/core/optional.h>");
+            } else {
+                self.include("<optional>");
+            }
+        }
+        if self.dependencies.needs_cstring {
+            self.include("<cstring>");
+        }
+        if self.dependencies.needs_imported_resources {
+            self.include("<cassert>");
+        }
+        if self.dependencies.needs_exported_resources {
+            self.include("<map>");
+        }
+        if self.dependencies.needs_variant {
+            self.include("<variant>");
+        }
+        if self.dependencies.needs_tuple {
+            self.include("<tuple>");
+        }
+        if self.dependencies.needs_wit {
+            if self.opts.host_side() {
+                self.include("<wit-host.h>");
+            } else {
+                self.include("<wit-guest.h>");
+            }
+        }
+        if self.dependencies.needs_memory {
+            self.include("<memory>");
+        }
+    }
+
+    fn start_new_file(&mut self, condition: Option<bool>) -> FileContext {
+        if condition == Some(true) || self.opts.split_interfaces {
+            FileContext {
+                includes: std::mem::replace(&mut self.includes, Default::default()),
+                src: std::mem::replace(&mut self.h_src, Default::default()),
+                dependencies: std::mem::replace(&mut self.dependencies, Default::default()),
+            }
+        } else {
+            Default::default()
+        }
+    }
+
+    fn finish_file(&mut self, namespace: &[String], store: FileContext) {
+        if !store.src.src.is_empty() {
+            //        self.opts.split_interfaces {
+            let mut header = String::default();
+            self.finish_includes();
+            self.h_src.change_namespace(&Default::default());
+            uwriteln!(header, "#pragma once");
+            for include in self.includes.iter() {
+                uwriteln!(header, "#include {include}");
+            }
+            header.push_str(&self.h_src.src);
+            let mut filename = namespace.join("-");
+            filename.push_str(".h");
+            if self.opts.format {
+                Self::clang_format(&mut header);
+            }
+            self.user_class_files.insert(filename.clone(), header);
+
+            let _ = std::mem::replace(&mut self.includes, store.includes);
+            let _ = std::mem::replace(&mut self.h_src, store.src);
+            let _ = std::mem::replace(&mut self.dependencies, store.dependencies);
+            self.includes.push(String::from("\"") + &filename + "\"");
+        }
+    }
+}
+
+#[derive(Default)]
+struct FileContext {
+    includes: Vec<String>,
+    src: SourceWithState,
+    dependencies: Includes,
 }
 
 impl WorldGenerator for Cpp {
@@ -394,6 +492,7 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) {
+        let store = self.start_new_file(None);
         self.imported_interfaces.insert(id);
         let wasm_import_module = resolve.name_world_key(name);
         let binding = Some(name);
@@ -408,6 +507,7 @@ impl WorldGenerator for Cpp {
                 gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestImport);
             }
         }
+        self.finish_file(&namespace, store);
     }
 
     fn export_interface(
@@ -417,6 +517,7 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) -> anyhow::Result<()> {
+        let store = self.start_new_file(None);
         self.h_src
             .src
             .push_str(&format!("// export_interface {name:?}\n"));
@@ -434,6 +535,7 @@ impl WorldGenerator for Cpp {
                 gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestExport);
             }
         }
+        self.finish_file(&namespace, store);
         Ok(())
     }
 
@@ -534,60 +636,7 @@ impl WorldGenerator for Cpp {
                 world.name.to_shouty_snake_case(),
             );
         }
-        self.include("<cstdint>");
-        self.include("<utility>"); // for std::move
-        if self.dependencies.needs_string {
-            self.include("<string>");
-        }
-        if self.dependencies.needs_string_view {
-            if self.opts.autosar {
-                self.include("<ara/core/string_view.h>");
-            } else {
-                self.include("<string_view>");
-            }
-        }
-        if self.dependencies.needs_vector {
-            self.include("<vector>");
-        }
-        if self.dependencies.needs_expected {
-            if self.opts.autosar {
-                self.include("<ara/core/result.h>");
-            } else {
-                self.include("<expected>");
-            }
-        }
-        if self.dependencies.needs_optional {
-            if self.opts.autosar {
-                self.include("<ara/core/optional.h>");
-            } else {
-                self.include("<optional>");
-            }
-        }
-        if self.dependencies.needs_cstring {
-            self.include("<cstring>");
-        }
-        if self.dependencies.needs_imported_resources {
-            self.include("<cassert>");
-        }
-        if self.dependencies.needs_exported_resources {
-            self.include("<map>");
-        }
-        if self.dependencies.needs_variant {
-            self.include("<variant>");
-        }
-        if self.dependencies.needs_tuple {
-            self.include("<tuple>");
-        }
-        if self.dependencies.needs_wit {
-            if self.opts.host_side() {
-                self.include("<wit-host.h>");
-            } else {
-                self.include("<wit-guest.h>");
-            }
-        }
-        if self.dependencies.needs_memory {
-            self.include("<memory>");
-        }
+        self.finish_includes();
 
         if self.opts.short_cut {
             uwriteln!(h_str.src, "#define WIT_HOST_DIRECT");
@@ -698,8 +747,8 @@ impl WorldGenerator for Cpp {
         );
 
         if self.opts.format {
-            Self::clang_format(&mut c_str.src);
-            Self::clang_format(&mut h_str.src);
+            Self::clang_format(&mut c_str.src.as_mut_string());
+            Self::clang_format(&mut h_str.src.as_mut_string());
         }
 
         if self.opts.short_cut {
@@ -1930,21 +1979,24 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         if let TypeOwner::Interface(intf) = type_.owner {
             let guest_import = self.gen.imported_interfaces.contains(&intf);
             let definition = !(guest_import ^ self.gen.opts.host_side());
+            let store = self.gen.start_new_file(Some(definition));
             let mut world_name = self.gen.world.to_snake_case();
             world_name.push_str("::");
-            let mut headerfile = SourceWithState::default();
+            // let mut headerfile = SourceWithState::default();
             let namespc = namespace(self.resolve, &type_.owner, !guest_import, &self.gen.opts);
             let pascal = name.to_upper_camel_case();
-            let user_filename = namespc.join("-") + "-" + &pascal + ".h";
+            let mut user_filename = namespc.clone();
+            user_filename.push(pascal.clone());
+            //namespc.join("-") + "-" + &pascal + ".h";
             if definition {
                 // includes should be outside of namespaces
-                self.gen.h_src.change_namespace(&Vec::default());
+                //self.gen.h_src.change_namespace(&Vec::default());
                 // temporarily redirect header file declarations to an user controlled include file
-                std::mem::swap(&mut headerfile, &mut self.gen.h_src);
+                //std::mem::swap(&mut headerfile, &mut self.gen.h_src);
                 uwriteln!(
                     self.gen.h_src.src,
                     r#"/* User class definition file, autogenerated once, then user modified
-                    * Updated versions of this file are generated into {user_filename}.template.
+                    * Updated versions of this file are generated into {pascal}.template.
                     */"#
                 );
             }
@@ -2073,18 +2125,19 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
             }
             uwriteln!(self.gen.h_src.src, "}};\n");
-            if definition {
-                // Finish the user controlled class template
-                self.gen.h_src.change_namespace(&Vec::default());
-                std::mem::swap(&mut headerfile, &mut self.gen.h_src);
-                uwriteln!(self.gen.h_src.src, "#include \"{user_filename}\"");
-                if self.gen.opts.format {
-                    Cpp::clang_format(&mut headerfile.src);
-                }
-                self.gen
-                    .user_class_files
-                    .insert(user_filename, headerfile.src.to_string());
-            }
+            self.gen.finish_file(&user_filename, store);
+            // if definition {
+            //     // Finish the user controlled class template
+            //     self.gen.h_src.change_namespace(&Vec::default());
+            //     std::mem::swap(&mut headerfile, &mut self.gen.h_src);
+            //     uwriteln!(self.gen.h_src.src, "#include \"{user_filename}\"");
+            //     if self.gen.opts.format {
+            //         Cpp::clang_format(&mut headerfile.src);
+            //     }
+            //     self.gen
+            //         .user_class_files
+            //         .insert(user_filename, headerfile.src.to_string());
+            // }
         }
     }
 
@@ -3338,7 +3391,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
             }
             abi::Instruction::Return { amt, func } => {
-                let guest_import = matches!(self.variant, AbiVariant::GuestImport);
+                // let guest_import = matches!(self.variant, AbiVariant::GuestImport);
                 match amt {
                     0 => {}
                     _ => {

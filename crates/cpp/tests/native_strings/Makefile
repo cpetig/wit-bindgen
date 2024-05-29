@@ -6,7 +6,7 @@ all: libstrings.so app-strings
 libstrings.so:
 	cd guest && make $@
 	
-app-strings: ./cpp_host/the_world_native.o main.o guest_imported_fns.o
+app-strings: ./cpp_host/the_world_native.o main.o ./cpp_host/guest_imported_fns.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -g -L./guest -lstrings
 
 the_world_native.o:

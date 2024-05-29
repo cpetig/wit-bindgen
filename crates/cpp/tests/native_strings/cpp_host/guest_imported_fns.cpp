@@ -1,4 +1,4 @@
-#include "./cpp_host/the_world_cpp_native.h"
+#include "./the_world_cpp_native.h"
 #include <iostream>
 
 using namespace std;

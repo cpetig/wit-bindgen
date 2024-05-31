@@ -12,7 +12,7 @@ use wit_bindgen_core::{
     make_external_component, make_external_symbol, uwrite, uwriteln,
     wit_parser::{
         AddressSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Resolve, Results,
-        SizeAlign, Type, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
+        SizeAlign, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -2049,6 +2049,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     params: vec![("self".into(), Type::Id(id))],
                     results: Results::Named(vec![]),
                     docs: Docs::default(),
+                    stability: Stability::Unknown,
                 };
                 self.generate_function(&func, &TypeOwner::Interface(intf), variant);
             }
@@ -2076,6 +2077,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                             params: func.params.clone(),
                             results: Results::Anon(Type::Id(id)),
                             docs: Docs::default(),
+                            stability: Stability::Unknown,
                         };
                         self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
                     }
@@ -2103,6 +2105,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     params: vec![("self".into(), Type::Id(id))],
                     results: Results::Anon(Type::S32),
                     docs: Docs::default(),
+                    stability: Stability::Unknown,
                 };
                 self.generate_function(&func, &TypeOwner::Interface(intf), variant);
 
@@ -2112,6 +2115,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     params: vec![("id".into(), Type::S32)],
                     results: Results::Anon(Type::Id(id)),
                     docs: Docs::default(),
+                    stability: Stability::Unknown,
                 };
                 self.generate_function(&func1, &TypeOwner::Interface(intf), variant);
 
@@ -2121,6 +2125,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     params: vec![("id".into(), Type::S32)],
                     results: Results::Named(vec![]),
                     docs: Docs::default(),
+                    stability: Stability::Unknown,
                 };
                 self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
             }

@@ -14,3 +14,5 @@ clean:
 	make -C mesh $@
 	make -C component_a $@
 	
+run:
+	LD_LIBRARY_PATH=mesh component_a/component_a

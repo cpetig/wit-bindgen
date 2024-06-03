@@ -211,6 +211,22 @@ public:
   }
 };
 
+// return value from release to mimic imported resources for forwarding
+class HandleWrapper {
+  int32_t handle;
+
+public:
+  int32_t get_handle() { return handle; }
+  HandleWrapper(int32_t h) : handle(h) {}
+};
+class HandleWrapperPtr {
+  HandleWrapper obj;
+
+public:
+  HandleWrapperPtr(int32_t o) : obj(o) {}
+  HandleWrapper *operator->() { return &obj; }
+};
+
 /// Guest exported resource (host side handle)
 class ResourceExportBase : public ResourceTable<guest_address> {
 protected:
@@ -243,6 +259,9 @@ public:
     rep = 0;
     return res;
   }
+
+  // just to mimic ResourceImport by a ResourceExport
+  HandleWrapperPtr release() { return HandleWrapperPtr(index); }
 };
 
 /// Host defined resource (host side definition)
@@ -265,18 +284,28 @@ public:
   int32_t get_handle() { return index; }
 };
 
+// mimicing an unique_ptr API on an owned object
+template <class R> class BorrowedAbstraction {
+  R obj;
+
+public:
+  R &operator*() { return obj; }
+  BorrowedAbstraction(R &&o) : obj(std::move(o)) {}
+};
+
 /// Host representation of a resource defined in another component
 ///
 /// Acts like ResourceImportBase (e.g. definition);
 /// R should derive from ResourceExportBase
-template <class R> class ResourceForwarder : public R {
+template <class R> struct ResourceForwarder : R {
+  static void NoAction(R *) {}
   typedef R Owned;
   ResourceForwarder(int32_t id) : R(ResourceExportBase(id)) {}
-  std::optional<Owned> lookup_resource(int32_t id) {
+  static std::optional<BorrowedAbstraction<R>> lookup_resource(int32_t id) {
     // TODO: Handle not found
-    return R(ResourceExportBase(id));
+    return BorrowedAbstraction<R>(ResourceExportBase(id));
   }
-  std::optional<Owned> remove_resource(int32_t id) {
+  static std::optional<Owned> remove_resource(int32_t id) {
     std::optional<R *> result = R::remove_resource(id);
     if (!result.has_value())
       return std::optional<Owned>();

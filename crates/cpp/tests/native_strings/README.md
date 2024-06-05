@@ -23,3 +23,28 @@ guest_1->exports::foo::foo::strings::A(a){native host export call}->fooX3AfooX2F
 -> exports::foo::foo::strings::A(wit::string &&x){guest_1 export implementation}
 -> foo::foo::strings::A(std::string_view x){guest import call}->fooX3AfooX2FstringsX00a() {native host import binding(lowering)}
 -> foo::foo::strings::A(std::string_view x) { guest import functions implementation}
+
+# Building the rust native string app
+Here is the rust based native string application source code tree
+```
+├── rust_app (Application that uses the native rust code)
+│   ├── Cargo.toml
+│   └── src
+│       └── main.rs
+└── rust_native_host_lib (Rust native rust code as library)
+    ├── Cargo.toml
+    └── src
+        ├── generated.rs
+        ├── guest_imported_fns.rs
+        ├── lib.rs
+        ├── native_imports.rs
+        ├── the_native_imports.rs
+        ├── the_world_native.rs
+        └── the_world.rs
+```
+to build and run the application run the command
+
+```shell
+cargo run -p rust_app`
+```
+

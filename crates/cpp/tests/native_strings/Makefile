@@ -1,13 +1,17 @@
 CXXFLAGS=-g -O0 -I../../helper-types -I../../cpp_host -I../../guest --std=c++17
 WIT_BINDGEN=../../../../target/debug/wit-bindgen
 
-all: libstrings.so app-strings
+all: libstrings.so cpp-app-strings rust-app-strings
 
 libstrings.so:
 	cd guest && make $@
 	
-app-strings: ./cpp_host/the_world_native.o main.o ./cpp_host/guest_imported_fns.o
+cpp-app-strings: ./cpp_host/the_world_native.o main.o ./cpp_host/guest_imported_fns.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -g -L./guest -lstrings
+
+rust-app-strings:  main.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ -g -L/mnt/sda2/pradeep/wasm/RND/math_fns/target/debug -lstrings
+
 
 the_world_native.o:
 	cd cpp_host && make $@

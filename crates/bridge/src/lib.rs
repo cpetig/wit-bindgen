@@ -146,8 +146,8 @@ impl WorldGenerator for Bridge {
         &mut self,
         resolve: &wit_parser::Resolve,
         world: wit_parser::WorldId,
-        types: &[(&str, wit_parser::TypeId)],
-        files: &mut wit_bindgen_core::Files,
+        _types: &[(&str, wit_parser::TypeId)],
+        _files: &mut wit_bindgen_core::Files,
     ) {
         let world = &resolve.worlds[world];
         uwriteln!(self.src, "// Import Types {}", world.name);
@@ -170,7 +170,7 @@ impl Bridge {
         BridgeInterfaceGenerator { gen: self, resolve }
     }
 
-    fn wasm_type(&self, ty: WasmType, var: TypeVariant) -> String {
+    fn wasm_type(&self, ty: WasmType, _var: TypeVariant) -> String {
         match ty {
             WasmType::I32 => todo!(),
             WasmType::I64 => todo!(),

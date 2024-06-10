@@ -1,4 +1,4 @@
-CXXFLAGS=-fPIC -g -O0 -I../../../helper-types
+CXXFLAGS=-fPIC -g -O0 -I../../../../helper-types -std=c++1z
 
 all: libmesh.so
 

@@ -1,16 +1,16 @@
 
 all:
-	make -C component_b $@
-	make -C mesh $@
-	make -C component_a $@
+	make -C cpp/component_b $@
+	make -C cpp/mesh $@
+	make -C cpp/component_a $@
 
 bindgen:
-	make -C component_b $@
-	make -C mesh $@
-	make -C component_a $@
+	make -C cpp/component_b $@
+	make -C cpp/mesh $@
+	make -C cpp/component_a $@
 
 clean:
-	make -C component_b $@
-	make -C mesh $@
-	make -C component_a $@
+	make -C cpp/component_b $@
+	make -C cpp/mesh $@
+	make -C cpp/component_a $@
 	

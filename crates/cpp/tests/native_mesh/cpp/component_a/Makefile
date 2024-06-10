@@ -1,4 +1,4 @@
-CXXFLAGS=-g -O0 -I../../../helper-types
+CXXFLAGS=-g -O0 -I../../../../helper-types -std=c++1z
 
 all: component_a
 

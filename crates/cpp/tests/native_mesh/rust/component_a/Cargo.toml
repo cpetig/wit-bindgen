@@ -1,0 +1,8 @@
+[package]
+name = "component_a"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+component_b = {path = "../component_b"}
+mesh = {path = "../mesh"}

@@ -1,26 +1,24 @@
 use std::alloc::Layout;
 
-use the_world::exports::foo::foo::strings::Guest;
-
-mod the_world;
-
+use crate::__export_foo_foo_strings_cabi;
+use crate::the_world::exports::foo::foo::strings::Guest;
 struct MyWorld;
 
 impl Guest for MyWorld {
-    fn a(x: String,) {
-        the_world::foo::foo::strings::a(&x);
+    fn a(x: String) {
+        crate::the_world::foo::foo::strings::a(&x);
     }
 
     fn b() -> String {
-        the_world::foo::foo::strings::b()
+        crate::the_world::foo::foo::strings::b()
     }
 
-    fn c(a: String,b: String,) -> String {
-        the_world::foo::foo::strings::c(&a, &b)
+    fn c(a: String, b: String) -> String {
+        crate::the_world::foo::foo::strings::c(&a, &b)
     }
 }
 
-the_world::export!(MyWorld with_types_in the_world);
+__export_foo_foo_strings_cabi!(MyWorld with_types_in crate::the_world::exports::foo::foo::strings);
 
 // the crate wit-bindgen-rt doesn't work on native
 #[no_mangle]
@@ -43,7 +41,7 @@ pub unsafe extern "C" fn cabi_realloc(
         std::alloc::realloc(old_ptr, layout, new_len)
     };
     if ptr.is_null() {
-            unreachable!();
+        unreachable!();
     }
     return ptr;
 }

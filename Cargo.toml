@@ -12,8 +12,7 @@ CLI tool to generate bindings for WIT documents and the component model.
 
 [workspace]
 members = [
-  "crates/test-rust-wasm",
-]
+  "crates/test-rust-wasm","crates/cpp/tests/native_strings/rust-host/rust_native_host_lib","crates/cpp/tests/native_strings/rust-host/rust_app"]
 resolver = "2"
 
 [workspace.package]

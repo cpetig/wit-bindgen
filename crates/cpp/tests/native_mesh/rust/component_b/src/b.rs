@@ -33,20 +33,10 @@ pub mod exports {
                     /// the heap and then passing that heap pointer to the component model to
                     /// create a handle. The owned handle is then returned as `R`.
                     pub fn new<T: GuestR + Debug>(val: T) -> Self {
-                        //Self::type_guard::<T>();
                         let val: _RRep<T> = Some(val);
-                        //dbg!("{:?}", &val);
                         let ptr: *mut _RRep<T> = _rt::Box::into_raw(_rt::Box::new(val));
-                        // //let v = unsafe { _rt::Box::from_raw(ptr) };
-                        // dbg!("{:?}", &v);
-                        // let ptr_u8: *mut u8 = ptr as *mut u8;
-                        // let ptr_orig: *mut _RRep<T> = ptr_u8 as *mut _RRep<T>;
-                        // let v_orig = unsafe { _rt::Box::from_raw(ptr_orig) };
-                        // dbg!("{:?}", &v_orig);
                         let v = unsafe { T::_resource_new(ptr.cast()) };
-                        //dbg!("{:?}", &v);
                         let res = unsafe { Self::from_handle(v) };
-                        //dbg!("{}", &res);
                         res
                     }
 

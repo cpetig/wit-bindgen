@@ -1,10 +1,9 @@
 pub mod b;
 pub mod b_impl;
-//pub mod resource_table;
 
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use wasmtime::component::{Resource, ResourceTable};
 
 #[derive(Debug)]
 // Wrapper struct for the raw pointer
@@ -23,23 +22,48 @@ impl SafePtr {
     }
 }
 
-// Global HashMap with SafePtr
-static GLOBAL_MAP: Lazy<Arc<Mutex<HashMap<i32, Arc<Mutex<SafePtr>>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static GLOBAL_MAP: Lazy<Arc<Mutex<ResourceTable>>> =
+    Lazy::new(|| Arc::new(Mutex::new(ResourceTable::new())));
 
 fn store_resource(value: *mut u8) -> i32 {
     let mut map = GLOBAL_MAP.lock().unwrap();
-    let k = map.len() + 1;
-    map.insert(k as i32, Arc::new(Mutex::new(SafePtr::new(value))));
-    k as i32
+
+    let v = map.push(Arc::new(Mutex::new(SafePtr::new(value)))).unwrap();
+
+    v.rep() as i32
 }
 
 fn get_resource(key: i32) -> Option<Arc<Mutex<SafePtr>>> {
     let map = GLOBAL_MAP.lock().unwrap();
-    map.get(&key).cloned()
+    let key = Resource::new_own(key as u32);
+    let v: &Arc<Mutex<SafePtr>> = map.get(&key).unwrap();
+
+    Some(v.to_owned())
 }
 
 fn remove_resource(key: i32) {
     let mut map = GLOBAL_MAP.lock().unwrap();
-    map.remove(&key);
+    let key: Resource<Arc<Mutex<SafePtr>>> = Resource::new_own(key as u32);
+    map.delete(key).unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn it_works() {
+        let value = 5;
+        let ptr = Box::into_raw(Box::new(value));
+        let mut map = GLOBAL_MAP.lock().unwrap();
+        let v = map
+            .push(Arc::new(Mutex::new(SafePtr::new(ptr.cast()))))
+            .unwrap();
+        dbg!(&v.rep());
+
+        let key = v.rep();
+
+        let ret: &SafePtr = map.get(&Resource::new_own(key)).unwrap();
+        dbg!(ret);
+        assert_eq!(Box::new(value), unsafe { Box::from_raw(ret.ptr) });
+    }
 }

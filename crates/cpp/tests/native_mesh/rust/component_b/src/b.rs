@@ -129,7 +129,10 @@ pub mod exports {
 
                     /// Gets access to the underlying `T` in this resource.
                     pub fn get<T: GuestR>(&self) -> &T {
+                        // let v = unsafe { Box::from_raw(self.rep) };
+                        // dbg!(*v);
                         let ptr = unsafe { &mut *self.as_ptr::<T>() };
+
                         ptr.as_ref().unwrap()
                     }
 
@@ -170,8 +173,10 @@ pub mod exports {
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_method_r_add_cabi<T: GuestR>(arg0: *mut u8, arg1: i32) {
+                    // dbg!(arg0.clone());
                     #[cfg(target_arch = "wasm32")]
                     _rt::run_ctors_once();
+                    //let v = RBorrow::lift(arg0 as usize).get();
                     T::add(RBorrow::lift(arg0 as usize).get(), arg1 as u32);
                 }
                 #[doc(hidden)]

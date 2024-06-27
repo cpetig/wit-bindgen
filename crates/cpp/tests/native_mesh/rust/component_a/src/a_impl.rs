@@ -26,5 +26,6 @@ pub extern "C" fn fooX3AfooX2FresourcesX00X5BconstructorX5Dr(a: i32) -> i32 {
 }
 #[allow(non_snake_case)]
 pub extern "C" fn fooX3AfooX2FresourcesX00X5BmethodX5DrX2Eadd(handle: i32, b: i32) {
+    //dbg!("handle:{}", handle);
     add(handle as u32, b as u32);
 }

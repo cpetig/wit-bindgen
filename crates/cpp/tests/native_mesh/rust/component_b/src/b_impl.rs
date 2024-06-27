@@ -1,20 +1,25 @@
 use crate::b::exports::foo::foo::resources::Guest;
 use crate::b::exports::foo::foo::resources::GuestR;
 use crate::b::exports::foo::foo::resources::R;
+use std::cell::RefCell;
 
 #[derive(Debug)]
 pub struct MyGuestR {
-    val: u32,
+    val: RefCell<u32>,
 }
 
 impl GuestR for MyGuestR {
     fn new(a: u32) -> Self {
-        MyGuestR { val: a }
+        MyGuestR {
+            val: RefCell::new(a),
+        }
     }
 
-    fn add(&self, _b: u32) {
-        //self.val += b;
-        println!("Note: add fails here because the variable in the trait is not mutable");
+    fn add(&self, b: u32) {
+        let mut val = self.val.borrow_mut();
+        //dbg!(*val);
+        *val += b;
+        //println!("Note: add fails here because the variable in the trait is not mutable");
     }
 }
 
@@ -26,11 +31,12 @@ impl Guest for MyGuest {
         println!("Created a resource with value: {}", val);
         let res = MyGuestR::new(val as u32);
         let res = R::new(res);
+        // dbg!(&res);
         return res;
     }
     fn consume(o: R) {
         let p: &MyGuestR = o.get();
-        println!("Consumed: {}", p.val);
+        println!("Consumed: {:?}", p.val);
     }
 }
 
@@ -44,6 +50,7 @@ pub extern "C" fn X5BexportX5DfooX3AfooX2FresourcesX00X5Bresource_dropX5Dr(a: u3
 type _RRep<T> = Option<T>;
 #[allow(non_snake_case)]
 pub extern "C" fn X5BexportX5DfooX3AfooX2FresourcesX00X5Bresource_newX5Dr(a: *mut u8) -> u32 {
+    //dbg!(a);
     crate::store_resource(a) as u32
 }
 

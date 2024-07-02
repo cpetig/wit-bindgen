@@ -36,7 +36,7 @@ impl Guest for MyGuest {
     }
     fn consume(o: R) {
         let p: &MyGuestR = o.get();
-        println!("Consumed: {:?}", p.val);
+        println!("Consumed: {:?}", p.val.borrow());
     }
 }
 

@@ -1,0 +1,7 @@
+[package]
+name = "rust_app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust_native_host_lib = {path ="../rust_native_host_lib"}

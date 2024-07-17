@@ -9,7 +9,8 @@ mod codegen_tests {
             mod $id {
                 wit_bindgen::generate!({
                     path: $test,
-                    stubs
+                    stubs,
+                    generate_all
                 });
 
                 // This empty module named 'core' is here to catch module path
@@ -29,6 +30,7 @@ mod codegen_tests {
                         },
                         stubs,
                         export_prefix: "[borrowed]",
+                        generate_all
                     });
 
                     #[test]
@@ -43,6 +45,7 @@ mod codegen_tests {
                         },
                         stubs,
                         export_prefix: "[duplicate]",
+                        generate_all
                     });
 
                     #[test]
@@ -509,4 +512,63 @@ mod gated_features {
         y();
         z();
     }
+}
+
+#[allow(unused)]
+mod simple_with_option {
+    mod a {
+        wit_bindgen::generate!({
+            inline: r#"
+                package foo:bar {
+                    interface a {
+                        x: func();
+                    }
+                }
+
+                package foo:baz {
+                    world w {
+                        import foo:bar/a;
+                    }
+                }
+            "#,
+            world: "foo:baz/w",
+            generate_all,
+        });
+    }
+
+    mod b {
+        wit_bindgen::generate!({
+            inline: r#"
+                package foo:bar {
+                    interface a {
+                        x: func();
+                    }
+                }
+
+                package foo:baz {
+                    world w {
+                        import foo:bar/a;
+                    }
+                }
+            "#,
+            world: "foo:baz/w",
+            with: { "foo:bar/a": generate },
+        });
+    }
+}
+
+#[allow(unused)]
+mod multiple_paths {
+    wit_bindgen::generate!({
+        inline: r#"
+        package test:paths;
+
+        world test {
+            import paths:path1/test;
+            export paths:path2/test;
+        }
+        "#,
+        path: ["tests/wit/path1", "tests/wit/path2"],
+        generate_all,
+    });
 }

@@ -41,8 +41,8 @@ extern "C" void fooX3AfooX2FresourcesX00borrows(int32_t arg0) {
   foo::foo::resources::Borrows(**foo::foo::resources::R::lookup_resource(arg0));
 }
 extern "C" void fooX3AfooX2FresourcesX00consume(int32_t arg0) {
-  auto obj0 = foo::foo::resources::R::remove_resource(arg0);
-  assert(obj0.has_value());
+  auto obj0 = foo::foo::resources::R::lookup_resource(arg0);
+  //assert(obj0 != nullptr);
   foo::foo::resources::Consume(foo::foo::resources::R::Owned(*obj0));
 }
 exports::foo::foo::resources::R::~R() {
@@ -52,8 +52,9 @@ exports::foo::foo::resources::R::~R() {
 }
 exports::foo::foo::resources::R::R(uint32_t a) {
   auto ret = fooX3AfooX2FresourcesX23X5BconstructorX5Dr((int32_t(a)));
-  this->index = wit::ResourceExportBase{ret}.get_handle();
-  this->rep = *lookup_resource(ret);
+  wit::ResourceExportBase retobj = wit::ResourceExportBase{ret};
+  this->index = retobj.get_handle();
+  this->rep = retobj.take_rep();
 }
 void exports::foo::foo::resources::R::Add(uint32_t b) const {
   fooX3AfooX2FresourcesX23X5BmethodX5DrX2Eadd((*this).get_rep(), (int32_t(b)));
@@ -70,7 +71,8 @@ X5BexportX5DfooX3AfooX2FresourcesX00X5Bresource_repX5Dr(int32_t arg0) {
 }
 extern "C" void
 X5BexportX5DfooX3AfooX2FresourcesX00X5Bresource_dropX5Dr(int32_t arg0) {
-  exports::foo::foo::resources::R::remove_resource(arg0);
+  auto obj = exports::foo::foo::resources::R::remove_resource(arg0);
+  fooX3AfooX2FresourcesX23X5BdtorX5Dr(*obj);
 }
 exports::foo::foo::resources::R exports::foo::foo::resources::Create() {
   auto ret = fooX3AfooX2FresourcesX23create();

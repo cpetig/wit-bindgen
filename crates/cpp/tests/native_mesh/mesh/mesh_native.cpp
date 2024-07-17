@@ -37,8 +37,9 @@ mesh::exports::foo::foo::resources::R::~R() {
 }
 mesh::exports::foo::foo::resources::R::R(uint32_t a) {
   auto ret = fooX3AfooX2FresourcesX23X5BconstructorX5Dr((int32_t(a)));
-  this->index = wit::ResourceExportBase{ret}.get_handle();
-  this->rep = *lookup_resource(ret);
+  wit::ResourceExportBase retobj = wit::ResourceExportBase{ret};
+  this->index = retobj.get_handle();
+  this->rep = retobj.take_rep();
 }
 void mesh::exports::foo::foo::resources::R::Add(uint32_t b) const {
   fooX3AfooX2FresourcesX23X5BmethodX5DrX2Eadd((*this).get_rep(), (int32_t(b)));
@@ -55,7 +56,8 @@ X5BexportX5DfooX3AfooX2FresourcesX00X5Bresource_repX5Dr(int32_t arg0) {
 }
 extern "C" void
 X5BexportX5DfooX3AfooX2FresourcesX00X5Bresource_dropX5Dr(int32_t arg0) {
-  mesh::exports::foo::foo::resources::R::remove_resource(arg0);
+  auto obj = mesh::exports::foo::foo::resources::R::remove_resource(arg0);
+  fooX3AfooX2FresourcesX23X5BdtorX5Dr(*obj);
 }
 mesh::exports::foo::foo::resources::R
 mesh::exports::foo::foo::resources::Create() {

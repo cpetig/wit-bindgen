@@ -4,11 +4,11 @@ There are a few pre-requisites to testing the project. You only need the languag
 
 - WASI SDK
   - Download from wasi-sdk releases page. If you're using Windows, you need the one with mingw in its name.
-  - `curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-20/wasi-sdk-20.0-linux.tar.gz`
+  - `curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-22/wasi-sdk-22.0-linux.tar.gz`
   - Create an environment variable called `WASI_SDK_PATH`` giving the path where you extracted the WASI SDK download, i.e., the directory containing `bin`/`lib`/`share`` folders.
 - Compilers for the target language:
   - Go + TinyGo - https://tinygo.org/ (v0.27.0+)
-  - Rust - wasi target: `rustup target add wasm32-wasi`
+  - Rust - wasi target: `rustup target add wasm32-wasip1`
   - Java - TeaVM-WASI `ci/download-teamvm.sh`
   - C - [Clang](https://clang.llvm.org/)
   - C# - [Dotnet 8](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)

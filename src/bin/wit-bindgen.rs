@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Error, Result};
 use clap::Parser;
 use std::path::PathBuf;
 use std::str;
@@ -87,14 +87,24 @@ struct Common {
     #[clap(long = "out-dir")]
     out_dir: Option<PathBuf>,
 
-    /// WIT document to generate bindings for.
-    #[clap(value_name = "DOCUMENT", index = 1)]
+    /// Location of WIT file(s) to generate bindings for.
+    ///
+    /// This path can be either a directory containing `*.wit` files, a `*.wit`
+    /// file itself, or a `*.wasm` file which is a wasm-encoded WIT package.
+    /// Most of the time it's likely to be a directory containing `*.wit` files
+    /// with an optional `deps` folder inside of it.
+    #[clap(value_name = "WIT", index = 1)]
     wit: PathBuf,
 
-    /// World within the WIT document specified to generate bindings for.
+    /// Optionally specified world that bindings are generated for.
     ///
-    /// This can either be `foo` which is the default world in document `foo` or
-    /// it's `foo.bar` which is the world named `bar` within document `foo`.
+    /// Bindings are always generated for a world but this option can be omitted
+    /// when the WIT package pointed to by the `WIT` option only has a single
+    /// world. If there's more than one world in the package then this option
+    /// must be specified to name the world that bindings are generated for.
+    /// This option can also use the fully qualified syntax such as
+    /// `wasi:http/proxy` to select a world from a dependency of the main WIT
+    /// package.
     #[clap(short, long)]
     world: Option<String>,
 
@@ -132,7 +142,7 @@ fn main() -> Result<()> {
         Opt::CSharp { opts, args } => (opts.build(), args),
     };
 
-    gen_world(generator, &opt, &mut files)?;
+    gen_world(generator, &opt, &mut files).map_err(attach_with_context)?;
 
     for (name, contents) in files.iter() {
         let dst = match &opt.out_dir {
@@ -175,6 +185,17 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn attach_with_context(err: Error) -> Error {
+    #[cfg(feature = "rust")]
+    if let Some(e) = err.downcast_ref::<wit_bindgen_rust::MissingWith>() {
+        let option = e.0.clone();
+        return err.context(format!(
+            "missing either `--generate-all` or `--with {option}=(...|generate)`"
+        ));
+    }
+    err
+}
+
 fn gen_world(
     mut generator: Box<dyn WorldGenerator>,
     opts: &Common,
@@ -190,8 +211,8 @@ fn gen_world(
             resolve.features.insert(feature.to_string());
         }
     }
-    let (pkg, _files) = resolve.push_path(&opts.wit)?;
-    let world = resolve.select_world(pkg, opts.world.as_deref())?;
+    let (pkgs, _files) = resolve.push_path(&opts.wit)?;
+    let world = resolve.select_world(&pkgs, opts.world.as_deref())?;
     generator.generate(&resolve, world, files)?;
 
     Ok(())

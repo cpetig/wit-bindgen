@@ -647,6 +647,12 @@
 ///
 ///     // Path to parse WIT and its dependencies from. Defaults to the `wit`
 ///     // folder adjacent to your `Cargo.toml`.
+///     //
+///     // This parameter also supports the form of a list, such as:
+///     // ["../path/to/wit1", "../path/to/wit2"]
+///     // Usually used in testing, our test suite may want to generate code
+///     // from wit files located in multiple paths within a single mod, and we
+///     // don't want to copy these files again.
 ///     path: "../path/to/wit",
 ///
 ///     // Enables passing "inline WIT". If specified this is the default
@@ -668,26 +674,35 @@
 ///     // By default this set is empty.
 ///     additional_derives: [PartialEq, Eq, Hash, Clone],
 ///
-///     // When generating bindings for imports it might be the case that
-///     // bindings were already generated in a different crate. For example
-///     // if your world refers to WASI types then the `wasi` crate already
-///     // has generated bindings for all WASI types and structures. In this
+///     // When generating bindings for interfaces that are not defined in the
+///     // same package as `world`, this option can be used to either generate
+///     // those bindings or point to already generated bindings.
+///     // For example, if your world refers to WASI types then the `wasi` crate
+///     // already has generated bindings for all WASI types and structures. In this
 ///     // situation the key `with` here can be used to use those types
 ///     // elsewhere rather than regenerating types.
 ///     //
-///     // The `with` key here only works for interfaces referred to by imported
-///     // functions. Additionally it only supports replacing types at the
-///     // interface level at this time.
+///     // If, however, your world refers to interfaces for which you don't have
+///     // already generated bindings then you can use the special `generate` value
+///     // to have those bindings generated.
 ///     //
-///     // When an interface is specified here no bindings will be generated at
-///     // all. It's assumed bindings are fully generated upstream. This is an
+///     // The `with` key only supports replacing types at the interface level
+///     // at this time.
+///     //
+///     // When an interface is specified no bindings will be generated at
+///     // all. It's assumed bindings are fully generated somewhere else. This is an
 ///     // indicator that any further references to types defined in these
 ///     // interfaces should use the upstream paths specified here instead.
 ///     //
 ///     // Any unused keys in this map are considered an error.
 ///     with: {
 ///         "wasi:io/poll": wasi::io::poll,
+///         "some:package/my-interface": generate,
 ///     },
+///
+///     // Indicates that all interfaces not present in `with` should be assumed
+///     // to be marked with `generate`.
+///     generate_all,
 ///
 ///     // An optional list of function names to skip generating bindings for.
 ///     // This is only applicable to imports and the name specified is the name

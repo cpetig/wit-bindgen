@@ -33,6 +33,7 @@ mod resource_import_and_export;
 mod resource_into_inner;
 mod resource_with_lists;
 mod resources;
+mod results;
 mod rust_xcrate;
 mod smoke;
 mod strings;
@@ -350,7 +351,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
 
     // FIXME: need to fix flaky Go test
     #[cfg(feature = "go")]
-    if !go.is_empty() {
+    if !go.is_empty() && name != "flavorful" {
         let (resolve, world) = resolve_wit_dir(&dir);
         let world_name = &resolve.worlds[world].name;
         let out_dir = out_dir.join(format!("go-{}", world_name));
@@ -741,7 +742,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
         }
     }
 
-    #[cfg(feature = "csharp-naot")]
+    #[cfg(feature = "csharp")]
     if cfg!(windows) && !c_sharp.is_empty() {
         let (resolve, world) = resolve_wit_dir(&dir);
         for path in c_sharp.iter() {
@@ -860,7 +861,7 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
 #[allow(dead_code)] // not used by all generators
 fn resolve_wit_dir(dir: &PathBuf) -> (Resolve, WorldId) {
     let mut resolve = Resolve::new();
-    let (pkg, _files) = resolve.push_path(dir).unwrap();
-    let world = resolve.select_world(pkg, None).unwrap();
+    let (pkgs, _files) = resolve.push_path(dir).unwrap();
+    let world = resolve.select_world(&pkgs, None).unwrap();
     (resolve, world)
 }

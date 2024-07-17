@@ -115,7 +115,7 @@ is:
 2. The native language toolchain is used to emit a core WebAssembly module. This
    core wasm module is the "meat" of a component and contains all user-defined
    code compiled to WebAssembly. The most common native target to use for
-   compilation today is the `wasm32-wasi` target.
+   compilation today is the `wasm32-wasip1` target.
 3. The output core wasm module is transformed into a component using the
    [`wasm-tools`] project, notably the `wasm-tools component new` subcommand.
    This will ingest the native core wasm output and wrap the output into the
@@ -185,11 +185,11 @@ world host {
 
 ### Guest: Rust
 
-The Rust compiler supports a native `wasm32-wasi` target and can be added to
+The Rust compiler supports a native `wasm32-wasip1` target and can be added to
 any `rustup`-based toolchain with:
 
 ```sh
-rustup target add wasm32-wasi
+rustup target add wasm32-wasip1
 ```
 
 In order to compile a wasi dynamic library, the following must be added to the
@@ -244,8 +244,8 @@ generated code (which is probably also a bug in `wit-bindgen`), you can use
 This project can then be built with:
 
 ```sh
-cargo build --target wasm32-wasi
-wasm-tools component new ./target/wasm32-wasi/debug/my-project.wasm \
+cargo build --target wasm32-wasip1
+wasm-tools component new ./target/wasm32-wasip1/debug/my-project.wasm \
     -o my-component.wasm --adapt ./wasi_snapshot_preview1.reactor.wasm
 ```
 
@@ -265,7 +265,7 @@ which in this case, as expected, is the same as the input world.
 
 ### Guest: C/C++
 
-C and C++ code can be compiled for the `wasm32-wasi` target using the [WASI
+C and C++ code can be compiled for the `wasm32-wasip1` target using the [WASI
 SDK] project. The releases on that repository have precompiled `clang` binaries
 which are pre-configured to compile for WebAssembly.
 
@@ -502,11 +502,18 @@ That should be it, but be sure to keep an eye on CI in case anything goes wrong.
 
 # License
 
-This project is licensed under the Apache 2.0 license with the LLVM exception.
-See [LICENSE](LICENSE) for more details.
+This project is triple licenced under the Apache 2/ Apache 2 with LLVM exceptions/ MIT licences. The reasoning for this is:
+- Apache 2/ MIT is common in the rust ecosystem.
+- Apache 2/ MIT is used in the rust standard library, and some of this code may be migrated there.
+- Some of this code may be used in compiler output, and the Apache 2 with LLVM exceptions licence is useful for this.
+
+For more details see
+- [Apache 2 Licence](LICENSE-APACHE)
+- [Apache 2 Licence with LLVM exceptions](LICENSE-Apache-2.0_WITH_LLVM-exception)
+- [MIT Licence](LICENSE-MIT)
 
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this project by you, as defined in the Apache-2.0 license,
+for inclusion in this project by you, as defined in the Apache 2/ Apache 2 with LLVM exceptions/ MIT licenses,
 shall be licensed as above, without any additional terms or conditions.

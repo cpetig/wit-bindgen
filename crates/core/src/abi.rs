@@ -845,15 +845,18 @@ impl<'a, B: Bindgen> Generator<'a, B> {
 
             // If necessary we may need to prepare a return pointer for
             // this ABI.
-            if self.variant == AbiVariant::GuestImport
-                && sig.retptr
-                && !matches!(self.lift_lower, LiftLower::Symmetric)
+            let retptr = if sig.retptr
+                && (matches!(self.lift_lower, LiftLower::Symmetric)
+                    || self.variant == AbiVariant::GuestImport)
             {
                 let (size, align) = self.bindgen.sizes().params(func.results.iter_types());
                 let ptr = self.bindgen.return_pointer(size, align);
                 self.return_pointer = Some(ptr.clone());
-                self.stack.push(ptr);
-            }
+                self.stack.push(ptr.clone());
+                Some(ptr)
+            } else {
+                None
+            };
 
             // Now that all the wasm args are prepared we can call the
             // actual wasm function.
@@ -865,8 +868,8 @@ impl<'a, B: Bindgen> Generator<'a, B> {
             });
 
             if matches!(self.lift_lower, LiftLower::Symmetric) && sig.retptr {
-                let ptr = self.stack.pop().unwrap();
-                self.read_results_from_memory(&func.results, ptr.clone(), 0);
+                //let ptr = self.stack.pop().unwrap();
+                self.read_results_from_memory(&func.results, retptr.clone().unwrap(), 0);
                 if guest_export_needs_post_return(self.resolve, func) {
                     let post_sig = WasmSignature {
                         params: vec![WasmType::Pointer],
@@ -875,7 +878,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         retptr: false,
                     };
                     // TODO: can we get this name from somewhere?
-                    self.stack.push(ptr);
+                    self.stack.push(retptr.unwrap());
                     self.emit(&Instruction::CallWasm {
                         name: &func.name,
                         sig: &post_sig,
@@ -972,30 +975,30 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     self.lower(ty);
                 }
             } else {
-                match self.variant {
+                if self.variant == AbiVariant::GuestImport
+                    || self.lift_lower == LiftLower::Symmetric
+                {
                     // When a function is imported to a guest this means
                     // it's a host providing the implementation of the
                     // import. The result is stored in the pointer
                     // specified in the last argument, so we get the
                     // pointer here and then write the return value into
                     // it.
-                    AbiVariant::GuestImport => {
-                        self.emit(&Instruction::GetArg {
-                            nth: sig.params.len() - 1,
-                        });
-                        let ptr = self.stack.pop().unwrap();
-                        self.write_params_to_memory(func.results.iter_types(), ptr, 0);
-                    }
-
+                    self.emit(&Instruction::GetArg {
+                        nth: sig.params.len() - 1,
+                    });
+                    let ptr = self.stack.pop().unwrap();
+                    self.write_params_to_memory(func.results.iter_types(), ptr, 0);
+                } else {
                     // For a guest import this is a function defined in
                     // wasm, so we're returning a pointer where the
                     // value was stored at. Allocate some space here
                     // (statically) and then write the result into that
                     // memory, returning the pointer at the end.
-                    AbiVariant::GuestExport => {
-                        let (size, align) = self.bindgen.sizes().params(func.results.iter_types());
-                        let ptr = self.bindgen.return_pointer(size, align);
-                        self.write_params_to_memory(func.results.iter_types(), ptr.clone(), 0);
+                    let (size, align) = self.bindgen.sizes().params(func.results.iter_types());
+                    let ptr = self.bindgen.return_pointer(size, align);
+                    self.write_params_to_memory(func.results.iter_types(), ptr.clone(), 0);
+                    if !matches!(self.lift_lower, LiftLower::Symmetric) {
                         self.stack.push(ptr);
                     }
                 }
@@ -2047,7 +2050,7 @@ pub fn wasm_signature_symmetric(
     if results.len() > MAX_FLAT_RESULTS {
         retptr = true;
         results.truncate(0);
-        results.push(WasmType::Pointer);
+        params.push(WasmType::Pointer);
     }
 
     WasmSignature {

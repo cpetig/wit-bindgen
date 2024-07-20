@@ -1,12 +1,12 @@
 package foo:foo;
 
 interface anon {
-  enum error {
+  enum %error {
     success,
     failure,
   }
 
-  option-test: func() -> result<option<string>, error>;
+  option-test: func() -> result<option<string>, %error>;
 }
 
 world the-world {

@@ -98,7 +98,7 @@ world types-example {
       debug,
       info,
       warn,
-      error,
+      %error,
     }
 
     // NB: this record used to be empty, but that's no longer valid, so now it's

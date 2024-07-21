@@ -18,8 +18,8 @@ struct C {
     opts: Opts,
     h_includes: Vec<String>,
     c_includes: Vec<String>,
-    return_pointer_area_size: usize,
-    return_pointer_area_align: usize,
+    return_pointer_area_size: ArchitectureSize,
+    return_pointer_area_align: Alignment,
     names: Ns,
     needs_string: bool,
     needs_union_int32_float: bool,
@@ -462,7 +462,7 @@ impl WorldGenerator for C {
         // Declare a statically-allocated return area, if needed. We only do
         // this for export bindings, because import bindings allocate their
         // return-area on the stack.
-        if self.return_pointer_area_size > 0 {
+        if !self.return_pointer_area_size.is_empty() {
             // Automatic indentation avoided due to `extern "C" {` declaration
             uwrite!(
                 c_str,
@@ -470,8 +470,10 @@ impl WorldGenerator for C {
                 __attribute__((__aligned__({})))
                 static uint8_t RET_AREA[{}];
                 ",
-                self.return_pointer_area_align,
-                self.return_pointer_area_size,
+                self.return_pointer_area_align
+                    .format(POINTER_SIZE_EXPRESSION),
+                self.return_pointer_area_size
+                    .format(POINTER_SIZE_EXPRESSION),
             );
         }
         c_str.push_str(&self.src.c_adapters);
@@ -717,6 +719,7 @@ fn is_prim_type_id(resolve: &Resolve, id: TypeId) -> bool {
         | TypeDefKind::Result(_)
         | TypeDefKind::Future(_)
         | TypeDefKind::Stream(_)
+        | TypeDefKind::Error
         | TypeDefKind::Unknown => false,
     }
 }
@@ -747,6 +750,7 @@ pub fn push_ty_name(resolve: &Resolve, ty: &Type, src: &mut String) {
                 | TypeDefKind::Resource
                 | TypeDefKind::Flags(_)
                 | TypeDefKind::Enum(_)
+                | TypeDefKind::Error
                 | TypeDefKind::Variant(_) => {
                     unimplemented!()
                 }
@@ -993,6 +997,7 @@ impl Return {
             TypeDefKind::Stream(_) => todo!("return_single for stream"),
             TypeDefKind::Resource => todo!("return_single for resource"),
             TypeDefKind::Unknown => unreachable!(),
+            TypeDefKind::Error => todo!(),
         }
 
         self.retptrs.push(*orig_ty);
@@ -1426,12 +1431,16 @@ impl<'a> wit_bindgen_core::AnonymousTypeGenerator<'a> for InterfaceGenerator<'a>
         todo!("print_anonymous_type for future");
     }
 
-    fn anonymous_type_stream(&mut self, _id: TypeId, _ty: &Stream, _docs: &Docs) {
+    fn anonymous_type_stream(&mut self, _id: TypeId, _ty: &Type, _docs: &Docs) {
         todo!("print_anonymous_type for stream");
     }
 
     fn anonymous_typ_type(&mut self, _id: TypeId, _ty: &Type, _docs: &Docs) {
         todo!("print_anonymous_type for typ");
+    }
+
+    fn anonymous_type_error(&mut self, _id: TypeId, _docs: &Docs) {
+        todo!()
     }
 }
 
@@ -1609,6 +1618,7 @@ impl InterfaceGenerator<'_> {
                 self.free(&Type::Id(*id), "*ptr");
             }
             TypeDefKind::Unknown => unreachable!(),
+            TypeDefKind::Error => todo!(),
         }
         if c_helpers_body_start == self.src.c_helpers.len() {
             self.src.c_helpers.as_mut_string().truncate(c_helpers_start);
@@ -1749,6 +1759,7 @@ impl InterfaceGenerator<'_> {
             LiftLower::LowerArgsLiftResults,
             func,
             &mut f,
+            false,
         );
 
         let FunctionBindgen {
@@ -1758,12 +1769,14 @@ impl InterfaceGenerator<'_> {
             ..
         } = f;
 
-        if import_return_pointer_area_size > 0 {
+        if !import_return_pointer_area_size.is_empty() {
             self.src.c_adapters(&format!(
                 "\
-                    __attribute__((__aligned__({import_return_pointer_area_align})))
-                    uint8_t ret_area[{import_return_pointer_area_size}];
+                    __attribute__((__aligned__({})))
+                    uint8_t ret_area[{}];
                 ",
+                import_return_pointer_area_align.format(POINTER_SIZE_EXPRESSION),
+                import_return_pointer_area_size.format(POINTER_SIZE_EXPRESSION),
             ));
         }
 
@@ -1821,6 +1834,7 @@ impl InterfaceGenerator<'_> {
             LiftLower::LiftArgsLowerResults,
             func,
             &mut f,
+            false,
         );
         let FunctionBindgen { src, .. } = f;
         self.src.c_adapters(&src);
@@ -1851,7 +1865,7 @@ impl InterfaceGenerator<'_> {
 
             let mut f = FunctionBindgen::new(self, c_sig, &import_name);
             f.params = params;
-            abi::post_return(f.gen.resolve, func, &mut f);
+            abi::post_return(f.gen.resolve, func, &mut f, false);
             let FunctionBindgen { src, .. } = f;
             self.src.c_fns(&src);
             self.src.c_fns("}\n");
@@ -2078,18 +2092,12 @@ impl InterfaceGenerator<'_> {
                     .as_ref()
                     .map_or(false, |ty| self.contains_droppable_borrow(ty)),
 
-                TypeDefKind::Stream(s) => {
-                    s.element
-                        .as_ref()
-                        .map_or(false, |ty| self.contains_droppable_borrow(ty))
-                        || s.end
-                            .as_ref()
-                            .map_or(false, |ty| self.contains_droppable_borrow(ty))
-                }
+                TypeDefKind::Stream(s) => self.contains_droppable_borrow(s),
 
                 TypeDefKind::Type(ty) => self.contains_droppable_borrow(ty),
 
                 TypeDefKind::Unknown => false,
+                TypeDefKind::Error => todo!(),
             }
         } else {
             false
@@ -2114,8 +2122,8 @@ struct FunctionBindgen<'a, 'b> {
     params: Vec<String>,
     wasm_return: Option<String>,
     ret_store_cnt: usize,
-    import_return_pointer_area_size: usize,
-    import_return_pointer_area_align: usize,
+    import_return_pointer_area_size: ArchitectureSize,
+    import_return_pointer_area_align: Alignment,
 
     /// Borrows observed during lifting an export, that will need to be dropped when the guest
     /// function exits.
@@ -2143,8 +2151,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             params: Vec::new(),
             wasm_return: None,
             ret_store_cnt: 0,
-            import_return_pointer_area_size: 0,
-            import_return_pointer_area_align: 0,
+            import_return_pointer_area_size: Default::default(),
+            import_return_pointer_area_align: Default::default(),
             borrow_decls: Default::default(),
             borrows: Vec::new(),
         }
@@ -2157,23 +2165,40 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         self.src.push_str(";\n");
     }
 
-    fn load(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
-        results.push(format!("*(({}*) ({} + {}))", ty, operands[0], offset));
+    fn load(
+        &mut self,
+        ty: &str,
+        offset: ArchitectureSize,
+        operands: &[String],
+        results: &mut Vec<String>,
+    ) {
+        results.push(format!(
+            "*(({}*) ({} + {}))",
+            ty,
+            operands[0],
+            offset.format(POINTER_SIZE_EXPRESSION)
+        ));
     }
 
-    fn load_ext(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+    fn load_ext(
+        &mut self,
+        ty: &str,
+        offset: ArchitectureSize,
+        operands: &[String],
+        results: &mut Vec<String>,
+    ) {
         self.load(ty, offset, operands, results);
         let result = results.pop().unwrap();
         results.push(format!("(int32_t) {}", result));
     }
 
-    fn store(&mut self, ty: &str, offset: i32, operands: &[String]) {
+    fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
         uwriteln!(
             self.src,
             "*(({}*)({} + {})) = {};",
             ty,
             operands[1],
-            offset,
+            offset.format(POINTER_SIZE_EXPRESSION),
             operands[0]
         );
     }
@@ -2223,7 +2248,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         self.blocks.push((src.into(), mem::take(operands)));
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let ptr = self.locals.tmp("ptr");
 
         // Use a stack-based return area for imports, because exports need
@@ -2752,7 +2777,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.src.push_str(");\n");
             }
 
-            Instruction::CallInterface { func } => {
+            Instruction::CallInterface { func, .. } => {
                 let mut args = String::new();
                 for (i, (op, (byref, _))) in operands.iter().zip(&self.sig.params).enumerate() {
                     if i > 0 {
@@ -3028,12 +3053,22 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let i = self.locals.tmp("i");
                 uwriteln!(self.src, "for (size_t {i} = 0; {i} < {len}; {i}++) {{");
                 let size = self.gen.gen.sizes.size(element);
-                uwriteln!(self.src, "uint8_t *base = {ptr} + {i} * {size};");
+                uwriteln!(
+                    self.src,
+                    "uint8_t *base = {ptr} + {i} * {};",
+                    size.format(POINTER_SIZE_EXPRESSION)
+                );
                 uwriteln!(self.src, "(void) base;");
                 uwrite!(self.src, "{body}");
                 uwriteln!(self.src, "}}");
                 uwriteln!(self.src, "free({ptr});");
                 uwriteln!(self.src, "}}");
+            }
+            Instruction::Flush { amt } => {
+                for i in 0..*amt {
+                    // no easy way to create a temporary?
+                    results.push(operands[i].clone());
+                }
             }
 
             i => unimplemented!("{:?}", i),
@@ -3146,6 +3181,7 @@ pub fn is_arg_by_pointer(resolve: &Resolve, ty: &Type) -> bool {
             TypeDefKind::Stream(_) => todo!("is_arg_by_pointer for stream"),
             TypeDefKind::Resource => todo!("is_arg_by_pointer for resource"),
             TypeDefKind::Unknown => unreachable!(),
+            TypeDefKind::Error => todo!(),
         },
         Type::String => true,
         _ => false,
@@ -3261,3 +3297,5 @@ pub fn to_c_ident(name: &str) -> String {
         s => s.to_snake_case(),
     }
 }
+
+pub const POINTER_SIZE_EXPRESSION: &str = "sizeof(void*)";

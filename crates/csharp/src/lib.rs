@@ -24,6 +24,7 @@ use wit_bindgen_core::{
     Files, InterfaceGenerator as _, Ns, WorldGenerator,
 };
 use wit_component::{StringEncoding, WitPrinter};
+use wit_parser::{Alignment, ArchitectureSize};
 mod csproj;
 pub use csproj::CSProject;
 
@@ -1090,6 +1091,7 @@ impl InterfaceGenerator<'_> {
             LiftLower::LowerArgsLiftResults,
             func,
             &mut bindgen,
+            false,
         );
 
         let src = bindgen.src;
@@ -1209,6 +1211,7 @@ impl InterfaceGenerator<'_> {
             LiftLower::LiftArgsLowerResults,
             func,
             &mut bindgen,
+            false,
         );
 
         assert!(!bindgen.needs_cleanup_list);
@@ -1988,8 +1991,8 @@ struct FunctionBindgen<'a, 'b> {
     payloads: Vec<String>,
     needs_cleanup_list: bool,
     cleanup: Vec<Cleanup>,
-    import_return_pointer_area_size: usize,
-    import_return_pointer_area_align: usize,
+    import_return_pointer_area_size: ArchitectureSize,
+    import_return_pointer_area_align: Alignment,
     fixed: usize, // Number of `fixed` blocks that need to be closed.
     resource_drops: Vec<(String, String)>,
 }
@@ -2727,7 +2730,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 );
             }
 
-            Instruction::CallInterface { func } => {
+            Instruction::CallInterface { func, .. } => {
                 let module = self.gen.name;
                 let func_name = self.func_name.to_upper_camel_case();
                 let interface_name = CSharp::get_class_name_from_qualified_name(module).1;
@@ -3027,10 +3030,23 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
                 results.push(resource);
             }
+
+            Instruction::AsyncMalloc { .. }
+            | Instruction::AsyncCallStart { .. }
+            | Instruction::AsyncPostCallInterface { .. }
+            | Instruction::AsyncCallReturn { .. } => todo!(),
+            Instruction::FutureLower { .. } => todo!(),
+            Instruction::FutureLift { .. } => todo!(),
+            Instruction::StreamLower { .. } => todo!(),
+            Instruction::StreamLift { .. } => todo!(),
+            Instruction::ErrorLower { .. } => todo!(),
+            Instruction::ErrorLift { .. } => todo!(),
+            Instruction::AsyncCallWasm { .. } => todo!(),
+            Instruction::Flush { .. } => todo!(),
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let ptr = self.locals.tmp("ptr");
 
         // Use a stack-based return area for imports, because exports need
@@ -3042,8 +3058,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.import_return_pointer_area_align =
                     self.import_return_pointer_area_align.max(align);
                 let (array_size, element_type) = dotnet_aligned_array(
-                    self.import_return_pointer_area_size,
-                    self.import_return_pointer_area_align,
+                    self.import_return_pointer_area_size.size_wasm32(),
+                    self.import_return_pointer_area_align.align_wasm32(),
                 );
                 let ret_area = self.locals.tmp("retArea");
                 let ret_area_byte0 = self.locals.tmp("retAreaByte0");

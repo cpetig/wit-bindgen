@@ -10,9 +10,9 @@ use wit_bindgen_core::{
     abi::{self, AbiVariant, Bindgen, Bitcast, Instruction, LiftLower, WasmType},
     uwrite, uwriteln,
     wit_parser::{
-        Docs, Enum, Flags, FlagsRepr, Function, FunctionKind, Int, InterfaceId, Record, Resolve,
-        Result_, SizeAlign, Tuple, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, Variant, WorldId,
-        WorldKey,
+        Alignment, ArchitectureSize, Docs, Enum, Flags, FlagsRepr, Function, FunctionKind, Int,
+        InterfaceId, Record, Resolve, Result_, SizeAlign, Tuple, Type, TypeDef, TypeDefKind,
+        TypeId, TypeOwner, Variant, WorldId, WorldKey,
     },
     Direction, Files, InterfaceGenerator as _, Ns, Source, WorldGenerator,
 };
@@ -501,6 +501,7 @@ impl InterfaceGenerator<'_> {
             LiftLower::LowerArgsLiftResults,
             func,
             &mut bindgen,
+            false,
         );
 
         let src = bindgen.src;
@@ -570,6 +571,7 @@ impl InterfaceGenerator<'_> {
             LiftLower::LiftArgsLowerResults,
             func,
             &mut bindgen,
+            false,
         );
 
         assert!(!bindgen.needs_cleanup_list);
@@ -623,7 +625,7 @@ impl InterfaceGenerator<'_> {
                 (0..sig.results.len()).map(|i| format!("p{i}")).collect(),
             );
 
-            abi::post_return(bindgen.gen.resolve, func, &mut bindgen);
+            abi::post_return(bindgen.gen.resolve, func, &mut bindgen, false);
 
             let src = bindgen.src;
 
@@ -1688,8 +1690,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 if realloc.is_none() {
                     self.cleanup.push(Cleanup {
                         address: address.clone(),
-                        size: format!("({op}).size() * {size}"),
-                        align,
+                        size: format!("({op}).size() * {size}", size = size.size_wasm32()),
+                        align: align.align_wasm32(),
                     });
                 }
 
@@ -2028,10 +2030,23 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     "Memory.free(org.teavm.interop.Address.fromInt({address}), ({length}) * {size}, {align});"
                 );
             }
+
+            Instruction::AsyncMalloc { .. }
+            | Instruction::AsyncCallStart { .. }
+            | Instruction::AsyncPostCallInterface { .. }
+            | Instruction::AsyncCallReturn { .. } => todo!(),
+            Instruction::FutureLower { .. } => todo!(),
+            Instruction::FutureLift { .. } => todo!(),
+            Instruction::StreamLower { .. } => todo!(),
+            Instruction::StreamLift { .. } => todo!(),
+            Instruction::ErrorLower { .. } => todo!(),
+            Instruction::ErrorLift { .. } => todo!(),
+            Instruction::AsyncCallWasm { .. } => todo!(),
+            Instruction::Flush { .. } => todo!(),
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         self.gen.gen.return_area_size = self.gen.gen.return_area_size.max(size);
         self.gen.gen.return_area_align = self.gen.gen.return_area_align.max(align);
         format!("{}RETURN_AREA", self.gen.gen.qualifier())

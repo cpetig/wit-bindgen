@@ -11,8 +11,9 @@ use wit_bindgen_core::{
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
     make_external_component, make_external_symbol, uwrite, uwriteln,
     wit_parser::{
-        AddressSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Resolve, Results,
-        SizeAlign, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
+        Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId,
+        Resolve, Results, SizeAlign, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId,
+        WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -23,6 +24,7 @@ pub const RESOURCE_IMPORT_BASE_CLASS_NAME: &str = "ResourceImportBase";
 pub const RESOURCE_EXPORT_BASE_CLASS_NAME: &str = "ResourceExportBase";
 pub const RESOURCE_TABLE_NAME: &str = "ResourceTable";
 pub const OWNED_CLASS_NAME: &str = "Owned";
+pub const POINTER_SIZE_EXPRESSION: &str = "sizeof(void*)";
 // these types are always defined in the non-exports namespace
 const NOT_IN_EXPORTED_NAMESPACE: bool = false;
 
@@ -283,11 +285,11 @@ impl Cpp {
         in_guest_import: bool,
         wasm_import_module: Option<String>,
     ) -> CppInterfaceGenerator<'a> {
-        let mut sizes = SizeAlign::new(if self.opts.wasm64 {
-            AddressSize::Wasm64
+        let mut sizes = if self.opts.symmetric {
+            SizeAlign::new_symmetric()
         } else {
-            AddressSize::Wasm32
-        });
+            SizeAlign::new()
+        };
         sizes.fill(resolve);
 
         CppInterfaceGenerator {
@@ -912,6 +914,7 @@ impl CppInterfaceGenerator<'_> {
             TypeDefKind::Stream(_) => todo!("generate for stream"),
             TypeDefKind::Handle(_) => todo!("generate for handle"),
             TypeDefKind::Unknown => unreachable!(),
+            TypeDefKind::Error => todo!(),
         }
     }
 
@@ -1461,6 +1464,8 @@ impl CppInterfaceGenerator<'_> {
         let export = match variant {
             AbiVariant::GuestImport => self.gen.opts.host_side(),
             AbiVariant::GuestExport => !self.gen.opts.host_side(),
+            AbiVariant::GuestImportAsync => todo!(),
+            AbiVariant::GuestExportAsync => todo!(),
         };
         let params = self.print_signature(func, variant, !export);
         let special = is_special_method(func);
@@ -1700,7 +1705,7 @@ impl CppInterfaceGenerator<'_> {
                     } else {
                         None
                     };
-                    abi::call(f.gen.resolve, variant, lift_lower, func, &mut f);
+                    abi::call(f.gen.resolve, variant, lift_lower, func, &mut f, false);
                     let code = String::from(f.src);
                     self.gen.c_src.src.push_str(&code);
                 }
@@ -1772,7 +1777,7 @@ impl CppInterfaceGenerator<'_> {
 
                 let mut f = FunctionBindgen::new(self, params.clone());
                 f.params = params;
-                abi::post_return(f.gen.resolve, func, &mut f);
+                abi::post_return(f.gen.resolve, func, &mut f, false);
                 let FunctionBindgen { src, .. } = f;
                 self.gen.c_src.src.push_str(&src);
                 self.gen.c_src.src.push_str("}\n");
@@ -1918,6 +1923,7 @@ impl CppInterfaceGenerator<'_> {
                         (false, Flavor::Result(AbiVariant::GuestImport))
                         | (true, Flavor::Result(AbiVariant::GuestExport)) => (),
                         (_, Flavor::InStruct) => (),
+                        (_, _) => todo!(),
                     }
                     typename
                 }
@@ -1995,6 +2001,7 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::Stream(_) => todo!(),
                 TypeDefKind::Type(ty) => self.type_name(ty, from_namespace, flavor),
                 TypeDefKind::Unknown => todo!(),
+                TypeDefKind::Error => todo!(),
             },
         }
     }
@@ -2150,6 +2157,8 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let name = match variant {
                     AbiVariant::GuestImport => "[resource-drop]",
                     AbiVariant::GuestExport => "[dtor]",
+                    AbiVariant::GuestImportAsync => todo!(),
+                    AbiVariant::GuestExportAsync => todo!(),
                 }
                 // let name = match (variant, self.gen.opts.host_side()) {
                 //     (AbiVariant::GuestImport, false) | (AbiVariant::GuestExport, true) => {
@@ -2522,28 +2531,45 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         }
     }
 
-    fn load(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+    fn load(
+        &mut self,
+        ty: &str,
+        offset: ArchitectureSize,
+        operands: &[String],
+        results: &mut Vec<String>,
+    ) {
         if self.gen.gen.opts.host {
-            results.push(format!("*(({}*) wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {})))", ty, operands[0], offset));
+            results.push(format!("*(({}*) wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {})))", ty, operands[0], offset.format(POINTER_SIZE_EXPRESSION)));
         } else {
-            results.push(format!("*(({}*) ({} + {}))", ty, operands[0], offset));
+            results.push(format!(
+                "*(({}*) ({} + {}))",
+                ty,
+                operands[0],
+                offset.format(POINTER_SIZE_EXPRESSION)
+            ));
         }
     }
 
-    fn load_ext(&mut self, ty: &str, offset: i32, operands: &[String], results: &mut Vec<String>) {
+    fn load_ext(
+        &mut self,
+        ty: &str,
+        offset: ArchitectureSize,
+        operands: &[String],
+        results: &mut Vec<String>,
+    ) {
         self.load(ty, offset, operands, results);
         let result = results.pop().unwrap();
         results.push(format!("(int32_t) ({})", result));
     }
 
-    fn store(&mut self, ty: &str, offset: i32, operands: &[String]) {
+    fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
         if self.gen.gen.opts.host {
             uwriteln!(
                 self.src,
                 "*(({}*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {}))) = {};",
                 ty,
                 operands[1],
-                offset,
+                offset.format(POINTER_SIZE_EXPRESSION),
                 operands[0]
             );
         } else {
@@ -2552,7 +2578,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 "*(({}*)({} + {})) = {};",
                 ty,
                 operands[1],
-                offset,
+                offset.format(POINTER_SIZE_EXPRESSION),
                 operands[0]
             );
         }
@@ -2577,6 +2603,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 _ => false,
             },
             TypeDefKind::Unknown => todo!(),
+            TypeDefKind::Error => todo!(),
         }
     }
 }
@@ -2632,7 +2659,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 uwriteln!(
                     self.src,
                     "int32_t l{tmp} = *((int32_t const*)({} + {offset}));",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -2848,7 +2876,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ));
 
                 uwriteln!(self.src, "for (unsigned i=0; i<{len}; ++i) {{");
-                uwriteln!(self.src, "auto base = {base} + i * {size};");
+                uwriteln!(
+                    self.src,
+                    "auto base = {base} + i * {size};",
+                    size = size.format(POINTER_SIZE_EXPRESSION)
+                );
                 uwriteln!(self.src, "auto e{tmp} = todo();");
                 // inplace construct
                 uwriteln!(self.src, "{result}.push_back(e{tmp});");
@@ -2944,6 +2976,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             );
                             results.push(format!("{tname}::Owned(*{var})"));
                         }
+                        AbiVariant::GuestImportAsync => todo!(),
+                        AbiVariant::GuestExportAsync => todo!(),
                     },
                     (Handle::Own(ty), false) => match self.variant {
                         AbiVariant::GuestImport => {
@@ -2966,6 +3000,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             }
                             results.push(format!("std::move({var})"))
                         }
+                        AbiVariant::GuestImportAsync => todo!(),
+                        AbiVariant::GuestExportAsync => todo!(),
                     },
                     (Handle::Borrow(ty), true) => {
                         let tname = self.gen.type_name(
@@ -2985,6 +3021,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             );
                             results.push(format!("std::ref(*({tname} *){op})"));
                         }
+                        AbiVariant::GuestImportAsync => todo!(),
+                        AbiVariant::GuestExportAsync => todo!(),
                     },
                 }
             }
@@ -3478,7 +3516,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.src.push_str(");\n");
                 }
             }
-            abi::Instruction::CallInterface { func } => {
+            abi::Instruction::CallInterface { func, .. } => {
                 // dbg!(func);
                 self.let_results(func.results.len(), results);
                 let (mut namespace, func_name_h) =
@@ -3643,7 +3681,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let i = self.tempname("i", tmp);
                 uwriteln!(self.src, "for (size_t {i} = 0; {i} < {len}; {i}++) {{");
                 let size = self.gen.sizes.size(element);
-                uwriteln!(self.src, "uint8_t* base = {ptr} + {i} * {size};");
+                uwriteln!(
+                    self.src,
+                    "uint8_t* base = {ptr} + {i} * {size};",
+                    size = size.format(POINTER_SIZE_EXPRESSION)
+                );
                 uwriteln!(self.src, "(void) base;");
                 uwrite!(self.src, "{body}");
                 uwriteln!(self.src, "}}");
@@ -3678,25 +3720,51 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.store(ptr_type, *offset, operands)
             }
             abi::Instruction::LengthStore { offset } => self.store("size_t", *offset, operands),
+            abi::Instruction::FutureLower { .. } => todo!(),
+            abi::Instruction::FutureLift { .. } => todo!(),
+            abi::Instruction::StreamLower { .. } => todo!(),
+            abi::Instruction::StreamLift { .. } => todo!(),
+            abi::Instruction::ErrorLower { .. } => todo!(),
+            abi::Instruction::ErrorLift { .. } => todo!(),
+            abi::Instruction::AsyncMalloc { .. } => todo!(),
+            abi::Instruction::AsyncCallWasm { .. } => todo!(),
+            abi::Instruction::AsyncCallStart { .. } => todo!(),
+            abi::Instruction::AsyncPostCallInterface { .. } => todo!(),
+            abi::Instruction::AsyncCallReturn { .. } => todo!(),
+            abi::Instruction::Flush { amt } => {
+                for i in 0..*amt {
+                    let tmp = self.tmp();
+                    let result = format!("result{}", tmp);
+                    uwriteln!(self.src, "auto {result} = {};", operands[i]);
+                    results.push(result);
+                }
+            }
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> Self::Operand {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> Self::Operand {
         let tmp = self.tmp();
-        let elems = (size + (align - 1)) / align;
+        let size_string = size.format(POINTER_SIZE_EXPRESSION);
+        //let elems = (size + (align - 1)) / align;
         let tp = match align {
-            1 => "uint8_t",
-            2 => "uint16_t",
-            4 => "uint32_t",
-            8 => "uint64_t",
-            _ => todo!(),
+            Alignment::Bytes(bytes) => match bytes.get() {
+                1 => "uint8_t",
+                2 => "uint16_t",
+                4 => "uint32_t",
+                8 => "uint64_t",
+                _ => todo!(),
+            },
+            Alignment::Pointer => "uintptr_t",
         };
         let static_var = if self.gen.in_guest_import {
             ""
         } else {
             "static "
         };
-        uwriteln!(self.src, "{static_var}{tp} ret_area[{elems}];");
+        uwriteln!(
+            self.src,
+            "{static_var}{tp} ret_area[({size_string}+sizeof({tp})-1)/sizeof({tp})];"
+        );
         uwriteln!(
             self.src,
             "{} ptr{tmp} = ({0})(&ret_area);",

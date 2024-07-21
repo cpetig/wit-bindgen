@@ -8,33 +8,41 @@ use wit_bindgen_core::{dealias, make_external_symbol, uwrite, uwriteln, wit_pars
 pub(super) struct FunctionBindgen<'a, 'b> {
     pub gen: &'b mut InterfaceGenerator<'a>,
     params: Vec<String>,
+    async_: bool,
+    wasm_import_module: &'b str,
     pub src: Source,
     blocks: Vec<String>,
     block_storage: Vec<(Source, Vec<(String, String)>)>,
     tmp: usize,
     pub needs_cleanup_list: bool,
     cleanup: Vec<(String, String)>,
-    pub import_return_pointer_area_size: usize,
-    pub import_return_pointer_area_align: usize,
+    pub import_return_pointer_area_size: ArchitectureSize,
+    pub import_return_pointer_area_align: Alignment,
     pub handle_decls: Vec<String>,
 }
+
+pub const POINTER_SIZE_EXPRESSION: &str = "core::mem::size_of::<*const u8>()";
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
     pub(super) fn new(
         gen: &'b mut InterfaceGenerator<'a>,
         params: Vec<String>,
+        async_: bool,
+        wasm_import_module: &'b str,
     ) -> FunctionBindgen<'a, 'b> {
         FunctionBindgen {
             gen,
             params,
+            async_,
+            wasm_import_module,
             src: Default::default(),
             blocks: Vec::new(),
             block_storage: Vec::new(),
             tmp: 0,
             needs_cleanup_list: false,
             cleanup: Vec::new(),
-            import_return_pointer_area_size: 0,
-            import_return_pointer_area_align: 0,
+            import_return_pointer_area_size: Default::default(),
+            import_return_pointer_area_align: Default::default(),
             handle_decls: Vec::new(),
         }
     }
@@ -58,14 +66,9 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         }
     }
 
-    fn declare_import(
-        &mut self,
-        module_name: &str,
-        name: &str,
-        params: &[WasmType],
-        results: &[WasmType],
-    ) -> String {
+    fn declare_import(&mut self, name: &str, params: &[WasmType], results: &[WasmType]) -> String {
         // Define the actual function we're calling inline
+        // let tmp = self.tmp();
         let mut sig = "(".to_owned();
         for param in params.iter() {
             sig.push_str("_: ");
@@ -78,6 +81,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             sig.push_str(" -> ");
             sig.push_str(wasm_type(*result));
         }
+        let module_name = self.wasm_import_module;
         let export_name = make_external_symbol(module_name, name, AbiVariant::GuestImport);
         uwrite!(
             self.src,
@@ -255,7 +259,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         }
     }
 
-    fn return_pointer(&mut self, size: usize, align: usize) -> String {
+    fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let tmp = self.tmp();
 
         // Imports get a per-function return area to facilitate using the
@@ -452,6 +456,43 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     )
                 };
                 results.push(result);
+            }
+
+            Instruction::FutureLower { .. } => {
+                let op = &operands[0];
+                results.push(format!("({op}).into_handle() as i32"))
+            }
+
+            Instruction::FutureLift { .. } => {
+                let async_support = self.gen.path_to_async_support();
+                let op = &operands[0];
+                results.push(format!(
+                    "{async_support}::FutureReceiver::from_handle({op} as u32)"
+                ))
+            }
+
+            Instruction::StreamLower { .. } => {
+                let op = &operands[0];
+                results.push(format!("({op}).into_handle() as i32"))
+            }
+
+            Instruction::StreamLift { .. } => {
+                let async_support = self.gen.path_to_async_support();
+                let op = &operands[0];
+                results.push(format!(
+                    "{async_support}::StreamReceiver::from_handle({op} as u32)"
+                ))
+            }
+
+            Instruction::ErrorLower { .. } => {
+                let op = &operands[0];
+                results.push(format!("({op}).handle() as i32"))
+            }
+
+            Instruction::ErrorLift { .. } => {
+                let async_support = self.gen.path_to_async_support();
+                let op = &operands[0];
+                results.push(format!("{async_support}::Error::from_handle({op} as u32)"))
             }
 
             Instruction::RecordLower { ty, record, .. } => {
@@ -716,7 +757,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let size = self.gen.sizes.size(element);
                 let align = self.gen.sizes.align(element);
                 self.push_str(&format!(
-                    "let {layout} = {alloc}::Layout::from_size_align_unchecked({vec}.len() * {size}, {align});\n",
+                    "let {layout} = {alloc}::Layout::from_size_align_unchecked({vec}.len() * {}, {});\n",
+                    size.format(POINTER_SIZE_EXPRESSION), align.format(POINTER_SIZE_EXPRESSION),
                 ));
                 self.push_str(&format!("let {result} = if {layout}.size() != 0 {{\n"));
                 self.push_str(&format!(
@@ -727,7 +769,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ));
                 self.push_str("else {{\n::core::ptr::null_mut()\n}};\n");
                 self.push_str(&format!("for (i, e) in {vec}.into_iter().enumerate() {{\n",));
-                self.push_str(&format!("let base = {result}.add(i * {size});\n",));
+                self.push_str(&format!(
+                    "let base = {result}.add(i * {});\n",
+                    size.format(POINTER_SIZE_EXPRESSION)
+                ));
                 self.push_str(&body);
                 self.push_str("\n}\n");
                 results.push(format!("{result}"));
@@ -763,13 +808,21 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ));
 
                 uwriteln!(self.src, "for i in 0..{len} {{");
-                uwriteln!(self.src, "let base = {base}.add(i * {size});");
+                uwriteln!(
+                    self.src,
+                    "let base = {base}.add(i * {size});",
+                    size = size.format(POINTER_SIZE_EXPRESSION)
+                );
                 uwriteln!(self.src, "let e{tmp} = {body};");
                 uwriteln!(self.src, "{result}.push(e{tmp});");
                 uwriteln!(self.src, "}}");
                 results.push(result);
                 let dealloc = self.gen.path_to_cabi_dealloc();
-                self.push_str(&format!("{dealloc}({base}, {len} * {size}, {align});\n",));
+                self.push_str(&format!(
+                    "{dealloc}({base}, {len} * {size}, {align});\n",
+                    size = size.format(POINTER_SIZE_EXPRESSION),
+                    align = align.format(POINTER_SIZE_EXPRESSION)
+                ));
             }
 
             Instruction::IterElem { .. } => results.push("e".to_string()),
@@ -777,12 +830,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::IterBasePointer => results.push("base".to_string()),
 
             Instruction::CallWasm { name, sig, .. } => {
-                let func = self.declare_import(
-                    self.gen.wasm_import_module.unwrap(),
-                    name,
-                    &sig.params,
-                    &sig.results,
-                );
+                let func = self.declare_import(name, &sig.params, &sig.results);
 
                 // ... then call the function with all our operands
                 if !sig.results.is_empty() {
@@ -795,8 +843,34 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(");\n");
             }
 
+            Instruction::AsyncCallWasm { name, size, align } => {
+                let func = self.declare_import(name, &[WasmType::Pointer; 3], &[WasmType::I32]);
+
+                let async_support = self.gen.path_to_async_support();
+                let tmp = self.tmp();
+                let layout = format!("layout{tmp}");
+                let alloc = self.gen.path_to_std_alloc_module();
+                self.push_str(&format!(
+                    "let {layout} = {alloc}::Layout::from_size_align_unchecked({size}, {align});\n",
+                    size = size.format(POINTER_SIZE_EXPRESSION),
+                    align = align.format(POINTER_SIZE_EXPRESSION)
+                ));
+                let operands = operands.join(", ");
+                uwriteln!(
+                    self.src,
+                    "{async_support}::await_result({func}, {layout}, {operands}).await;"
+                );
+            }
+
             Instruction::CallInterface { func, .. } => {
-                self.let_results(func.results.len(), results);
+                if self.async_ {
+                    let tmp = self.tmp();
+                    let result = format!("result{tmp}");
+                    self.push_str(&format!("let {result} = "));
+                    results.push(result);
+                } else {
+                    self.let_results(func.results.len(), results);
+                };
                 match &func.kind {
                     FunctionKind::Freestanding => {
                         self.push_str(&format!("T::{}", to_rust_ident(&func.name)));
@@ -837,6 +911,78 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(";\n");
             }
 
+            Instruction::AsyncMalloc { size, align } => {
+                let alloc = self.gen.path_to_std_alloc_module();
+                let tmp = self.tmp();
+                let ptr = format!("ptr{tmp}");
+                let layout = format!("layout{tmp}");
+                uwriteln!(
+                    self.src,
+                    "let {layout} = {alloc}::Layout::from_size_align_unchecked({size}, {align});
+                     let {ptr} = {alloc}::alloc({layout});",
+                    size = size.format(POINTER_SIZE_EXPRESSION),
+                    align = align.format(POINTER_SIZE_EXPRESSION)
+                );
+                results.push(ptr);
+            }
+
+            Instruction::AsyncCallStart {
+                name,
+                params,
+                results: call_results,
+            } => {
+                let func = self.declare_import(name, params, call_results);
+
+                if !call_results.is_empty() {
+                    self.push_str("let ret = ");
+                    results.push("ret".to_string());
+                }
+                uwriteln!(self.src, "{func}({});", operands.join(", "));
+            }
+
+            Instruction::AsyncPostCallInterface { func } => {
+                let result = &operands[0];
+                results.push("result".into());
+                let params = (0..func.results.len())
+                    .map(|_| {
+                        let tmp = self.tmp();
+                        let param = format!("result{}", tmp);
+                        results.push(param.clone());
+                        param
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let async_support = self.gen.path_to_async_support();
+                uwriteln!(
+                    self.src,
+                    "\
+                        let result = {async_support}::first_poll({result}, |{params}| {{
+                    "
+                );
+            }
+
+            Instruction::AsyncCallReturn { name, params } => {
+                let func = self.declare_import(name, params, &[]);
+
+                uwriteln!(
+                    self.src,
+                    "\
+                            {func}({});
+                        }});
+                    ",
+                    operands.join(", ")
+                );
+            }
+
+            Instruction::Flush { amt } => {
+                for i in 0..*amt {
+                    let tmp = self.tmp();
+                    let result = format!("result{}", tmp);
+                    uwriteln!(self.src, "let {result} = {};", operands[i]);
+                    results.push(result);
+                }
+            }
+
             Instruction::Return { amt, .. } => {
                 self.emit_cleanup();
                 match amt {
@@ -858,7 +1004,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = *{}.add({offset}).cast::<i32>();",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -866,8 +1013,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let tmp = self.tmp();
                 uwriteln!(
                     self.src,
-                    "let l{tmp} = i32::from(*{}.add({offset}).cast::<u8>());",
-                    operands[0]
+                    "let l{tmp} = i32::from(*{0}.add({offset}).cast::<u8>());",
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -876,7 +1024,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = i32::from(*{}.add({offset}).cast::<i8>());",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -885,7 +1034,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = i32::from(*{}.add({offset}).cast::<u16>());",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -894,7 +1044,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = i32::from(*{}.add({offset}).cast::<i16>());",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -903,7 +1054,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = *{}.add({offset}).cast::<i64>();",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -912,7 +1064,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = *{}.add({offset}).cast::<f32>();",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -921,7 +1074,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = *{}.add({offset}).cast::<f64>();",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -931,7 +1085,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(
                     self.src,
                     "let l{tmp} = *{}.add({offset}).cast::<*mut u8>();",
-                    operands[0]
+                    operands[0],
+                    offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -939,8 +1094,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let tmp = self.tmp();
                 uwriteln!(
                     self.src,
-                    "let l{tmp} = *{}.add({offset}).cast::<usize>();",
-                    operands[0]
+                    "let l{tmp} = *{}.add({}).cast::<usize>();",
+                    operands[0],
+                    offset.format(POINTER_SIZE_EXPRESSION)
                 );
                 results.push(format!("l{tmp}"));
             }
@@ -948,50 +1104,66 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::I32Store { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<i32>() = {};\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
             Instruction::I32Store8 { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<u8>() = ({}) as u8;\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
             Instruction::I32Store16 { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<u16>() = ({}) as u16;\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
             Instruction::I64Store { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<i64>() = {};\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
             Instruction::F32Store { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<f32>() = {};\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
             Instruction::F64Store { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<f64>() = {};\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
 
             Instruction::PointerStore { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<*mut u8>() = {};\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
             Instruction::LengthStore { offset } => {
                 self.push_str(&format!(
                     "*{}.add({}).cast::<usize>() = {};\n",
-                    operands[1], offset, operands[0]
+                    operands[1],
+                    offset.format(POINTER_SIZE_EXPRESSION),
+                    operands[0]
                 ));
             }
 
@@ -1001,7 +1173,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let dealloc = self.gen.path_to_cabi_dealloc();
                 self.push_str(&format!(
                     "{dealloc}({op}, {size}, {align});\n",
-                    op = operands[0]
+                    op = operands[0],
+                    size = size.format(POINTER_SIZE_EXPRESSION),
+                    align = align.format(POINTER_SIZE_EXPRESSION)
                 ));
             }
 
@@ -1056,13 +1230,17 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     self.push_str("let base = ");
                     self.push_str(&base);
                     self.push_str(".add(i * ");
-                    self.push_str(&size.to_string());
+                    self.push_str(&size.format(POINTER_SIZE_EXPRESSION));
                     self.push_str(");\n");
                     self.push_str(&body);
                     self.push_str("\n}\n");
                 }
                 let dealloc = self.gen.path_to_cabi_dealloc();
-                self.push_str(&format!("{dealloc}({base}, {len} * {size}, {align});\n",));
+                self.push_str(&format!(
+                    "{dealloc}({base}, {len} * {size}, {align});\n",
+                    size = size.format(POINTER_SIZE_EXPRESSION),
+                    align = align.format(POINTER_SIZE_EXPRESSION)
+                ));
             }
         }
     }

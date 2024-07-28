@@ -66,7 +66,13 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         }
     }
 
-    fn declare_import(&mut self, name: &str, params: &[WasmType], results: &[WasmType]) -> String {
+    fn declare_import(
+        &mut self,
+        module_prefix: &str,
+        name: &str,
+        params: &[WasmType],
+        results: &[WasmType],
+    ) -> String {
         // Define the actual function we're calling inline
         // let tmp = self.tmp();
         let mut sig = "(".to_owned();
@@ -82,11 +88,12 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             sig.push_str(wasm_type(*result));
         }
         let module_name = self.wasm_import_module;
-        let export_name = make_external_symbol(module_name, name, AbiVariant::GuestImport);
+        let export_name = String::from(module_prefix)
+            + &make_external_symbol(module_name, name, AbiVariant::GuestImport);
         uwrite!(
             self.src,
             "
-                #[link(wasm_import_module = \"{module_name}\")]
+                #[link(wasm_import_module = \"{module_prefix}{module_name}\")]
                 extern \"C\" {{
                     #[cfg_attr(target_arch = \"wasm32\", link_name = \"{name}\")]
                     fn {export_name}{sig};
@@ -413,7 +420,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ..
             } => {
                 let op = &operands[0];
-                let result = format!("({op}).take_handle() as i32");
+                let result = format!(
+                    "({op}).take_handle(){cast}",
+                    cast = if self.gen.gen.opts.symmetric {
+                        " as *mut u8"
+                    } else {
+                        " as i32"
+                    }
+                );
                 results.push(result);
             }
 
@@ -422,7 +436,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 ..
             } => {
                 let op = &operands[0];
-                results.push(format!("({op}).handle() as i32"))
+                results.push(format!(
+                    "({op}).handle(){cast}",
+                    cast = if self.gen.gen.opts.symmetric {
+                        " as *mut u8"
+                    } else {
+                        " as i32"
+                    }
+                ))
             }
 
             Instruction::HandleLift { handle, .. } => {
@@ -436,7 +457,15 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
                 let result = if is_own {
                     let name = self.gen.type_path(dealiased_resource, true);
-                    format!("{name}::from_handle({op} as u32)")
+
+                    format!(
+                        "{name}::from_handle({op}{cast})",
+                        cast = if self.gen.gen.opts.symmetric {
+                            " as usize"
+                        } else {
+                            " as u32"
+                        }
+                    )
                 } else if self.gen.is_exported_resource(*resource) {
                     let name = resolve.types[*resource]
                         .name
@@ -450,9 +479,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     let name = self.gen.type_path(dealiased_resource, true);
                     format!(
                         "{{\n
-                            {tmp} = {name}::from_handle({op} as u32);
+                            {tmp} = {name}::from_handle({op}{cast});
                             &{tmp}
-                        }}"
+                        }}",
+                        cast = if self.gen.gen.opts.symmetric {
+                            ""
+                        } else {
+                            " as u32"
+                        }
                     )
                 };
                 results.push(result);
@@ -677,7 +711,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let val = format!("vec{}", tmp);
                 let ptr = format!("ptr{}", tmp);
                 let len = format!("len{}", tmp);
-                if realloc.is_none() {
+                if realloc.is_none() || self.gen.gen.opts.symmetric {
                     self.push_str(&format!("let {} = {};\n", val, operands[0]));
                 } else {
                     let op0 = operands.pop().unwrap();
@@ -685,7 +719,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
                 self.push_str(&format!("let {} = {}.as_ptr().cast::<u8>();\n", ptr, val));
                 self.push_str(&format!("let {} = {}.len();\n", len, val));
-                if realloc.is_some() {
+                if realloc.is_some() && !self.gen.gen.opts.symmetric {
                     self.push_str(&format!("::core::mem::forget({});\n", val));
                 }
                 results.push(format!("{ptr}.cast_mut()"));
@@ -709,7 +743,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let val = format!("vec{}", tmp);
                 let ptr = format!("ptr{}", tmp);
                 let len = format!("len{}", tmp);
-                if realloc.is_none() {
+                if realloc.is_none() || (self.gen.in_import && self.gen.gen.opts.symmetric) {
                     self.push_str(&format!("let {} = {};\n", val, operands[0]));
                 } else {
                     let op0 = format!("{}.into_bytes()", operands[0]);
@@ -717,7 +751,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
                 self.push_str(&format!("let {} = {}.as_ptr().cast::<u8>();\n", ptr, val));
                 self.push_str(&format!("let {} = {}.len();\n", len, val));
-                if realloc.is_some() {
+                if realloc.is_some() && !(self.gen.in_import && self.gen.gen.opts.symmetric) {
                     self.push_str(&format!("::core::mem::forget({});\n", val));
                 }
                 results.push(format!("{ptr}.cast_mut()"));
@@ -729,15 +763,24 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let tmp = self.tmp();
                 let len = format!("len{}", tmp);
                 uwriteln!(self.src, "let {len} = {};", operands[1]);
-                uwriteln!(
-                    self.src,
-                    "let bytes{tmp} = {vec}::from_raw_parts({}.cast(), {len}, {len});",
-                    operands[0],
-                );
-                if self.gen.gen.opts.raw_strings {
-                    results.push(format!("bytes{tmp}"));
+                if self.gen.gen.opts.symmetric {
+                    uwriteln!(
+                        self.src,
+                        "let string{tmp} = String::from(std::str::from_utf8(std::slice::from_raw_parts({}, {len})).unwrap());",
+                        operands[0],
+                    );
+                    results.push(format!("string{tmp}"));
                 } else {
-                    results.push(format!("{}(bytes{tmp})", self.gen.path_to_string_lift()));
+                    uwriteln!(
+                        self.src,
+                        "let bytes{tmp} = {vec}::from_raw_parts({}.cast(), {len}, {len});",
+                        operands[0],
+                    );
+                    if self.gen.gen.opts.raw_strings {
+                        results.push(format!("bytes{tmp}"));
+                    } else {
+                        results.push(format!("{}(bytes{tmp})", self.gen.path_to_string_lift()));
+                    }
                 }
             }
 
@@ -829,8 +872,13 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::IterBasePointer => results.push("base".to_string()),
 
-            Instruction::CallWasm { name, sig, .. } => {
-                let func = self.declare_import(name, &sig.params, &sig.results);
+            Instruction::CallWasm {
+                name,
+                sig,
+                module_prefix,
+                ..
+            } => {
+                let func = self.declare_import(module_prefix, name, &sig.params, &sig.results);
 
                 // ... then call the function with all our operands
                 if !sig.results.is_empty() {
@@ -844,7 +892,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::AsyncCallWasm { name, size, align } => {
-                let func = self.declare_import(name, &[WasmType::Pointer; 3], &[WasmType::I32]);
+                let func = self.declare_import("", name, &[WasmType::Pointer; 3], &[WasmType::I32]);
 
                 let async_support = self.gen.path_to_async_support();
                 let tmp = self.tmp();
@@ -931,7 +979,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 params,
                 results: call_results,
             } => {
-                let func = self.declare_import(name, params, call_results);
+                let func = self.declare_import("", name, params, call_results);
 
                 if !call_results.is_empty() {
                     self.push_str("let ret = ");
@@ -962,7 +1010,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::AsyncCallReturn { name, params } => {
-                let func = self.declare_import(name, params, &[]);
+                let func = self.declare_import("", name, params, &[]);
 
                 uwriteln!(
                     self.src,

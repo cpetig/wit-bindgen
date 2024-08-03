@@ -1709,6 +1709,7 @@ impl CppInterfaceGenerator<'_> {
             self.gen.c_src.src.push_str("}\n");
             // cabi_post
             if !self.gen.opts.host_side()
+                && !matches!(lift_lower, LiftLower::Symmetric)
                 && matches!(variant, AbiVariant::GuestExport)
                 && abi::guest_export_needs_post_return(self.resolve, func)
             {
@@ -2829,13 +2830,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     "std::string_view"
                 };
-                let result = if self.gen.gen.opts.symmetric {
+                let result = if self.gen.gen.opts.symmetric
+                    && matches!(self.variant, AbiVariant::GuestExport)
+                {
                     uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view((char const *)({}), {len}));\n", operands[0]);
-                    if matches!(self.variant, AbiVariant::GuestExport) {
-                        format!("std::move(string{tmp})")
-                    } else {
-                        format!("string{tmp}")
-                    }
+                    // if matches!(self.variant, AbiVariant::GuestExport) {
+                    format!("std::move(string{tmp})")
+                    // } else {
+                    //     format!("string{tmp}")
+                    // }
                 } else if self.gen.gen.opts.host {
                     uwriteln!(self.src, "char const* ptr{} = (char const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", tmp, operands[0]);
                     format!("{string_view}(ptr{}, {len})", tmp)

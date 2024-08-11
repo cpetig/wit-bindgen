@@ -1707,7 +1707,13 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Future(_)
                 | TypeDefKind::Stream(_)
                 | TypeDefKind::Error
-                | TypeDefKind::Handle(_) => self.lower_and_emit(ty, addr, &I32Store { offset }),
+                | TypeDefKind::Handle(_) => {
+                    if matches!(self.lift_lower, LiftLower::Symmetric) {
+                        self.lower_and_emit(ty, addr, &PointerStore { offset });
+                    } else {
+                        self.lower_and_emit(ty, addr, &I32Store { offset });
+                    }
+                }
 
                 // Decompose the record into its components and then write all
                 // the components into memory one-by-one.

@@ -2928,7 +2928,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         results.push(format!("{op}.get_handle()"));
                     }
                 } else {
-                    if matches!(self.variant, AbiVariant::GuestImport) {
+                    if matches!(self.variant, AbiVariant::GuestImport) || self.gen.gen.opts.symmetric {
                         results.push(format!("{op}.into_handle()"));
                     } else {
                         results.push(format!("{op}.release()->handle"));

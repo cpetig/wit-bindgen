@@ -2914,7 +2914,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 results.push(result);
             }
             abi::Instruction::HandleLower {
-                handle: Handle::Own(_ty),
+                handle: Handle::Own(ty),
                 ..
             } => {
                 let op = &operands[0];
@@ -2928,7 +2928,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         results.push(format!("{op}.get_handle()"));
                     }
                 } else {
-                    if matches!(self.variant, AbiVariant::GuestImport) || self.gen.gen.opts.symmetric {
+                    let tp = self.gen.resolve.types.get(*ty).map(|td| td.owner);
+                    let if_id = match tp {
+                        Some(TypeOwner::Interface(id)) => Some(id),
+                        Some(_) | None => None,
+                    };
+                    println!("{:?} if {:?} {:?}", self.gen.resolve.types.get(*ty).map_or(None, |o| o.name.clone()), tp, if_id.map_or(None, |ifc| self.gen.resolve.interfaces.get(ifc).and_then(|i| i.name.clone())));
+                    if matches!(self.variant, AbiVariant::GuestImport)
+                        || (self.gen.gen.opts.symmetric
+                            && if_id.map_or(false, |owner| {
+                                self.gen.gen.imported_interfaces.contains(&owner)
+                            }))
+                    {
                         results.push(format!("{op}.into_handle()"));
                     } else {
                         results.push(format!("{op}.release()->handle"));

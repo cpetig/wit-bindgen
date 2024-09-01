@@ -12,7 +12,7 @@ use wit_bindgen_core::{
     make_external_component, make_external_symbol, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId,
-        Resolve, Results, SizeAlign64, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId,
+        Resolve, Results, SizeAlign, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId,
         WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
@@ -223,6 +223,11 @@ pub struct Opts {
     /// other and removes the primary distinction between host and guest.
     #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
     pub symmetric: bool,
+
+    /// Symmetric API, same API for imported and exported functions.
+    /// Reduces the allocation overhead for symmetric ABI.
+    #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
+    pub new_api: bool,
 }
 
 impl Opts {
@@ -286,9 +291,9 @@ impl Cpp {
         wasm_import_module: Option<String>,
     ) -> CppInterfaceGenerator<'a> {
         let mut sizes = if self.opts.symmetric {
-            SizeAlign64::new_symmetric()
+            SizeAlign::new_symmetric()
         } else {
-            SizeAlign64::default()
+            SizeAlign::default()
         };
         sizes.fill(resolve);
 
@@ -877,7 +882,7 @@ struct CppInterfaceGenerator<'a> {
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
     _name: Option<&'a WorldKey>,
-    sizes: SizeAlign64,
+    sizes: SizeAlign,
     in_guest_import: bool,
     // return_pointer_area_size: usize,
     // return_pointer_area_align: usize,
@@ -1872,7 +1877,9 @@ impl CppInterfaceGenerator<'_> {
             Type::F32 => "float".into(),
             Type::F64 => "double".into(),
             Type::String => match flavor {
-                Flavor::Argument(AbiVariant::GuestImport) => {
+                Flavor::Argument(var)
+                    if matches!(var, AbiVariant::GuestImport) || self.gen.opts.new_api =>
+                {
                     self.gen.dependencies.needs_string_view = true;
                     if self.gen.opts.autosar {
                         "::ara::core::StringView".into()
@@ -1976,7 +1983,9 @@ impl CppInterfaceGenerator<'_> {
                     let inner = self.type_name(ty, from_namespace, flavor);
                     match flavor {
                         //self.gen.dependencies.needs_vector = true;
-                        Flavor::Argument(AbiVariant::GuestImport) => {
+                        Flavor::Argument(var)
+                            if matches!(var, AbiVariant::GuestImport) || self.gen.opts.new_api =>
+                        {
                             self.gen.dependencies.needs_wit = true;
                             format!("wit::span<{inner} const>")
                         }
@@ -2831,6 +2840,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     "std::string_view"
                 };
                 let result = if self.gen.gen.opts.symmetric
+                    && !self.gen.gen.opts.new_api
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
                     uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view((char const *)({}), {len}));\n", operands[0]);
@@ -2842,7 +2852,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else if self.gen.gen.opts.host {
                     uwriteln!(self.src, "char const* ptr{} = (char const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", tmp, operands[0]);
                     format!("{string_view}(ptr{}, {len})", tmp)
-                } else if self.gen.gen.opts.short_cut {
+                } else if self.gen.gen.opts.short_cut 
+                    || (self.gen.gen.opts.new_api
+                        && matches!(self.variant, AbiVariant::GuestExport))
+                {
                     format!("{string_view}((char const*)({}), {len})", operands[0])
                 } else {
                     format!("wit::string((char const*)({}), {len})", operands[0])
@@ -3797,7 +3810,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         //       uwriteln!(self.src, "// finish_block()");
     }
 
-    fn sizes(&self) -> &wit_bindgen_core::wit_parser::SizeAlign64 {
+    fn sizes(&self) -> &wit_bindgen_core::wit_parser::SizeAlign {
         &self.gen.sizes
     }
 

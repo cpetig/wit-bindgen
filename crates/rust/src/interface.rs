@@ -18,7 +18,7 @@ pub struct InterfaceGenerator<'a> {
     pub src: Source,
     pub(super) identifier: Identifier<'a>,
     pub in_import: bool,
-    pub sizes: SizeAlign64,
+    pub sizes: SizeAlign,
     pub(super) gen: &'a mut RustWasm,
     pub wasm_import_module: &'a str,
     pub resolve: &'a Resolve,
@@ -456,7 +456,7 @@ macro_rules! {macro_name} {{
                     "struct _RetArea([::core::mem::MaybeUninit::<u8>; {size}]);
                     static mut _RET_AREA: _RetArea = _RetArea([::core::mem::MaybeUninit::uninit(); {size}]);
 ",
-                size = self.return_pointer_area_size.format(POINTER_SIZE_EXPRESSION),
+                size = self.return_pointer_area_size.format_term(POINTER_SIZE_EXPRESSION, true),
             );
         }
 
@@ -508,14 +508,23 @@ macro_rules! {macro_name} {{
     pub fn finish_append_submodule(mut self, snake: &str, module_path: Vec<String>) {
         let module = self.finish();
         let path_to_root = self.path_to_root();
+        let used_static = if self.gen.opts.disable_custom_section_link_helpers {
+            String::new()
+        } else {
+            format!(
+                "\
+                    #[used]
+                    #[doc(hidden)]
+                    static __FORCE_SECTION_REF: fn() =
+                        {path_to_root}__link_custom_section_describing_imports;
+                "
+            )
+        };
         let module = format!(
             "\
                 #[allow(dead_code, clippy::all)]
                 pub mod {snake} {{
-                    #[used]
-                    #[doc(hidden)]
-                    #[cfg(target_arch = \"wasm32\")]
-                    static __FORCE_SECTION_REF: fn() = {path_to_root}__link_custom_section_describing_imports;
+                    {used_static}
                     {module}
                 }}
 ",
@@ -914,7 +923,7 @@ impl {async_support}::StreamPayload for {name} {{
                 self.src,
                 "struct RetArea([::core::mem::MaybeUninit::<u8>; {import_return_pointer_area_size}]);
                     let mut ret_area = RetArea([::core::mem::MaybeUninit::uninit(); {import_return_pointer_area_size}]);
-", import_return_pointer_area_size = import_return_pointer_area_size.format(POINTER_SIZE_EXPRESSION)
+", import_return_pointer_area_size = import_return_pointer_area_size.format_term(POINTER_SIZE_EXPRESSION, true)
             );
         }
         self.src.push_str(&String::from(src));
@@ -2060,7 +2069,7 @@ impl {async_support}::StreamPayload for {name} {{
             .cloned()
             .collect();
         derives.extend(
-            ["Clone", "Copy", "PartialEq", "Eq"]
+            ["Clone", "Copy", "PartialEq", "Eq", "PartialOrd", "Ord"]
                 .into_iter()
                 .map(|s| s.to_string()),
         );
@@ -2507,7 +2516,7 @@ impl {camel} {{
         use core::any::TypeId;
         static mut LAST_TYPE: Option<TypeId> = None;
         unsafe {{
-            assert!(!cfg!(target_feature = "threads"));
+            assert!(!cfg!(target_feature = "atomics"));
             let id = TypeId::of::<T>();
             match LAST_TYPE {{
                 Some(ty) => assert!(ty == id, "cannot use two types with this resource type"),

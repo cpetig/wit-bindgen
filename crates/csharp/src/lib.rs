@@ -1,5 +1,3 @@
-mod component_type_object;
-
 use anyhow::Result;
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
 use indexmap::IndexMap;
@@ -136,8 +134,8 @@ pub enum FunctionLevel {
 pub struct CSharp {
     opts: Opts,
     name: String,
-    return_area_size: usize,
-    return_area_align: usize,
+    return_area_size: ArchitectureSize,
+    return_area_align: Alignment,
     tuple_counts: HashSet<usize>,
     needs_result: bool,
     needs_option: bool,
@@ -569,8 +567,10 @@ impl WorldGenerator for CSharp {
         if self.needs_export_return_area {
             let mut ret_area_str = String::new();
 
-            let (array_size, element_type) =
-                dotnet_aligned_array(self.return_area_size, self.return_area_align);
+            let (array_size, element_type) = dotnet_aligned_array(
+                self.return_area_size.size_wasm32(),
+                self.return_area_align.align_wasm32(),
+            );
             uwrite!(
                 ret_area_str,
                 "
@@ -594,7 +594,7 @@ impl WorldGenerator for CSharp {
                 }}
                 ",
                 array_size,
-                self.return_area_align,
+                self.return_area_align.align_wasm32(),
                 element_type
             );
 
@@ -693,31 +693,6 @@ impl WorldGenerator for CSharp {
         }
 
         if !self.opts.skip_support_files {
-            let cabi_relloc_src = r#"
-                #include <stdlib.h>
-
-                /* Done in C so we can avoid initializing the dotnet runtime and hence WASI libc */
-                /* It would be preferable to do this in C# but the constraints of cabi_realloc and the demands */
-                /* of WASI libc prevent us doing so. */
-                /* See https://github.com/bytecodealliance/wit-bindgen/issues/777  */
-                /* and https://github.com/WebAssembly/wasi-libc/issues/452 */
-                /* The component model `start` function might be an alternative to this depending on whether it */
-                /* has the same constraints as `cabi_realloc` */
-                __attribute__((__weak__, __export_name__("cabi_realloc")))
-                void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {
-                    (void) old_size;
-                    if (new_size == 0) return (void*) align;
-                    void *ret = realloc(ptr, new_size);
-                    if (!ret) abort();
-                    return ret;
-                }
-            "#;
-
-            files.push(
-                &format!("{name}World_cabi_realloc.c"),
-                indent(cabi_relloc_src).as_bytes(),
-            );
-
             //TODO: This is currently needed for mono even if it's built as a library.
             if self.opts.runtime == CSharpRuntime::Mono {
                 files.push(
@@ -779,13 +754,6 @@ impl WorldGenerator for CSharp {
                         .as_bytes(),
                 );
             }
-
-            files.push(
-                &format!("{world_namespace}_component_type.o",),
-                component_type_object::object(resolve, id, self.opts.string_encoding)
-                    .unwrap()
-                    .as_slice(),
-            );
 
             // TODO: remove when we switch to dotnet 9
             let mut wasm_import_linakge_src = String::new();
@@ -1013,6 +981,8 @@ impl InterfaceGenerator<'_> {
             }
         };
 
+        let access = self.gen.access_modifier();
+
         let extra_modifiers = extra_modifiers(func, &camel_name);
 
         let interop_camel_name = func.item_name().to_upper_camel_case();
@@ -1142,7 +1112,7 @@ impl InterfaceGenerator<'_> {
         uwrite!(
             target,
             r#"
-                internal {extra_modifiers} {modifiers} unsafe {result_type} {camel_name}({params})
+                {access} {extra_modifiers} {modifiers} unsafe {result_type} {camel_name}({params})
                 {{
                     {src}
                     //TODO: free alloc handle (interopString) if exists
@@ -2025,8 +1995,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             payloads: Vec::new(),
             needs_cleanup_list: false,
             cleanup: Vec::new(),
-            import_return_pointer_area_size: 0,
-            import_return_pointer_area_align: 0,
+            import_return_pointer_area_size: Default::default(),
+            import_return_pointer_area_align: Default::default(),
             fixed: 0,
             resource_drops: Vec::new(),
         }
@@ -2210,22 +2180,22 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             })),
             Instruction::I32Load { offset }
             | Instruction::PointerLoad { offset }
-            | Instruction::LengthLoad { offset } => results.push(format!("BitConverter.ToInt32(new Span<byte>((void*)({} + {offset}), 4))",operands[0])),
-            Instruction::I32Load8U { offset } => results.push(format!("new Span<byte>((void*)({} + {offset}), 1)[0]",operands[0])),
-            Instruction::I32Load8S { offset } => results.push(format!("(sbyte)new Span<byte>((void*)({} + {offset}), 1)[0]",operands[0])),
-            Instruction::I32Load16U { offset } => results.push(format!("BitConverter.ToUInt16(new Span<byte>((void*)({} + {offset}), 2))",operands[0])),
-            Instruction::I32Load16S { offset } => results.push(format!("BitConverter.ToInt16(new Span<byte>((void*)({} + {offset}), 2))",operands[0])),
-            Instruction::I64Load { offset } => results.push(format!("BitConverter.ToInt64(new Span<byte>((void*)({} + {offset}), 8))",operands[0])),
-            Instruction::F32Load { offset } => results.push(format!("BitConverter.ToSingle(new Span<byte>((void*)({} + {offset}), 4))",operands[0])),
-            Instruction::F64Load { offset } => results.push(format!("BitConverter.ToDouble(new Span<byte>((void*)({} + {offset}), 8))",operands[0])),
+            | Instruction::LengthLoad { offset } => results.push(format!("BitConverter.ToInt32(new Span<byte>((void*)({} + {offset}), 4))",operands[0],offset=offset.size_wasm32())),
+            Instruction::I32Load8U { offset } => results.push(format!("new Span<byte>((void*)({} + {offset}), 1)[0]",operands[0],offset=offset.size_wasm32())),
+            Instruction::I32Load8S { offset } => results.push(format!("(sbyte)new Span<byte>((void*)({} + {offset}), 1)[0]",operands[0],offset=offset.size_wasm32())),
+            Instruction::I32Load16U { offset } => results.push(format!("BitConverter.ToUInt16(new Span<byte>((void*)({} + {offset}), 2))",operands[0],offset=offset.size_wasm32())),
+            Instruction::I32Load16S { offset } => results.push(format!("BitConverter.ToInt16(new Span<byte>((void*)({} + {offset}), 2))",operands[0],offset=offset.size_wasm32())),
+            Instruction::I64Load { offset } => results.push(format!("BitConverter.ToInt64(new Span<byte>((void*)({} + {offset}), 8))",operands[0],offset=offset.size_wasm32())),
+            Instruction::F32Load { offset } => results.push(format!("BitConverter.ToSingle(new Span<byte>((void*)({} + {offset}), 4))",operands[0],offset=offset.size_wasm32())),
+            Instruction::F64Load { offset } => results.push(format!("BitConverter.ToDouble(new Span<byte>((void*)({} + {offset}), 8))",operands[0],offset=offset.size_wasm32())),
             Instruction::I32Store { offset }
             | Instruction::PointerStore { offset }
-            | Instruction::LengthStore { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 4), unchecked((int){}));", operands[1], operands[0]),
-            Instruction::I32Store8 { offset } => uwriteln!(self.src, "*(byte*)({} + {offset}) = (byte){};", operands[1], operands[0]),
-            Instruction::I32Store16 { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 2), (short){});", operands[1], operands[0]),
-            Instruction::I64Store { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 8), unchecked((long){}));", operands[1], operands[0]),
-            Instruction::F32Store { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 4), unchecked((float){}));", operands[1], operands[0]),
-            Instruction::F64Store { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 8), unchecked((double){}));", operands[1], operands[0]),
+            | Instruction::LengthStore { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 4), unchecked((int){}));", operands[1], operands[0],offset=offset.size_wasm32()),
+            Instruction::I32Store8 { offset } => uwriteln!(self.src, "*(byte*)({} + {offset}) = (byte){};", operands[1], operands[0],offset=offset.size_wasm32()),
+            Instruction::I32Store16 { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 2), (short){});", operands[1], operands[0],offset=offset.size_wasm32()),
+            Instruction::I64Store { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 8), unchecked((long){}));", operands[1], operands[0],offset=offset.size_wasm32()),
+            Instruction::F32Store { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 4), unchecked((float){}));", operands[1], operands[0],offset=offset.size_wasm32()),
+            Instruction::F64Store { offset } => uwriteln!(self.src, "BitConverter.TryWriteBytes(new Span<byte>((void*)({} + {offset}), 8), unchecked((double){}));", operands[1], operands[0],offset=offset.size_wasm32()),
 
             Instruction::I64FromU64 => results.push(format!("unchecked((long)({}))", operands[0])),
             Instruction::I32FromChar => results.push(format!("((int){})", operands[0])),
@@ -2557,7 +2527,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         let address = self.locals.tmp("address");
                         let buffer = self.locals.tmp("buffer");
                         let gc_handle = self.locals.tmp("gcHandle");
-                        let size = self.gen.gen.sizes.size(element);
+                        let size = self.gen.gen.sizes.size(element).size_wasm32();
                         uwrite!(
                             self.src,
                             "
@@ -2632,7 +2602,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 assert!(block_results.is_empty());
 
                 let list = &operands[0];
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 let ty = self.gen.type_name_with_qualifier(element, true);
                 let index = self.locals.tmp("index");
 
@@ -2676,7 +2646,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let length = &operands[1];
                 let array = self.locals.tmp("array");
                 let ty = self.gen.type_name_with_qualifier(element, true);
-                let size = self.gen.gen.sizes.size(element);
+                let size = self.gen.gen.sizes.size(element).size_wasm32();
                 let index = self.locals.tmp("index");
 
                 let result = match &block_results[..] {

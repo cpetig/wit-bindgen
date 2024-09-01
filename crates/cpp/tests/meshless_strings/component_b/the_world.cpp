@@ -47,8 +47,7 @@ wit::string foo::foo::strings::B() {
   a_fooX3AfooX2FstringsX00b(ptr0);
   auto len1 = *((size_t *)(ptr0 + sizeof(void *)));
 
-  auto string1 = wit::string((char const *)(*((uint8_t **)(ptr0 + 0))), len1);
-  return string1;
+  return wit::string((char const *)(*((uint8_t **)(ptr0 + 0))), len1);
 }
 wit::string foo::foo::strings::C(std::string_view a, std::string_view b) {
   auto const &vec0 = a;
@@ -63,17 +62,13 @@ wit::string foo::foo::strings::C(std::string_view a, std::string_view b) {
   a_fooX3AfooX2FstringsX00c(ptr0, len0, ptr1, len1, ptr2);
   auto len3 = *((size_t *)(ptr2 + sizeof(void *)));
 
-  auto string3 = wit::string((char const *)(*((uint8_t **)(ptr2 + 0))), len3);
-  return string3;
+  return wit::string((char const *)(*((uint8_t **)(ptr2 + 0))), len3);
 }
 extern "C" __attribute__((__export_name__("foo:foo/strings#a"))) void
 fooX3AfooX2FstringsX00a(uint8_t *arg0, size_t arg1) {
   auto len0 = arg1;
 
-  auto string0 =
-      wit::string::from_view(std::string_view((char const *)(arg0), len0));
-
-  exports::foo::foo::strings::A(std::move(string0));
+  exports::foo::foo::strings::A(std::string_view((char const *)(arg0), len0));
 }
 extern "C" __attribute__((__export_name__("foo:foo/strings#b"))) void
 fooX3AfooX2FstringsX00b(uint8_t *arg0) {
@@ -91,16 +86,11 @@ fooX3AfooX2FstringsX00c(uint8_t *arg0, size_t arg1, uint8_t *arg2, size_t arg3,
                         uint8_t *arg4) {
   auto len0 = arg1;
 
-  auto string0 =
-      wit::string::from_view(std::string_view((char const *)(arg0), len0));
-
   auto len1 = arg3;
 
-  auto string1 =
-      wit::string::from_view(std::string_view((char const *)(arg2), len1));
-
-  auto result2 =
-      exports::foo::foo::strings::C(std::move(string0), std::move(string1));
+  auto result2 = exports::foo::foo::strings::C(
+      std::string_view((char const *)(arg0), len0),
+      std::string_view((char const *)(arg2), len1));
   auto const &vec3 = result2;
   auto ptr3 = (uint8_t *)(vec3.data());
   auto len3 = (size_t)(vec3.size());

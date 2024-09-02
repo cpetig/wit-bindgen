@@ -1436,6 +1436,60 @@ impl CppInterfaceGenerator<'_> {
         }
     }
 
+    // figure out whether deallocation is needed in the caller
+    fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
+        match tp {
+            Type::Bool
+            | Type::U8
+            | Type::U16
+            | Type::U32
+            | Type::U64
+            | Type::S8
+            | Type::S16
+            | Type::S32
+            | Type::S64
+            | Type::F32
+            | Type::F64
+            | Type::Char => false,
+            Type::String => true,
+            Type::Id(id) => match &resolve.types[*id].kind {
+                TypeDefKind::Enum(_) => false,
+                TypeDefKind::Record(r) => r
+                    .fields
+                    .iter()
+                    .any(|f| Self::needs_dealloc2(resolve, &f.ty)),
+                TypeDefKind::Resource => false,
+                TypeDefKind::Handle(_) => false,
+                TypeDefKind::Flags(_) => false,
+                TypeDefKind::Tuple(t) => t.types.iter().any(|f| Self::needs_dealloc2(resolve, f)),
+                TypeDefKind::Variant(_) => todo!(),
+                TypeDefKind::Option(_) => todo!(),
+                TypeDefKind::Result(r) => {
+                    r.ok.as_ref()
+                        .map_or(false, |tp| Self::needs_dealloc2(resolve, tp))
+                        || r.err
+                            .as_ref()
+                            .map_or(false, |tp| Self::needs_dealloc2(resolve, tp))
+                }
+                TypeDefKind::List(_l) => true,
+                TypeDefKind::Future(_) => todo!(),
+                TypeDefKind::Stream(_) => todo!(),
+                TypeDefKind::Error => false,
+                TypeDefKind::Type(tp) => Self::needs_dealloc2(resolve, tp),
+                TypeDefKind::Unknown => false,
+            },
+        }
+    }
+
+    fn needs_dealloc(resolve: &Resolve, args: &[(String, Type)]) -> bool {
+        for (_n, t) in args {
+            if Self::needs_dealloc2(resolve, t) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     fn generate_function(
         &mut self,
         func: &Function,
@@ -1472,6 +1526,19 @@ impl CppInterfaceGenerator<'_> {
         let special = is_special_method(func);
         if !matches!(special, SpecialMethod::Allocate) {
             self.gen.c_src.src.push_str("{\n");
+            let needs_dealloc = if self.gen.opts.new_api
+                && !self.gen.opts.symmetric
+                && matches!(variant, AbiVariant::GuestExport)
+                && Self::needs_dealloc(self.resolve, &func.params)
+            {
+                self.gen
+                    .c_src
+                    .src
+                    .push_str("std::vector<void*> _deallocate;\n");
+                true
+            } else {
+                false
+            };
             let lift_lower = if self.gen.opts.symmetric {
                 LiftLower::Symmetric
             } else if export {
@@ -1687,6 +1754,7 @@ impl CppInterfaceGenerator<'_> {
                         f.wamr_signature = Some(wamr::wamr_signature(&f.gen.resolve, func));
                     }
                     f.variant = variant;
+                    f.needs_dealloc = needs_dealloc;
                     f.cabi_post = if matches!(variant, AbiVariant::GuestExport)
                         && f.gen.gen.opts.host_side()
                         && abi::guest_export_needs_post_return(f.gen.resolve, func)
@@ -2481,6 +2549,7 @@ struct FunctionBindgen<'a, 'b> {
     wamr_signature: Option<wamr::WamrSig>,
     variant: AbiVariant,
     cabi_post: Option<CabiPostInformation>,
+    needs_dealloc: bool,
 }
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
@@ -2499,6 +2568,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             wamr_signature: None,
             variant: AbiVariant::GuestImport,
             cabi_post: None,
+            needs_dealloc: false,
         }
     }
 
@@ -2852,10 +2922,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else if self.gen.gen.opts.host {
                     uwriteln!(self.src, "char const* ptr{} = (char const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", tmp, operands[0]);
                     format!("{string_view}(ptr{}, {len})", tmp)
-                } else if self.gen.gen.opts.short_cut 
+                } else if self.gen.gen.opts.short_cut
                     || (self.gen.gen.opts.new_api
                         && matches!(self.variant, AbiVariant::GuestExport))
                 {
+                    if self.gen.gen.opts.new_api
+                        && matches!(self.variant, AbiVariant::GuestExport)
+                        && !self.gen.gen.opts.symmetric
+                    {
+                        assert!(self.needs_dealloc);
+                        uwriteln!(
+                            self.src,
+                            "if ({len}>0) _deallocate.push_back({});\n",
+                            operands[0]
+                        );
+                    }
                     format!("{string_view}((char const*)({}), {len})", operands[0])
                 } else {
                     format!("wit::string((char const*)({}), {len})", operands[0])
@@ -2946,7 +3027,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         Some(TypeOwner::Interface(id)) => Some(id),
                         Some(_) | None => None,
                     };
-                    println!("{:?} if {:?} {:?}", self.gen.resolve.types.get(*ty).map_or(None, |o| o.name.clone()), tp, if_id.map_or(None, |ifc| self.gen.resolve.interfaces.get(ifc).and_then(|i| i.name.clone())));
+                    println!(
+                        "{:?} if {:?} {:?}",
+                        self.gen
+                            .resolve
+                            .types
+                            .get(*ty)
+                            .map_or(None, |o| o.name.clone()),
+                        tp,
+                        if_id.map_or(None, |ifc| self
+                            .gen
+                            .resolve
+                            .interfaces
+                            .get(ifc)
+                            .and_then(|i| i.name.clone()))
+                    );
                     if matches!(self.variant, AbiVariant::GuestImport)
                         || (self.gen.gen.opts.symmetric
                             && if_id.map_or(false, |owner| {
@@ -3591,6 +3686,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results[0] = format!("(*({}))", results[0]);
                 } else {
                     self.push_str(");\n");
+                }
+                if self.needs_dealloc {
+                    uwriteln!(
+                        self.src,
+                        "for (auto i: _deallocate) {{ free(i); }}\n
+                        _deallocate.clear();"
+                    );
                 }
             }
             abi::Instruction::Return { amt, func } => {

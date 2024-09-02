@@ -278,7 +278,12 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
 
             let snake = world_name.replace("-", "_");
             let mut files = Default::default();
-            let opts = wit_bindgen_cpp::Opts::default();
+            let mut opts = wit_bindgen_cpp::Opts::default();
+            if let Some(path) = path.file_name().and_then(|s| s.to_str()) {
+                if path.contains(".new.") {
+                    opts.new_api = true;
+                }
+            }
             opts.build().generate(&resolve, world, &mut files).unwrap();
 
             for (file, contents) in files.iter() {
@@ -310,6 +315,8 @@ fn tests(name: &str, dir_name: &str) -> Result<Vec<PathBuf>> {
                 //                .arg("-Werror")
                 .arg("-Wno-unused-parameter")
                 .arg("-mexec-model=reactor")
+                // for now avoid exceptions on allocation failures
+                .arg("-fno-exceptions")
                 .arg("-std=c++17")
                 .arg("-g")
                 .arg("-o")

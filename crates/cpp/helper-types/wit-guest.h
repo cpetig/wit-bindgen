@@ -32,6 +32,7 @@ public:
   string(char const *d, size_t l) : data_((uint8_t const *)d), length(l) {}
   char const *data() const { return (char const *)data_; }
   size_t size() const { return length; }
+  bool empty() const { return !length; }
   ~string() {
     if (data_) {
       free(const_cast<uint8_t *>(data_));
@@ -76,11 +77,13 @@ public:
     return *this;
   }
   vector(T *d, size_t l) : data_(d), length(l) {}
+  vector() : data_(nullptr), length() {}
   T const *data() const { return data_; }
   T *data() { return data_; }
   T &operator[](size_t n) { return data_[n]; }
   T const &operator[](size_t n) const { return data_[n]; }
   size_t size() const { return length; }
+  bool empty() const { return !length; }
   ~vector() {
     if (data_) {
       free(data_);
@@ -91,6 +94,8 @@ public:
   // typically called by post
   static void drop_raw(void *ptr) { free(ptr); }
   wit::span<T> get_view() const { return wit::span<T>(data_, length); }
+  template <class U> static vector<T> from_view(wit::span<U> const& a); 
+//  static vector<T> from_view(wit::span<const T> const& a); 
 };
 
 /// @brief  A Resource defined within the guest (guest side)

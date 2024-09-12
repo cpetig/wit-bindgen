@@ -35,6 +35,7 @@ enum Flavor {
     Argument(AbiVariant),
     Result(AbiVariant),
     InStruct,
+    BorrowedArgument,
 }
 
 impl Flavor {
@@ -42,7 +43,7 @@ impl Flavor {
         match self {
             Flavor::Argument(var) => matches!(var, AbiVariant::GuestExport),
             Flavor::Result(var) => matches!(var, AbiVariant::GuestExport),
-            Flavor::InStruct => false,
+            Flavor::InStruct | Flavor::BorrowedArgument => false,
         }
     }
 }
@@ -1790,12 +1791,13 @@ impl CppInterfaceGenerator<'_> {
                 let module_name = self.wasm_import_module.as_ref().map(|e| e.clone());
                 let export_name = match module_name {
                     Some(ref module_name) => {
-                        let symbol_variant = if self.gen.opts.symmetric {
-                            AbiVariant::GuestImport
-                        } else {
-                            variant
-                        };
-                        make_external_symbol(module_name, &func.name, symbol_variant)
+                        // let symbol_variant = if self.gen.opts.symmetric {
+                        //     AbiVariant::GuestImport
+                        // } else {
+                        //     variant
+                        // };
+                        // make_external_symbol(module_name, &func.name, symbol_variant)
+                        format!("{module_name}#{}", func.name)
                     }
                     None => make_external_component(&func.name),
                 };
@@ -1945,6 +1947,10 @@ impl CppInterfaceGenerator<'_> {
             Type::F32 => "float".into(),
             Type::F64 => "double".into(),
             Type::String => match flavor {
+                Flavor::BorrowedArgument => {
+                    self.gen.dependencies.needs_string_view = true;
+                    "std::string_view".into()
+                }
                 Flavor::Argument(var)
                     if matches!(var, AbiVariant::GuestImport) || self.gen.opts.new_api =>
                 {
@@ -2050,6 +2056,10 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::List(ty) => {
                     let inner = self.type_name(ty, from_namespace, flavor);
                     match flavor {
+                        Flavor::BorrowedArgument => {
+                            self.gen.dependencies.needs_wit = true;
+                            format!("wit::span<{inner} const>")
+                        }
                         //self.gen.dependencies.needs_vector = true;
                         Flavor::Argument(var)
                             if matches!(var, AbiVariant::GuestImport) || self.gen.opts.new_api =>
@@ -2895,6 +2905,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let result = if self.gen.gen.opts.host {
                     uwriteln!(self.src, "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", operands[0]);
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
+                } else if self.gen.gen.opts.new_api
+                    && matches!(self.variant, AbiVariant::GuestExport)
+                {
+                    format!(
+                        "wit::vector<{inner} const>(({inner}*)({}), {len}).get_view()",
+                        operands[0]
+                    )
                 } else {
                     format!("wit::vector<{inner}>(({inner}*)({}), {len})", operands[0])
                 };
@@ -2944,13 +2961,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 results.push(result);
             }
             abi::Instruction::ListLift { element, .. } => {
-                // let body = self.blocks.pop().unwrap();
+                let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
                 let size = self.gen.sizes.size(element);
                 let _align = self.gen.sizes.align(element);
-                let vtype = self
-                    .gen
-                    .type_name(element, &self.namespace, Flavor::InStruct);
+                let flavor = if self.gen.gen.opts.new_api
+                    && matches!(self.variant, AbiVariant::GuestExport)
+                {
+                    Flavor::BorrowedArgument
+                } else {
+                    Flavor::InStruct
+                };
+                let vtype = self.gen.type_name(element, &self.namespace, flavor);
                 let len = format!("len{tmp}");
                 let base = format!("base{tmp}");
                 let result = format!("result{tmp}");
@@ -2963,10 +2985,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     operand1 = operands[1]
                 ));
                 self.push_str(&format!(
-                    r#"auto {result} = wit::vector<{vtype}>();
-                    {result}.allocate({len});
+                    r#"auto {result} = wit::vector<{vtype}>::allocate({len});
                     "#,
                 ));
+                if self.gen.gen.opts.new_api && matches!(self.variant, AbiVariant::GuestExport) {
+                    self.push_str(&format!("if ({len}>0) _deallocate.push_back({base});\n"));
+                }
 
                 uwriteln!(self.src, "for (unsigned i=0; i<{len}; ++i) {{");
                 uwriteln!(
@@ -2974,11 +2998,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     "auto base = {base} + i * {size};",
                     size = size.format(POINTER_SIZE_EXPRESSION)
                 );
-                uwriteln!(self.src, "auto e{tmp} = todo();");
+                uwrite!(self.src, "{}", body.0);
+                uwriteln!(self.src, "auto e{tmp} = {};", body.1[0]);
                 // inplace construct
-                uwriteln!(self.src, "{result}.push_back(e{tmp});");
+                uwriteln!(self.src, "{result}.initialize(i, std::move(e{tmp}));");
                 uwriteln!(self.src, "}}");
-                results.push(result);
+                if self.gen.gen.opts.new_api && matches!(self.variant, AbiVariant::GuestExport) {
+                    results.push(format!("{result}.get_const_view()"));
+                } else {
+                    results.push(format!("std::move({result})"));
+                }
                 // self.push_str(&format!(
                 //     "{rt}::dealloc({base}, ({len} as usize) * {size}, {align});\n",
                 //     rt = self.gen.gen.runtime_path(),
@@ -3164,7 +3193,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.src.push_str(">(");
                 self.src.push_str(&operands.join(", "));
                 self.src.push_str(");\n");
-                results.push(name);
+                results.push(format!("std::move({name})"));
             }
             abi::Instruction::FlagsLower { flags, ty, .. } => {
                 match wit_bindgen_c::flags_repr(flags) {

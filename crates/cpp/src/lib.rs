@@ -96,6 +96,12 @@ struct SourceWithState {
     namespace: Vec<String>,
 }
 
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+enum Direction {
+    Import,
+    Export,
+}
+
 #[derive(Default)]
 struct Cpp {
     opts: Opts,
@@ -113,6 +119,10 @@ struct Cpp {
     imported_interfaces: HashSet<InterfaceId>,
     user_class_files: HashMap<String, String>,
     defined_types: HashSet<(Vec<String>, String)>,
+
+    // needed for symmetric disambiguation
+    interface_prefixes: HashMap<(Direction, WorldKey), String>,
+    import_prefix: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -508,6 +518,13 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) -> anyhow::Result<()> {
+        if let Some(prefix) = self
+            .interface_prefixes
+            .get(&(Direction::Import, name.clone()))
+        {
+            self.import_prefix = Some(prefix.clone());
+        }
+
         let store = self.start_new_file(None);
         self.imported_interfaces.insert(id);
         let wasm_import_module = resolve.name_world_key(name);
@@ -524,6 +541,7 @@ impl WorldGenerator for Cpp {
             }
         }
         self.finish_file(&namespace, store);
+        let _ = self.import_prefix.take();
         Ok(())
     }
 
@@ -534,6 +552,14 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) -> anyhow::Result<()> {
+        let old_prefix = self.opts.export_prefix.clone();
+        if let Some(prefix) = self
+            .interface_prefixes
+            .get(&(Direction::Export, name.clone()))
+        {
+            self.opts.export_prefix =
+                Some(prefix.clone() + old_prefix.as_ref().unwrap_or(&String::new()));
+        }
         let store = self.start_new_file(None);
         self.h_src
             .src
@@ -553,6 +579,7 @@ impl WorldGenerator for Cpp {
             }
         }
         self.finish_file(&namespace, store);
+        self.opts.export_prefix = old_prefix;
         Ok(())
     }
 
@@ -801,6 +828,30 @@ impl WorldGenerator for Cpp {
             .as_slice(),
         );
         Ok(())
+    }
+
+    fn apply_resolve_options(&mut self, resolve: &mut Resolve, world: &mut WorldId) {
+        if self.opts.symmetric {
+            let world = &resolve.worlds[*world];
+            let exports: HashMap<&WorldKey, &wit_bindgen_core::wit_parser::WorldItem> =
+                world.exports.iter().collect();
+            for (key, _item) in world.imports.iter() {
+                // duplicate found
+                if exports.contains_key(key)
+                    && !self
+                        .interface_prefixes
+                        .contains_key(&(Direction::Import, key.clone()))
+                    && !self
+                        .interface_prefixes
+                        .contains_key(&(Direction::Export, key.clone()))
+                {
+                    self.interface_prefixes
+                        .insert((Direction::Import, key.clone()), "imp_".into());
+                    self.interface_prefixes
+                        .insert((Direction::Export, key.clone()), "exp_".into());
+                }
+            }
+        }
     }
 }
 
@@ -1087,10 +1138,14 @@ impl CppInterfaceGenerator<'_> {
                 res.push('#');
                 res
             });
-            uwriteln!(
-                self.gen.c_src.src,
-                r#"extern "C" __attribute__((__export_name__("{module_prefix}{func_name}")))"#
-            );
+            if self.gen.opts.symmetric {
+                uwriteln!(self.gen.c_src.src, r#"extern "C" "#);
+            } else {
+                uwriteln!(
+                    self.gen.c_src.src,
+                    r#"extern "C" __attribute__((__export_name__("{module_prefix}{func_name}")))"#
+                );
+            }
         }
         let return_via_pointer = signature.retptr && self.gen.opts.host_side();
         self.gen
@@ -1106,6 +1161,9 @@ impl CppInterfaceGenerator<'_> {
             Some(ref module_name) => make_external_symbol(&module_name, &func_name, symbol_variant),
             None => make_external_component(&func_name),
         };
+        if let Some(prefix) = self.gen.opts.export_prefix.as_ref() {
+            self.gen.c_src.src.push_str(prefix);
+        }
         self.gen.c_src.src.push_str(&export_name);
         self.gen.c_src.src.push_str("(");
         let mut first_arg = true;
@@ -1491,6 +1549,73 @@ impl CppInterfaceGenerator<'_> {
         return false;
     }
 
+    fn has_non_canonical_list2(resolve: &Resolve, ty: &Type, maybe: bool) -> bool {
+        match ty {
+            Type::Bool
+            | Type::U8
+            | Type::U16
+            | Type::U32
+            | Type::U64
+            | Type::S8
+            | Type::S16
+            | Type::S32
+            | Type::S64
+            | Type::F32
+            | Type::F64
+            | Type::Char
+            | Type::String => false,
+            Type::Id(id) => match &resolve.types[*id].kind {
+                TypeDefKind::Record(r) => r
+                    .fields
+                    .iter()
+                    .any(|field| Self::has_non_canonical_list2(resolve, &field.ty, maybe)),
+                TypeDefKind::Resource | TypeDefKind::Handle(_) | TypeDefKind::Flags(_) => false,
+                TypeDefKind::Tuple(t) => t
+                    .types
+                    .iter()
+                    .any(|ty| Self::has_non_canonical_list2(resolve, ty, maybe)),
+                TypeDefKind::Variant(var) => var.cases.iter().any(|case| {
+                    case.ty.as_ref().map_or(false, |ty| {
+                        Self::has_non_canonical_list2(resolve, ty, maybe)
+                    })
+                }),
+                TypeDefKind::Enum(_) => false,
+                TypeDefKind::Option(ty) => Self::has_non_canonical_list2(resolve, ty, maybe),
+                TypeDefKind::Result(res) => {
+                    res.ok.as_ref().map_or(false, |ty| {
+                        Self::has_non_canonical_list2(resolve, ty, maybe)
+                    }) || res.err.as_ref().map_or(false, |ty| {
+                        Self::has_non_canonical_list2(resolve, ty, maybe)
+                    })
+                }
+                TypeDefKind::List(ty) => {
+                    if maybe {
+                        true
+                    } else {
+                        Self::has_non_canonical_list2(resolve, ty, true)
+                    }
+                }
+                TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::Error => false,
+                TypeDefKind::Type(ty) => Self::has_non_canonical_list2(resolve, ty, maybe),
+                TypeDefKind::Unknown => false,
+            },
+        }
+    }
+
+    // fn has_non_canonical_list(resolve: &Resolve, results: &Results) -> bool {
+    //     match results {
+    //         Results::Named(vec) => vec
+    //             .iter()
+    //             .any(|(_, ty)| Self::has_non_canonical_list2(resolve, ty, false)),
+    //         Results::Anon(one) => Self::has_non_canonical_list2(resolve, &one, false),
+    //     }
+    // }
+
+    fn has_non_canonical_list(resolve: &Resolve, args: &[(String, Type)]) -> bool {
+        args.iter()
+            .any(|(_, ty)| Self::has_non_canonical_list2(resolve, ty, false))
+    }
+
     fn generate_function(
         &mut self,
         func: &Function,
@@ -1528,9 +1653,10 @@ impl CppInterfaceGenerator<'_> {
         if !matches!(special, SpecialMethod::Allocate) {
             self.gen.c_src.src.push_str("{\n");
             let needs_dealloc = if self.gen.opts.new_api
-                && !self.gen.opts.symmetric
                 && matches!(variant, AbiVariant::GuestExport)
-                && Self::needs_dealloc(self.resolve, &func.params)
+                && ((!self.gen.opts.symmetric && Self::needs_dealloc(self.resolve, &func.params))
+                    || (self.gen.opts.symmetric
+                        && Self::has_non_canonical_list(self.resolve, &func.params)))
             {
                 self.gen
                     .c_src
@@ -2091,6 +2217,7 @@ impl CppInterfaceGenerator<'_> {
     }
 
     fn declare_import2(
+        &self,
         module_name: &str,
         name: &str,
         args: &str,
@@ -2098,7 +2225,11 @@ impl CppInterfaceGenerator<'_> {
         variant: AbiVariant,
     ) -> (String, String) {
         let extern_name = make_external_symbol(module_name, name, variant);
-        let import = format!("extern \"C\" __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n");
+        let import = if self.gen.opts.symmetric {
+            format!("extern \"C\" {result} {extern_name}({args});\n")
+        } else {
+            format!("extern \"C\" __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n")
+        };
         (extern_name, import)
     }
 
@@ -2126,7 +2257,7 @@ impl CppInterfaceGenerator<'_> {
         } else {
             AbiVariant::GuestImport
         };
-        let (name, code) = Self::declare_import2(module_name, name, &args, result, variant);
+        let (name, code) = self.declare_import2(module_name, name, &args, result, variant);
         self.gen.extern_c_decls.push_str(&code);
         name
     }
@@ -2560,6 +2691,7 @@ struct FunctionBindgen<'a, 'b> {
     variant: AbiVariant,
     cabi_post: Option<CabiPostInformation>,
     needs_dealloc: bool,
+    leak_on_insertion: Option<String>,
 }
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
@@ -2579,6 +2711,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             variant: AbiVariant::GuestImport,
             cabi_post: None,
             needs_dealloc: false,
+            leak_on_insertion: None,
         }
     }
 
@@ -2818,7 +2951,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 if realloc.is_none() {
                     results.push(ptr);
                 } else {
-                    if !self.gen.gen.opts.host_side() && !self.gen.gen.opts.symmetric {
+                    if !self.gen.gen.opts.host_side()
+                        && !(self.gen.gen.opts.symmetric
+                            && matches!(self.variant, AbiVariant::GuestImport))
+                    {
                         uwriteln!(self.src, "{}.leak();\n", operands[0]);
                     }
                     results.push(ptr);
@@ -2865,7 +3001,6 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let val = format!("vec{}", tmp);
                 let ptr = format!("ptr{}", tmp);
                 let len = format!("len{}", tmp);
-                // let result = format!("result{}", tmp);
                 self.push_str(&format!("auto const&{} = {};\n", val, operands[0]));
                 if self.gen.gen.opts.host_side() {
                     self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
@@ -2882,7 +3017,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 if realloc.is_none() {
                     results.push(ptr);
                 } else {
-                    if !self.gen.gen.opts.host_side() {
+                    if !self.gen.gen.opts.host_side()
+                        && !(self.gen.gen.opts.symmetric
+                            && matches!(self.variant, AbiVariant::GuestImport))
+                    {
                         uwriteln!(self.src, "{}.leak();\n", operands[0]);
                     }
                     results.push(ptr);
@@ -2896,22 +3034,23 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .gen
                     .type_name(element, &self.namespace, Flavor::InStruct);
                 self.push_str(&format!("auto {} = {};\n", len, operands[1]));
-                // let typecast = if self.gen.gen.opts.host {
-                //     String::new()
-                // } else {
-                //     format!("({inner} const *)")
-                // };
-                //                let result = format!("wit::vector<{inner}>({typecast}{}, {len})", operands[0]);
                 let result = if self.gen.gen.opts.host {
                     uwriteln!(self.src, "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", operands[0]);
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
                 } else if self.gen.gen.opts.new_api
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
-                    format!(
-                        "wit::vector<{inner} const>(({inner}*)({}), {len}).get_view()",
-                        operands[0]
-                    )
+                    if self.gen.gen.opts.symmetric {
+                        format!(
+                            "wit::span<{inner} const>(({inner}*)({}), {len})",
+                            operands[0]
+                        )
+                    } else {
+                        format!(
+                            "wit::vector<{inner} const>(({inner}*)({}), {len}).get_view()",
+                            operands[0]
+                        )
+                    }
                 } else {
                     format!("wit::vector<{inner}>(({inner}*)({}), {len})", operands[0])
                 };
@@ -2931,11 +3070,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
                     uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view((char const *)({}), {len}));\n", operands[0]);
-                    // if matches!(self.variant, AbiVariant::GuestExport) {
                     format!("std::move(string{tmp})")
-                    // } else {
-                    //     format!("string{tmp}")
-                    // }
                 } else if self.gen.gen.opts.host {
                     uwriteln!(self.src, "char const* ptr{} = (char const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", tmp, operands[0]);
                     format!("{string_view}(ptr{}, {len})", tmp)
@@ -2988,7 +3123,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     r#"auto {result} = wit::vector<{vtype}>::allocate({len});
                     "#,
                 ));
-                if self.gen.gen.opts.new_api && matches!(self.variant, AbiVariant::GuestExport) {
+                if self.gen.gen.opts.new_api
+                    && matches!(self.variant, AbiVariant::GuestExport)
+                    && !self.gen.gen.opts.symmetric
+                {
+                    assert!(self.needs_dealloc);
                     self.push_str(&format!("if ({len}>0) _deallocate.push_back({base});\n"));
                 }
 
@@ -3000,18 +3139,33 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 );
                 uwrite!(self.src, "{}", body.0);
                 uwriteln!(self.src, "auto e{tmp} = {};", body.1[0]);
+                if let Some(code) = self.leak_on_insertion.take() {
+                    assert!(self.needs_dealloc);
+                    uwriteln!(self.src, "{code}");
+                }
                 // inplace construct
                 uwriteln!(self.src, "{result}.initialize(i, std::move(e{tmp}));");
                 uwriteln!(self.src, "}}");
+                if self.gen.gen.opts.new_api
+                    && matches!(self.variant, AbiVariant::GuestImport)
+                    && self.gen.gen.opts.symmetric
+                {
+                    // we converted the result, free the returned vector
+                    uwriteln!(self.src, "free({base});");
+                }
                 if self.gen.gen.opts.new_api && matches!(self.variant, AbiVariant::GuestExport) {
                     results.push(format!("{result}.get_const_view()"));
+                    if !self.gen.gen.opts.symmetric
+                        || (self.gen.gen.opts.new_api
+                            && matches!(self.variant, AbiVariant::GuestExport))
+                    {
+                        self.leak_on_insertion.replace(format!(
+                            "if ({len}>0) _deallocate.push_back((void*){result}.leak());\n"
+                        ));
+                    }
                 } else {
                     results.push(format!("std::move({result})"));
                 }
-                // self.push_str(&format!(
-                //     "{rt}::dealloc({base}, ({len} as usize) * {size}, {align});\n",
-                //     rt = self.gen.gen.runtime_path(),
-                // ));
             }
             abi::Instruction::IterElem { .. } => results.push("IterElem".to_string()),
             abi::Instruction::IterBasePointer => results.push("base".to_string()),
@@ -3571,7 +3725,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .gen
                     .wasm_import_module
                     .as_ref()
-                    .map(|e| String::from(*module_prefix) + e)
+                    .map(|e| {
+                        self.gen
+                            .gen
+                            .import_prefix
+                            .as_ref()
+                            .cloned()
+                            .unwrap_or_default()
+                            + *module_prefix
+                            + e
+                    })
                     .unwrap();
                 if self.gen.gen.opts.host {
                     uwriteln!(self.src, "wasm_function_inst_t wasm_func = wasm_runtime_lookup_function(wasm_runtime_get_module_inst(exec_env), \n\
@@ -3754,7 +3917,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             self.src.push_str(">(");
                         }
                         if *amt == 1 {
-                            self.src.push_str(&operands[0]);
+                            if operands[0].starts_with("std::move(") {
+                                // remove the std::move due to return value optimization (and complex rules about when std::move harms)
+                                self.src.push_str(&operands[0][9..]);
+                            } else {
+                                self.src.push_str(&operands[0]);
+                            }
                         } else {
                             self.src.push_str("std::tuple<");
                             if let Results::Named(params) = &func.results {

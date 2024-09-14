@@ -24,6 +24,12 @@ struct InterfaceName {
     path: String,
 }
 
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+enum Direction {
+    Import,
+    Export,
+}
+
 #[derive(Default)]
 struct RustWasm {
     types: Types,
@@ -51,6 +57,10 @@ struct RustWasm {
     payload_results: HashMap<TypeId, TypeId>,
     future_payloads_emitted: HashSet<String>,
     stream_payloads_emitted: HashSet<String>,
+
+    // needed for symmetric disambiguation
+    interface_prefixes: HashMap<(Direction, WorldKey), String>,
+    import_prefix: Option<String>,
 }
 
 #[derive(Default)]
@@ -977,6 +987,12 @@ impl WorldGenerator for RustWasm {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
+        if let Some(prefix) = self
+            .interface_prefixes
+            .get(&(Direction::Import, name.clone()))
+        {
+            self.import_prefix = Some(prefix.clone());
+        }
         self.interface_last_seen_as_import.insert(id, true);
         let wasm_import_module = resolve.name_world_key(name);
         let mut gen = self.interface(
@@ -994,7 +1010,7 @@ impl WorldGenerator for RustWasm {
         gen.generate_imports(resolve.interfaces[id].functions.values(), Some(name));
 
         gen.finish_append_submodule(&snake, module_path);
-
+        let _ = self.import_prefix.take();
         Ok(())
     }
 
@@ -1022,6 +1038,14 @@ impl WorldGenerator for RustWasm {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
+        let old_prefix = self.opts.export_prefix.clone();
+        if let Some(prefix) = self
+            .interface_prefixes
+            .get(&(Direction::Export, name.clone()))
+        {
+            self.opts.export_prefix =
+                Some(prefix.clone() + old_prefix.as_ref().unwrap_or(&String::new()));
+        }
         self.interface_last_seen_as_import.insert(id, false);
         let wasm_import_module = format!("[export]{}", resolve.name_world_key(name));
         let mut gen = self.interface(
@@ -1053,6 +1077,7 @@ impl WorldGenerator for RustWasm {
             let stub = gen.finish();
             self.src.push_str(&stub);
         }
+        self.opts.export_prefix = old_prefix;
         Ok(())
     }
 
@@ -1205,6 +1230,46 @@ impl WorldGenerator for RustWasm {
         }
 
         Ok(())
+    }
+
+    fn apply_resolve_options(&mut self, resolve: &mut Resolve, world: &mut WorldId) {
+        if self.opts.invert_direction {
+            resolve.invert_direction(*world);
+        }
+        if self.opts.symmetric {
+            let world = &resolve.worlds[*world];
+            let exports: HashMap<&WorldKey, &WorldItem> = world.exports.iter().collect();
+            for (key, _item) in world.imports.iter() {
+                // duplicate found
+                if exports.contains_key(key)
+                    && !self
+                        .interface_prefixes
+                        .contains_key(&(Direction::Import, key.clone()))
+                    && !self
+                        .interface_prefixes
+                        .contains_key(&(Direction::Export, key.clone()))
+                {
+                    self.interface_prefixes.insert(
+                        (Direction::Import, key.clone()),
+                        (if self.opts.invert_direction {
+                            "exp_"
+                        } else {
+                            "imp_"
+                        })
+                        .into(),
+                    );
+                    self.interface_prefixes.insert(
+                        (Direction::Export, key.clone()),
+                        (if self.opts.invert_direction {
+                            "imp_"
+                        } else {
+                            "exp_"
+                        })
+                        .into(),
+                    );
+                }
+            }
+        }
     }
 }
 

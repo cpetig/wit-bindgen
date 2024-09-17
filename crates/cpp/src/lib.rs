@@ -1542,6 +1542,7 @@ impl CppInterfaceGenerator<'_> {
                     .c_src
                     .src
                     .push_str("std::vector<void*> _deallocate;\n");
+                self.gen.dependencies.needs_vector = true;
                 true
             } else {
                 false
@@ -2683,13 +2684,31 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         }
     }
 
+    fn has_resources2(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Bool |
+            Type::U8 |
+            Type::U16 |
+            Type::U32 |
+            Type::U64 |
+            Type::S8 |
+            Type::S16 |
+            Type::S32 |
+            Type::S64 |
+            Type::F32 |
+            Type::F64 |
+            Type::Char => false,
+            Type::String => false, // correct?
+            Type::Id(id) => self.has_resources(id),
+        }
+    }
     fn has_resources(&self, id: &TypeId) -> bool {
         match &self.gen.resolve.types[*id].kind {
             TypeDefKind::Record(_) => todo!(),
             TypeDefKind::Resource => true,
             TypeDefKind::Handle(_) => true,
             TypeDefKind::Flags(_) => false,
-            TypeDefKind::Tuple(_) => todo!(),
+            TypeDefKind::Tuple(t) => t.types.iter().any(|ty| self.has_resources2(ty)),
             TypeDefKind::Variant(_) => todo!(),
             TypeDefKind::Enum(_) => false,
             TypeDefKind::Option(_) => todo!(),
@@ -3267,7 +3286,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::VariantPayloadName => {
                 let name = format!("payload{}", self.tmp());
-                results.push(name.clone()); //format!("*{}", name));
+                results.push(name.clone());
                 self.payloads.push(name);
             }
             abi::Instruction::VariantLower {
@@ -3417,9 +3436,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
 
                 let op0 = &operands[0];
-                let ty = self
-                    .gen
-                    .type_name(payload, &self.namespace, Flavor::InStruct);
+                let flavor = if self.gen.gen.opts.new_api
+                    && matches!(self.variant, AbiVariant::GuestImport)
+                {
+                    Flavor::BorrowedArgument
+                } else {
+                    Flavor::InStruct
+                };
+                let ty = self.gen.type_name(payload, &self.namespace, flavor);
                 let bind_some = format!("{ty} {some_payload} = (std::move({op0})).value();");
 
                 uwrite!(
@@ -3438,9 +3462,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 assert!(none_results.len() == 0);
                 assert!(some_results.len() == 1);
                 // let some_result = &some_results[0];
+                let flavor = if self.gen.gen.opts.new_api
+                    && matches!(self.variant, AbiVariant::GuestExport)
+                {
+                    Flavor::BorrowedArgument
+                } else {
+                    Flavor::InStruct
+                };
                 let type_name = self
                     .gen
-                    .type_name(*payload, &self.namespace, Flavor::InStruct);
+                    .type_name(*payload, &self.namespace, flavor);
                 let full_type = if self.gen.gen.opts.autosar {
                     format!("::ara::core::Optional<{type_name}>")
                 } else {
@@ -3455,11 +3486,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     "{full_type} {resultname};
                     if ({op0}) {{
                         {some}
-                        {resultname}.emplace(std::move({}));
+                        {resultname}.emplace({});
                     }}",
                     some_results[0]
                 );
-                results.push(resultname);
+                results.push(format!("std::move({resultname})"));
             }
             abi::Instruction::ResultLower {
                 results: result_types,

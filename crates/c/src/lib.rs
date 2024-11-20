@@ -720,7 +720,7 @@ fn is_prim_type_id(resolve: &Resolve, id: TypeId) -> bool {
         | TypeDefKind::Result(_)
         | TypeDefKind::Future(_)
         | TypeDefKind::Stream(_)
-        | TypeDefKind::Error
+        | TypeDefKind::ErrorContext
         | TypeDefKind::Unknown => false,
     }
 }
@@ -751,7 +751,6 @@ pub fn push_ty_name(resolve: &Resolve, ty: &Type, src: &mut String) {
                 | TypeDefKind::Resource
                 | TypeDefKind::Flags(_)
                 | TypeDefKind::Enum(_)
-                | TypeDefKind::Error
                 | TypeDefKind::Variant(_) => {
                     unimplemented!()
                 }
@@ -783,8 +782,9 @@ pub fn push_ty_name(resolve: &Resolve, ty: &Type, src: &mut String) {
                     src.push_str("list_");
                     push_ty_name(resolve, ty, src);
                 }
-                TypeDefKind::Future(_) => unimplemented!(),
-                TypeDefKind::Stream(_) => unimplemented!(),
+                TypeDefKind::Future(_) => todo!(),
+                TypeDefKind::Stream(_) => todo!(),
+                TypeDefKind::ErrorContext => todo!(),
                 TypeDefKind::Handle(Handle::Own(resource)) => {
                     src.push_str("own_");
                     push_ty_name(resolve, &Type::Id(*resource), src);
@@ -996,9 +996,9 @@ impl Return {
 
             TypeDefKind::Future(_) => todo!("return_single for future"),
             TypeDefKind::Stream(_) => todo!("return_single for stream"),
+            TypeDefKind::ErrorContext => todo!("return_single for error-context"),
             TypeDefKind::Resource => todo!("return_single for resource"),
             TypeDefKind::Unknown => unreachable!(),
-            TypeDefKind::Error => todo!(),
         }
 
         self.retptrs.push(*orig_ty);
@@ -1344,6 +1344,21 @@ void __wasm_export_{ns}_{snake}_dtor({ns}_{snake}_t* arg) {{
         self.finish_typedef_struct(id);
     }
 
+    fn type_future(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
+        _ = (id, name, docs);
+        todo!()
+    }
+
     fn type_builtin(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
         let _ = (id, name, ty, docs);
     }
@@ -1436,12 +1451,12 @@ impl<'a> wit_bindgen_core::AnonymousTypeGenerator<'a> for InterfaceGenerator<'a>
         todo!("print_anonymous_type for stream");
     }
 
-    fn anonymous_typ_type(&mut self, _id: TypeId, _ty: &Type, _docs: &Docs) {
-        todo!("print_anonymous_type for typ");
+    fn anonymous_type_error_context(&mut self) {
+        todo!("print_anonymous_type for error-context");
     }
 
-    fn anonymous_type_error(&mut self, _id: TypeId, _docs: &Docs) {
-        todo!()
+    fn anonymous_type_type(&mut self, _id: TypeId, _ty: &Type, _docs: &Docs) {
+        todo!("print_anonymous_type for type");
     }
 }
 
@@ -1614,12 +1629,12 @@ impl InterfaceGenerator<'_> {
             }
             TypeDefKind::Future(_) => todo!("print_dtor for future"),
             TypeDefKind::Stream(_) => todo!("print_dtor for stream"),
+            TypeDefKind::ErrorContext => todo!("print_dtor for error-context"),
             TypeDefKind::Resource => {}
             TypeDefKind::Handle(Handle::Borrow(id) | Handle::Own(id)) => {
                 self.free(&Type::Id(*id), "*ptr");
             }
             TypeDefKind::Unknown => unreachable!(),
-            TypeDefKind::Error => todo!(),
         }
         if c_helpers_body_start == self.src.c_helpers.len() {
             self.src.c_helpers.as_mut_string().truncate(c_helpers_start);
@@ -1791,7 +1806,7 @@ impl InterfaceGenerator<'_> {
         self.src.c_fns("\n");
 
         let core_module_name = interface_name.map(|s| self.resolve.name_world_key(s));
-        let export_name = func.core_export_name(core_module_name.as_deref());
+        let export_name = func.legacy_core_export_name(core_module_name.as_deref());
 
         // Print the actual header for this function into the header file, and
         // it's what we'll be calling.
@@ -2089,16 +2104,13 @@ impl InterfaceGenerator<'_> {
 
                 TypeDefKind::List(ty) => self.contains_droppable_borrow(ty),
 
-                TypeDefKind::Future(r) => r
-                    .as_ref()
-                    .map_or(false, |ty| self.contains_droppable_borrow(ty)),
-
-                TypeDefKind::Stream(s) => self.contains_droppable_borrow(s),
+                TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::ErrorContext => {
+                    false
+                }
 
                 TypeDefKind::Type(ty) => self.contains_droppable_borrow(ty),
 
                 TypeDefKind::Unknown => false,
-                TypeDefKind::Error => todo!(),
             }
         } else {
             false
@@ -3065,11 +3077,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 uwriteln!(self.src, "free({ptr});");
                 uwriteln!(self.src, "}}");
             }
+
             Instruction::Flush { amt } => {
-                for i in 0..*amt {
-                    // no easy way to create a temporary?
-                    results.push(operands[i].clone());
-                }
+                results.extend(operands.iter().take(*amt).map(|v| v.clone()));
             }
 
             i => unimplemented!("{:?}", i),
@@ -3180,9 +3190,9 @@ pub fn is_arg_by_pointer(resolve: &Resolve, ty: &Type) -> bool {
             TypeDefKind::Tuple(_) | TypeDefKind::Record(_) | TypeDefKind::List(_) => true,
             TypeDefKind::Future(_) => todo!("is_arg_by_pointer for future"),
             TypeDefKind::Stream(_) => todo!("is_arg_by_pointer for stream"),
+            TypeDefKind::ErrorContext => todo!("is_arg_by_pointer for error-context"),
             TypeDefKind::Resource => todo!("is_arg_by_pointer for resource"),
             TypeDefKind::Unknown => unreachable!(),
-            TypeDefKind::Error => todo!(),
         },
         Type::String => true,
         _ => false,

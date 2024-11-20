@@ -413,10 +413,13 @@ impl InterfaceGenerator<'_> {
                             self.push_str("future");
                         }
                     },
-                    TypeDefKind::Stream(s) => {
+                    TypeDefKind::Stream(t) => {
                         self.push_str("stream<");
-                        self.print_ty(s);
+                        self.print_ty(t);
                         self.push_str(">");
+                    }
+                    TypeDefKind::ErrorContext => {
+                        self.push_str("error-context");
                     }
                     TypeDefKind::Handle(Handle::Own(ty)) => {
                         self.push_str("own<");
@@ -429,7 +432,6 @@ impl InterfaceGenerator<'_> {
                         self.push_str(">");
                     }
                     TypeDefKind::Unknown => unreachable!(),
-                    TypeDefKind::Error => todo!(),
                 }
             }
         }
@@ -652,6 +654,21 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
     fn type_list(&mut self, id: TypeId, name: &str, _ty: &Type, docs: &Docs) {
         self.type_alias(id, name, &Type::Id(id), docs);
+    }
+
+    fn type_future(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
+        _ = (id, name, docs);
+        todo!()
     }
 
     fn type_builtin(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {

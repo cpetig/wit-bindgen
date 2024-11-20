@@ -3,327 +3,92 @@ use {
         channel::oneshot,
         future::{self, FutureExt},
         sink::Sink,
-        stream::{FuturesUnordered, Stream, StreamExt},
+        stream::Stream,
     },
-    once_cell::sync::Lazy,
     std::{
-        alloc::{self, Layout},
-        any::Any,
         collections::hash_map::Entry,
-        collections::HashMap,
         convert::Infallible,
-        fmt::{self, Debug, Display},
+        fmt,
         future::{Future, IntoFuture},
         iter,
         marker::PhantomData,
         mem::{self, ManuallyDrop, MaybeUninit},
-        pin::{pin, Pin},
-        ptr,
-        sync::Arc,
-        task::{Context, Poll, Wake, Waker},
+        pin::Pin,
+        task::{Context, Poll},
     },
+    wit_bindgen_rt::async_support::{self, Handle},
 };
-
-type BoxFuture = Pin<Box<dyn Future<Output = ()> + 'static>>;
-
-struct FutureState {
-    todo: usize,
-    tasks: Option<FuturesUnordered<BoxFuture>>,
-}
-
-static mut CURRENT: *mut FutureState = ptr::null_mut();
-
-static mut CALLS: Lazy<HashMap<i32, oneshot::Sender<u32>>> = Lazy::new(HashMap::new);
-
-static mut SPAWNED: Vec<BoxFuture> = Vec::new();
-
-enum Handle {
-    LocalOpen,
-    LocalReady(Box<dyn Any>, Waker),
-    LocalWaiting(oneshot::Sender<Box<dyn Any>>),
-    LocalClosed,
-    Read,
-    Write,
-}
-
-static mut HANDLES: Lazy<HashMap<u32, Handle>> = Lazy::new(HashMap::new);
-
-fn dummy_waker() -> Waker {
-    struct DummyWaker;
-
-    impl Wake for DummyWaker {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    static WAKER: Lazy<Arc<DummyWaker>> = Lazy::new(|| Arc::new(DummyWaker));
-
-    WAKER.clone().into()
-}
-
-unsafe fn poll(state: *mut FutureState) -> Poll<()> {
-    loop {
-        if let Some(futures) = (*state).tasks.as_mut() {
-            CURRENT = state;
-            let poll = futures.poll_next_unpin(&mut Context::from_waker(&dummy_waker()));
-            CURRENT = ptr::null_mut();
-
-            if SPAWNED.is_empty() {
-                match poll {
-                    Poll::Ready(Some(())) => (),
-                    Poll::Ready(None) => {
-                        (*state).tasks = None;
-                        break Poll::Ready(());
-                    }
-                    Poll::Pending => break Poll::Pending,
-                }
-            } else {
-                futures.extend(SPAWNED.drain(..));
-            }
-        } else {
-            break Poll::Ready(());
-        }
-    }
-}
-
-pub fn first_poll<T: 'static>(
-    future: impl Future<Output = T> + 'static,
-    fun: impl FnOnce(T) + 'static,
-) -> *mut u8 {
-    let state = Box::into_raw(Box::new(FutureState {
-        todo: 0,
-        tasks: Some(
-            [Box::pin(future.map(fun)) as BoxFuture]
-                .into_iter()
-                .collect(),
-        ),
-    }));
-    match unsafe { poll(state) } {
-        Poll::Ready(()) => ptr::null_mut(),
-        Poll::Pending => state as _,
-    }
-}
-
-pub async unsafe fn await_result(
-    import: unsafe extern "C" fn(*mut u8, *mut u8) -> i32,
-    params_layout: Layout,
-    params: *mut u8,
-    results: *mut u8,
-) {
-    const STATUS_STARTING: u32 = 0;
-    const STATUS_STARTED: u32 = 1;
-    const STATUS_RETURNED: u32 = 2;
-    const STATUS_DONE: u32 = 3;
-
-    let result = import(params, results) as u32;
-    let status = result >> 30;
-    let call = (result & !(0b11 << 30)) as i32;
-
-    if status != STATUS_DONE {
-        assert!(!CURRENT.is_null());
-        (*CURRENT).todo += 1;
-    }
-
-    match status {
-        STATUS_STARTING => {
-            let (tx, rx) = oneshot::channel();
-            CALLS.insert(call, tx);
-            rx.await.unwrap();
-            alloc::dealloc(params, params_layout);
-        }
-        STATUS_STARTED => {
-            alloc::dealloc(params, params_layout);
-            let (tx, rx) = oneshot::channel();
-            CALLS.insert(call, tx);
-            rx.await.unwrap();
-        }
-        STATUS_RETURNED | STATUS_DONE => {
-            alloc::dealloc(params, params_layout);
-        }
-        _ => unreachable!(),
-    }
-}
-
-mod results {
-    pub const BLOCKED: u32 = 0xffff_ffff;
-    pub const CLOSED: u32 = 0x8000_0000;
-    pub const CANCELED: u32 = 0;
-}
-
-pub async unsafe fn await_future_result(
-    import: unsafe extern "C" fn(u32, *mut u8) -> u32,
-    future: u32,
-    address: *mut u8,
-) -> bool {
-    let result = import(future, address);
-    match result {
-        results::BLOCKED => {
-            assert!(!CURRENT.is_null());
-            (*CURRENT).todo += 1;
-            let (tx, rx) = oneshot::channel();
-            CALLS.insert(future as _, tx);
-            let v = rx.await.unwrap();
-            v == 1
-        }
-        results::CLOSED | results::CANCELED => false,
-        1 => true,
-        _ => unreachable!(),
-    }
-}
-
-pub async unsafe fn await_stream_result(
-    import: unsafe extern "C" fn(u32, *mut u8, u32) -> u32,
-    stream: u32,
-    address: *mut u8,
-    count: u32,
-) -> Option<usize> {
-    let result = import(stream, address, count);
-    match result {
-        results::BLOCKED => {
-            assert!(!CURRENT.is_null());
-            (*CURRENT).todo += 1;
-            let (tx, rx) = oneshot::channel();
-            CALLS.insert(stream as _, tx);
-            let v = rx.await.unwrap();
-            if let results::CLOSED | results::CANCELED = v {
-                None
-            } else {
-                Some(usize::try_from(v).unwrap())
-            }
-        }
-        results::CLOSED | results::CANCELED => None,
-        v => Some(usize::try_from(v).unwrap()),
-    }
-}
-
-fn subtask_drop(subtask: u32) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        unreachable!();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        #[link(wasm_import_module = "$root")]
-        extern "C" {
-            #[link_name = "[subtask-drop]"]
-            fn subtask_drop(_: u32);
-        }
-        unsafe {
-            subtask_drop(subtask);
-        }
-    }
-}
-
-pub unsafe fn callback(ctx: *mut u8, event0: i32, event1: i32, event2: i32) -> i32 {
-    const EVENT_CALL_STARTING: i32 = 0;
-    const EVENT_CALL_STARTED: i32 = 1;
-    const EVENT_CALL_RETURNED: i32 = 2;
-    const EVENT_CALL_DONE: i32 = 3;
-    const EVENT_YIELDED: i32 = 4;
-    const EVENT_STREAM_READ: i32 = 5;
-    const EVENT_STREAM_WRITE: i32 = 6;
-    const EVENT_FUTURE_READ: i32 = 7;
-    const EVENT_FUTURE_WRITE: i32 = 8;
-
-    match event0 {
-        EVENT_CALL_STARTED => {
-            // TODO: could dealloc params here if we attached the pointer to the call
-            0
-        }
-        EVENT_CALL_RETURNED | EVENT_CALL_DONE | EVENT_STREAM_READ | EVENT_STREAM_WRITE
-        | EVENT_FUTURE_READ | EVENT_FUTURE_WRITE => {
-            if let Some(call) = CALLS.remove(&event1) {
-                call.send(event2 as _);
-            }
-
-            let state = ctx as *mut FutureState;
-            let done = poll(state).is_ready();
-
-            if event0 == EVENT_CALL_DONE {
-                subtask_drop(event1 as u32);
-            }
-
-            if matches!(
-                event0,
-                EVENT_CALL_DONE
-                    | EVENT_STREAM_READ
-                    | EVENT_STREAM_WRITE
-                    | EVENT_FUTURE_READ
-                    | EVENT_FUTURE_WRITE
-            ) {
-                (*state).todo -= 1;
-            }
-
-            if done && (*state).todo == 0 {
-                drop(Box::from_raw(state));
-                1
-            } else {
-                0
-            }
-        }
-        _ => unreachable!(),
-    }
-}
 
 #[doc(hidden)]
 pub trait FuturePayload: Sized + 'static {
     fn new() -> u32;
     async fn write(future: u32, value: Self) -> bool;
     async fn read(future: u32) -> Option<Self>;
-    fn drop_writer(future: u32);
-    fn drop_reader(future: u32);
+    fn close_writable(future: u32);
+    fn close_readable(future: u32);
 }
 
+/// Represents the writable end of a Component Model `future`.
 pub struct FutureWriter<T: FuturePayload> {
     handle: u32,
     _phantom: PhantomData<T>,
 }
 
+impl<T: FuturePayload> fmt::Debug for FutureWriter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FutureWriter")
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 impl<T: FuturePayload> FutureWriter<T> {
+    /// Write the specified value to this `future`.
     pub async fn write(self, v: T) {
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get() {
                 Handle::LocalOpen => {
                     let mut v = Some(v);
-                    future::poll_fn(move |cx| match unsafe { HANDLES.entry(self.handle) } {
-                        Entry::Vacant(_) => unreachable!(),
-                        Entry::Occupied(mut entry) => match entry.get() {
-                            Handle::LocalOpen => {
-                                entry.insert(Handle::LocalReady(
-                                    Box::new(v.take().unwrap()),
-                                    cx.waker().clone(),
-                                ));
-                                Poll::Pending
-                            }
-                            Handle::LocalReady(..) => Poll::Pending,
-                            Handle::LocalClosed => Poll::Ready(()),
-                            Handle::LocalWaiting(_) | Handle::Read | Handle::Write => {
-                                unreachable!()
-                            }
-                        },
-                    })
-                    .await
+                    Box::pin(future::poll_fn(move |cx| {
+                        async_support::with_entry(self.handle, |entry| match entry {
+                            Entry::Vacant(_) => unreachable!(),
+                            Entry::Occupied(mut entry) => match entry.get() {
+                                Handle::LocalOpen => {
+                                    entry.insert(Handle::LocalReady(
+                                        Box::new(v.take().unwrap()),
+                                        cx.waker().clone(),
+                                    ));
+                                    Poll::Pending
+                                }
+                                Handle::LocalReady(..) => Poll::Pending,
+                                Handle::LocalClosed => Poll::Ready(()),
+                                Handle::LocalWaiting(_) | Handle::Read | Handle::Write => {
+                                    unreachable!()
+                                }
+                            },
+                        })
+                    })) as Pin<Box<dyn Future<Output = _>>>
                 }
                 Handle::LocalWaiting(_) => {
                     let Handle::LocalWaiting(tx) = entry.insert(Handle::LocalClosed) else {
                         unreachable!()
                     };
-                    tx.send(Box::new(v));
+                    _ = tx.send(Box::new(v));
+                    Box::pin(future::ready(()))
                 }
-                Handle::LocalClosed => (),
+                Handle::LocalClosed => Box::pin(future::ready(())),
                 Handle::Read | Handle::LocalReady(..) => unreachable!(),
-                Handle::Write => {
-                    T::write(self.handle, v).await;
-                }
+                Handle::Write => Box::pin(T::write(self.handle, v).map(drop)),
             },
-        }
+        })
+        .await;
     }
 }
 
 impl<T: FuturePayload> Drop for FutureWriter<T> {
     fn drop(&mut self) {
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get_mut() {
                 Handle::LocalOpen | Handle::LocalWaiting(_) | Handle::LocalReady(..) => {
@@ -332,22 +97,31 @@ impl<T: FuturePayload> Drop for FutureWriter<T> {
                 Handle::Read => unreachable!(),
                 Handle::Write | Handle::LocalClosed => {
                     entry.remove();
-                    T::drop_writer(self.handle);
+                    T::close_writable(self.handle);
                 }
             },
-        }
+        });
     }
 }
 
+/// Represents the readable end of a Component Model `future`.
 pub struct FutureReader<T: FuturePayload> {
     handle: u32,
     _phantom: PhantomData<T>,
 }
 
+impl<T: FuturePayload> fmt::Debug for FutureReader<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FutureReader")
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 impl<T: FuturePayload> FutureReader<T> {
     #[doc(hidden)]
     pub fn from_handle(handle: u32) -> Self {
-        match unsafe { HANDLES.entry(handle) } {
+        async_support::with_entry(handle, |entry| match entry {
             Entry::Vacant(entry) => {
                 entry.insert(Handle::Read);
             }
@@ -363,7 +137,7 @@ impl<T: FuturePayload> FutureReader<T> {
                     unreachable!()
                 }
             },
-        }
+        });
 
         Self {
             handle,
@@ -373,7 +147,7 @@ impl<T: FuturePayload> FutureReader<T> {
 
     #[doc(hidden)]
     pub fn into_handle(self) -> u32 {
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get() {
                 Handle::LocalOpen => {
@@ -384,7 +158,7 @@ impl<T: FuturePayload> FutureReader<T> {
                 }
                 Handle::LocalReady(..) | Handle::LocalWaiting(_) | Handle::Write => unreachable!(),
             },
-        }
+        });
 
         ManuallyDrop::new(self).handle
     }
@@ -394,12 +168,16 @@ impl<T: FuturePayload> IntoFuture for FutureReader<T> {
     type Output = Option<T>;
     type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + 'static>>;
 
+    /// Convert this object into a `Future` which will resolve when a value is
+    /// written to the writable end of this `future` (yielding a `Some` result)
+    /// or when the writable end is dropped (yielding a `None` result).
     fn into_future(self) -> Self::IntoFuture {
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get() {
                 Handle::Write | Handle::LocalWaiting(_) => unreachable!(),
-                Handle::Read => Box::pin(async move { T::read(self.handle).await }),
+                Handle::Read => Box::pin(async move { T::read(self.handle).await })
+                    as Pin<Box<dyn Future<Output = _>>>,
                 Handle::LocalOpen => {
                     let (tx, rx) = oneshot::channel();
                     entry.insert(Handle::LocalWaiting(tx));
@@ -414,13 +192,13 @@ impl<T: FuturePayload> IntoFuture for FutureReader<T> {
                     Box::pin(future::ready(Some(*v.downcast().unwrap())))
                 }
             },
-        }
+        })
     }
 }
 
 impl<T: FuturePayload> Drop for FutureReader<T> {
     fn drop(&mut self) {
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get_mut() {
                 Handle::LocalReady(..) => {
@@ -434,11 +212,11 @@ impl<T: FuturePayload> Drop for FutureReader<T> {
                 }
                 Handle::Read | Handle::LocalClosed => {
                     entry.remove();
-                    T::drop_reader(self.handle);
+                    T::close_readable(self.handle);
                 }
                 Handle::Write => unreachable!(),
             },
-        }
+        });
     }
 }
 
@@ -447,14 +225,23 @@ pub trait StreamPayload: Unpin + Sized + 'static {
     fn new() -> u32;
     async fn write(stream: u32, values: &[Self]) -> Option<usize>;
     async fn read(stream: u32, values: &mut [MaybeUninit<Self>]) -> Option<usize>;
-    fn drop_writer(future: u32);
-    fn drop_reader(future: u32);
+    fn close_writable(future: u32);
+    fn close_readable(future: u32);
 }
 
+/// Represents the writable end of a Component Model `stream`.
 pub struct StreamWriter<T: StreamPayload> {
     handle: u32,
     future: Option<Pin<Box<dyn Future<Output = ()> + 'static>>>,
     _phantom: PhantomData<T>,
+}
+
+impl<T: StreamPayload> fmt::Debug for StreamWriter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StreamWriter")
+            .field("handle", &self.handle)
+            .finish()
+    }
 }
 
 impl<T: StreamPayload> Sink<Vec<T>> for StreamWriter<T> {
@@ -478,14 +265,14 @@ impl<T: StreamPayload> Sink<Vec<T>> for StreamWriter<T> {
 
     fn start_send(self: Pin<&mut Self>, item: Vec<T>) -> Result<(), Self::Error> {
         assert!(self.future.is_none());
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get() {
                 Handle::LocalOpen => {
                     let handle = self.handle;
                     let mut item = Some(item);
                     self.get_mut().future = Some(Box::pin(future::poll_fn(move |cx| {
-                        match unsafe { HANDLES.entry(handle) } {
+                        async_support::with_entry(handle, |entry| match entry {
                             Entry::Vacant(_) => unreachable!(),
                             Entry::Occupied(mut entry) => match entry.get() {
                                 Handle::LocalOpen => {
@@ -505,14 +292,14 @@ impl<T: StreamPayload> Sink<Vec<T>> for StreamWriter<T> {
                                     unreachable!()
                                 }
                             },
-                        }
+                        })
                     })));
                 }
                 Handle::LocalWaiting(_) => {
                     let Handle::LocalWaiting(tx) = entry.insert(Handle::LocalOpen) else {
                         unreachable!()
                     };
-                    tx.send(Box::new(item));
+                    _ = tx.send(Box::new(item));
                 }
                 Handle::LocalClosed => (),
                 Handle::Read | Handle::LocalReady(..) => unreachable!(),
@@ -530,7 +317,7 @@ impl<T: StreamPayload> Sink<Vec<T>> for StreamWriter<T> {
                     }));
                 }
             },
-        }
+        });
         Ok(())
     }
 
@@ -546,10 +333,10 @@ impl<T: StreamPayload> Sink<Vec<T>> for StreamWriter<T> {
 impl<T: StreamPayload> Drop for StreamWriter<T> {
     fn drop(&mut self) {
         if self.future.is_some() {
-            todo!("gracefully handle `StreamWriter::drop` when a write is in progress");
+            todo!("gracefully handle `StreamWriter::drop` when a write is in progress by calling `stream.cancel-write`");
         }
 
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get_mut() {
                 Handle::LocalOpen | Handle::LocalWaiting(_) | Handle::LocalReady(..) => {
@@ -558,24 +345,33 @@ impl<T: StreamPayload> Drop for StreamWriter<T> {
                 Handle::Read => unreachable!(),
                 Handle::Write | Handle::LocalClosed => {
                     entry.remove();
-                    T::drop_writer(self.handle);
+                    T::close_writable(self.handle);
                 }
             },
-        }
+        });
     }
 }
 
+/// Represents the readable end of a Component Model `stream`.
 pub struct StreamReader<T: StreamPayload> {
     handle: u32,
     future: Option<Pin<Box<dyn Future<Output = Option<Vec<T>>> + 'static>>>,
     _phantom: PhantomData<T>,
 }
 
+impl<T: StreamPayload> fmt::Debug for StreamReader<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StreamReader")
+            .field("handle", &self.handle)
+            .finish()
+    }
+}
+
 impl<T: StreamPayload> StreamReader<T> {
     #[doc(hidden)]
     pub fn from_handle(handle: u32) -> Self {
-        match unsafe { HANDLES.entry(handle) } {
-            Entry::Vacant(mut entry) => {
+        async_support::with_entry(handle, |entry| match entry {
+            Entry::Vacant(entry) => {
                 entry.insert(Handle::Read);
             }
             Entry::Occupied(mut entry) => match entry.get() {
@@ -590,7 +386,7 @@ impl<T: StreamPayload> StreamReader<T> {
                     unreachable!()
                 }
             },
-        }
+        });
 
         Self {
             handle,
@@ -601,7 +397,7 @@ impl<T: StreamPayload> StreamReader<T> {
 
     #[doc(hidden)]
     pub fn into_handle(self) -> u32 {
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get() {
                 Handle::LocalOpen => {
@@ -612,7 +408,7 @@ impl<T: StreamPayload> StreamReader<T> {
                 }
                 Handle::LocalReady(..) | Handle::LocalWaiting(_) | Handle::Write => unreachable!(),
             },
-        }
+        });
 
         ManuallyDrop::new(self).handle
     }
@@ -625,7 +421,7 @@ impl<T: StreamPayload> Stream for StreamReader<T> {
         let me = self.get_mut();
 
         if me.future.is_none() {
-            me.future = Some(match unsafe { HANDLES.entry(me.handle) } {
+            me.future = Some(async_support::with_entry(me.handle, |entry| match entry {
                 Entry::Vacant(_) => unreachable!(),
                 Entry::Occupied(mut entry) => match entry.get() {
                     Handle::Write | Handle::LocalWaiting(_) => unreachable!(),
@@ -644,23 +440,23 @@ impl<T: StreamPayload> Stream for StreamReader<T> {
                             } else {
                                 None
                             }
-                        })
+                        }) as Pin<Box<dyn Future<Output = _>>>
                     }
                     Handle::LocalOpen => {
                         let (tx, rx) = oneshot::channel();
                         entry.insert(Handle::LocalWaiting(tx));
                         Box::pin(rx.map(|v| v.ok().map(|v| *v.downcast().unwrap())))
                     }
-                    Handle::LocalClosed => return Poll::Ready(None),
+                    Handle::LocalClosed => Box::pin(future::ready(None)),
                     Handle::LocalReady(..) => {
                         let Handle::LocalReady(v, waker) = entry.insert(Handle::LocalOpen) else {
                             unreachable!()
                         };
                         waker.wake();
-                        return Poll::Ready(Some(*v.downcast().unwrap()));
+                        Box::pin(future::ready(Some(*v.downcast().unwrap())))
                     }
                 },
-            });
+            }));
         }
 
         match me.future.as_mut().unwrap().as_mut().poll(cx) {
@@ -676,10 +472,10 @@ impl<T: StreamPayload> Stream for StreamReader<T> {
 impl<T: StreamPayload> Drop for StreamReader<T> {
     fn drop(&mut self) {
         if self.future.is_some() {
-            todo!("gracefully handle `StreamReader::drop` when a read is in progress");
+            todo!("gracefully handle `StreamReader::drop` when a read is in progress by calling `stream.cancel-read`");
         }
 
-        match unsafe { HANDLES.entry(self.handle) } {
+        async_support::with_entry(self.handle, |entry| match entry {
             Entry::Vacant(_) => unreachable!(),
             Entry::Occupied(mut entry) => match entry.get_mut() {
                 Handle::LocalReady(..) => {
@@ -693,68 +489,23 @@ impl<T: StreamPayload> Drop for StreamReader<T> {
                 }
                 Handle::Read | Handle::LocalClosed => {
                     entry.remove();
-                    T::drop_reader(self.handle);
+                    T::close_readable(self.handle);
                 }
                 Handle::Write => unreachable!(),
             },
-        }
+        });
     }
 }
 
-pub struct Error {
-    handle: u32,
-}
-
-impl Error {
-    #[doc(hidden)]
-    pub fn from_handle(handle: u32) -> Self {
-        Self { handle }
-    }
-
-    #[doc(hidden)]
-    pub fn handle(&self) -> u32 {
-        self.handle
-    }
-}
-
-impl Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Error").finish()
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error")
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl Drop for Error {
-    fn drop(&mut self) {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            unreachable!();
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            #[link(wasm_import_module = "$root")]
-            extern "C" {
-                #[link_name = "[error-drop]"]
-                fn error_drop(_: u32);
-            }
-            if self.handle != 0 {
-                unsafe { error_drop(self.handle) }
-            }
-        }
-    }
-}
-
+/// Creates a new Component Model `future` with the specified payload type.
 pub fn new_future<T: FuturePayload>() -> (FutureWriter<T>, FutureReader<T>) {
     let handle = T::new();
-    unsafe { HANDLES.insert(handle, Handle::LocalOpen) };
+    async_support::with_entry(handle, |entry| match entry {
+        Entry::Vacant(entry) => {
+            entry.insert(Handle::LocalOpen);
+        }
+        Entry::Occupied(_) => unreachable!(),
+    });
     (
         FutureWriter {
             handle,
@@ -767,9 +518,15 @@ pub fn new_future<T: FuturePayload>() -> (FutureWriter<T>, FutureReader<T>) {
     )
 }
 
+/// Creates a new Component Model `stream` with the specified payload type.
 pub fn new_stream<T: StreamPayload>() -> (StreamWriter<T>, StreamReader<T>) {
     let handle = T::new();
-    unsafe { HANDLES.insert(handle, Handle::LocalOpen) };
+    async_support::with_entry(handle, |entry| match entry {
+        Entry::Vacant(entry) => {
+            entry.insert(Handle::LocalOpen);
+        }
+        Entry::Occupied(_) => unreachable!(),
+    });
     (
         StreamWriter {
             handle,
@@ -782,135 +539,6 @@ pub fn new_stream<T: StreamPayload>() -> (StreamWriter<T>, StreamReader<T>) {
             _phantom: PhantomData,
         },
     )
-}
-
-pub fn spawn(future: impl Future<Output = ()> + 'static) {
-    unsafe { SPAWNED.push(Box::pin(future)) }
-}
-
-fn task_wait(state: &mut FutureState) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        unreachable!();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        #[link(wasm_import_module = "$root")]
-        extern "C" {
-            #[link_name = "[task-wait]"]
-            fn wait(_: *mut i32) -> i32;
-        }
-        let mut payload = [0i32; 2];
-        unsafe {
-            let event0 = wait(payload.as_mut_ptr());
-            callback(state as *mut _ as _, event0, payload[0], payload[1]);
-        }
-    }
-}
-
-// TODO: refactor so `'static` bounds aren't necessary
-pub fn block_on<T: 'static>(future: impl Future<Output = T> + 'static) -> T {
-    let (mut tx, mut rx) = oneshot::channel();
-    let state = &mut FutureState {
-        todo: 0,
-        tasks: Some(
-            [Box::pin(future.map(move |v| drop(tx.send(v)))) as BoxFuture]
-                .into_iter()
-                .collect(),
-        ),
-    };
-    loop {
-        match unsafe { poll(state) } {
-            Poll::Ready(()) => break rx.try_recv().unwrap().unwrap(),
-            Poll::Pending => task_wait(state),
-        }
-    }
-}
-
-fn task_poll(state: &mut FutureState) -> bool {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        unreachable!();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        #[link(wasm_import_module = "$root")]
-        extern "C" {
-            #[link_name = "[task-poll]"]
-            fn poll(_: *mut i32) -> i32;
-        }
-        let mut payload = [0i32; 3];
-        unsafe {
-            let got_event = poll(payload.as_mut_ptr()) != 0;
-            if got_event {
-                callback(state as *mut _ as _, payload[0], payload[1], payload[2]);
-            }
-            got_event
-        }
-    }
-}
-
-// TODO: refactor so `'static` bounds aren't necessary
-pub fn poll_future<T: 'static>(future: impl Future<Output = T> + 'static) -> Option<T> {
-    let (mut tx, mut rx) = oneshot::channel();
-    let state = &mut FutureState {
-        todo: 0,
-        tasks: Some(
-            [Box::pin(future.map(move |v| drop(tx.send(v)))) as BoxFuture]
-                .into_iter()
-                .collect(),
-        ),
-    };
-    loop {
-        match unsafe { poll(state) } {
-            Poll::Ready(()) => break Some(rx.try_recv().unwrap().unwrap()),
-            Poll::Pending => {
-                if !task_poll(state) {
-                    break None;
-                }
-            }
-        }
-    }
-}
-
-pub fn task_yield() {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        unreachable!();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        #[link(wasm_import_module = "$root")]
-        extern "C" {
-            #[link_name = "[task-yield]"]
-            fn yield_();
-        }
-        unsafe {
-            yield_();
-        }
-    }
-}
-
-pub fn task_backpressure(enabled: bool) {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        unreachable!();
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    {
-        #[link(wasm_import_module = "$root")]
-        extern "C" {
-            #[link_name = "[task-backpressure]"]
-            fn backpressure(_: i32);
-        }
-        unsafe {
-            backpressure(if enabled { 1 } else { 0 });
-        }
-    }
 }
 
 fn ceiling(x: usize, y: usize) -> usize {

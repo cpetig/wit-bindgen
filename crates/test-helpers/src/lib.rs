@@ -6,7 +6,7 @@ use std::process::Command;
 use wasm_encoder::{Encode, Section};
 use wit_bindgen_core::Files;
 use wit_component::StringEncoding;
-use wit_parser::{Resolve, WorldId};
+use wit_parser::{Mangling, Resolve, WorldId};
 
 /// Returns a suitable directory to place output for tests within.
 ///
@@ -32,9 +32,10 @@ pub fn test_directory(suite_name: &str, gen_name: &str, wit_name: &str) -> PathB
 /// Helper function to execute a process during tests and print informative
 /// information if it fails.
 pub fn run_command(cmd: &mut Command) {
+    let command = format!("{cmd:?}");
     let output = cmd
         .output()
-        .expect("failed to run executable; is it installed");
+        .unwrap_or_else(|e| panic!("failed to run executable: {e}; command was `{command}`"));
 
     if output.status.success() {
         return;
@@ -96,7 +97,7 @@ pub fn run_component_codegen_test(
 ) {
     let (resolve, world) = parse_wit(wit_path);
     let world_name = &resolve.worlds[world].name;
-    let mut wasm = wit_component::dummy_module(&resolve, world);
+    let mut wasm = wit_component::dummy_module(&resolve, world, Mangling::Standard32);
     let encoded =
         wit_component::metadata::encode(&resolve, world, StringEncoding::UTF8, None).unwrap();
     let section = wasm_encoder::CustomSection {

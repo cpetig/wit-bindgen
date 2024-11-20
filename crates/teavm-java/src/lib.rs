@@ -557,7 +557,7 @@ impl InterfaceGenerator<'_> {
     fn export(&mut self, interface_name: Option<&str>, func: &Function) {
         let sig = self.resolve.wasm_signature(AbiVariant::GuestExport, func);
 
-        let export_name = func.core_export_name(interface_name);
+        let export_name = func.legacy_core_export_name(interface_name);
 
         let mut bindgen = FunctionBindgen::new(
             self,
@@ -1068,6 +1068,21 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
     fn type_list(&mut self, id: TypeId, _name: &str, _ty: &Type, _docs: &Docs) {
         self.type_name(&Type::Id(id));
+    }
+
+    fn type_future(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
+        _ = (id, name, docs);
+        todo!()
     }
 
     fn type_builtin(&mut self, _id: TypeId, _name: &str, _ty: &Type, _docs: &Docs) {
@@ -2049,18 +2064,20 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 );
             }
 
+            Instruction::Flush { amt } => {
+                results.extend(operands.iter().take(*amt).map(|v| v.clone()));
+            }
+
             Instruction::AsyncMalloc { .. }
-            | Instruction::AsyncCallStart { .. }
             | Instruction::AsyncPostCallInterface { .. }
-            | Instruction::AsyncCallReturn { .. } => todo!(),
-            Instruction::FutureLower { .. } => todo!(),
-            Instruction::FutureLift { .. } => todo!(),
-            Instruction::StreamLower { .. } => todo!(),
-            Instruction::StreamLift { .. } => todo!(),
-            Instruction::ErrorLower { .. } => todo!(),
-            Instruction::ErrorLift { .. } => todo!(),
-            Instruction::AsyncCallWasm { .. } => todo!(),
-            Instruction::Flush { .. } => todo!(),
+            | Instruction::AsyncCallReturn { .. }
+            | Instruction::FutureLower { .. }
+            | Instruction::FutureLift { .. }
+            | Instruction::StreamLower { .. }
+            | Instruction::StreamLift { .. }
+            | Instruction::ErrorContextLower { .. }
+            | Instruction::ErrorContextLift { .. }
+            | Instruction::AsyncCallWasm { .. } => todo!(),
         }
     }
 

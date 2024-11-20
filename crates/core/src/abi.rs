@@ -375,13 +375,13 @@ def_instruction! {
             ty: TypeId,
         } : [1] => [1],
 
-        /// Create an `i32` from an error.
-        ErrorLower {
+        /// Create an `i32` from an error-context.
+        ErrorContextLower {
             ty: TypeId,
         } : [1] => [1],
 
-        /// Create a error from an `i32`.
-        ErrorLift {
+        /// Create a error-context from an `i32`.
+        ErrorContextLift {
             ty: TypeId,
         } : [1] => [1],
 
@@ -557,20 +557,37 @@ def_instruction! {
             blocks: usize,
         } : [1] => [0],
 
+        /// Allocate the parameter and/or return areas to use for an
+        /// async-lowered import call.
+        ///
+        /// This cannot be allocated on the (shadow-)stack since it needs to
+        /// remain valid until the callee has finished using the buffers, which
+        /// may be after we pop the current stack frame.
         AsyncMalloc { size: ArchitectureSize, align: Alignment } : [0] => [1],
 
-        AsyncCallWasm { name: &'a str, size: ArchitectureSize, align: Alignment } : [3] => [0],
+        /// Call an async-lowered import.
+        ///
+        /// `size` and `align` are used to deallocate the parameter area
+        /// allocated using `AsyncMalloc` after the callee task returns a value.
+        AsyncCallWasm { name: &'a str, size: ArchitectureSize, align: Alignment } : [2] => [0],
 
-        AsyncCallStart {
-            name: &'a str,
-            params: &'a [WasmType],
-            results: &'a [WasmType]
-        } : [params.len()] => [results.len()],
-
+        /// Generate code to run after `CallInterface` for an async-lifted export.
+        ///
+        /// For example, this might include task management for the
+        /// future/promise/task returned by the call made for `CallInterface`.
         AsyncPostCallInterface { func: &'a Function } : [1] => [func.results.len() + 1],
 
+        /// Call `task.return` for an async-lifted export once the task returned
+        /// by `CallInterface` and managed by `AsyncPostCallInterface`
+        /// yields a value.
         AsyncCallReturn { name: &'a str, params: &'a [WasmType] } : [params.len()] => [0],
 
+        /// Force the evaluation of the specified number of expressions and push
+        /// the results to the stack.
+        ///
+        /// This is useful prior to disposing of temporary variables and/or
+        /// allocations which are referenced by one or more not-yet-evaluated
+        /// expressions.
         Flush { amt: usize } : [*amt] => [*amt],
     }
 }
@@ -740,6 +757,9 @@ pub fn call(
     bindgen: &mut impl Bindgen,
     async_: bool,
 ) {
+    if async_ && !cfg!(feature = "async") {
+        panic!("must enable `async` feature to lift or lower using the async ABI");
+    }
     if matches!(lift_lower, LiftLower::Symmetric) {
         let sig = wasm_signature_symmetric(resolve, variant, func, true);
         Generator::new(resolve, variant, lift_lower, bindgen, async_)
@@ -747,6 +767,43 @@ pub fn call(
     } else {
         Generator::new(resolve, variant, lift_lower, bindgen, async_).call(func);
     }
+}
+
+pub fn lower_to_memory<B: Bindgen>(
+    resolve: &Resolve,
+    bindgen: &mut B,
+    address: B::Operand,
+    value: B::Operand,
+    ty: &Type,
+) {
+    // TODO: refactor so we don't need to pass in a bunch of unused dummy parameters:
+    let mut generator = Generator::new(
+        resolve,
+        AbiVariant::GuestImport,
+        LiftLower::LowerArgsLiftResults,
+        bindgen,
+        true,
+    );
+    generator.stack.push(value);
+    generator.write_to_memory(ty, address, Default::default());
+}
+
+pub fn lift_from_memory<B: Bindgen>(
+    resolve: &Resolve,
+    bindgen: &mut B,
+    address: B::Operand,
+    ty: &Type,
+) -> B::Operand {
+    // TODO: refactor so we don't need to pass in a bunch of unused dummy parameters:
+    let mut generator = Generator::new(
+        resolve,
+        AbiVariant::GuestImport,
+        LiftLower::LowerArgsLiftResults,
+        bindgen,
+        true,
+    );
+    generator.read_from_memory(ty, address, Default::default());
+    generator.stack.pop().unwrap()
 }
 
 /// Used in a similar manner as the `Interface::call` function except is
@@ -797,9 +854,7 @@ fn needs_post_return(resolve: &Resolve, ty: &Type) -> bool {
                 .filter_map(|t| t.as_ref())
                 .any(|t| needs_post_return(resolve, t)),
             TypeDefKind::Flags(_) | TypeDefKind::Enum(_) => false,
-            TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::Error => {
-                unimplemented!()
-            }
+            TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::ErrorContext => false,
             TypeDefKind::Unknown => unreachable!(),
         },
 
@@ -858,7 +913,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
 
     fn call_with_signature(&mut self, func: &Function, sig: WasmSignature) {
         const MAX_FLAT_PARAMS: usize = 16;
-        const MAX_FLAT_RESULTS: usize = 1;
+        // const MAX_FLAT_RESULTS: usize = 1;
 
         let language_to_abi = matches!(self.lift_lower, LiftLower::LowerArgsLiftResults)
             || (matches!(self.lift_lower, LiftLower::Symmetric)
@@ -866,7 +921,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
         match language_to_abi {
             true => {
                 if let (AbiVariant::GuestExport, true) = (self.variant, self.async_) {
-                    todo!("implement host-side support for async lift/lower");
+                    unimplemented!("host-side code generation for async lift/lower not supported");
                 }
 
                 let lower_to_memory = |self_: &mut Self, ptr: B::Operand| {
@@ -941,13 +996,8 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         let ptr = self.stack.pop().unwrap();
                         self.return_pointer = Some(ptr.clone());
                         self.stack.push(ptr);
-                        // ... and another return pointer for the call handle
-                        self.stack.push(
-                            self.bindgen
-                                .return_pointer(Alignment::Pointer.into(), Alignment::Pointer),
-                        );
 
-                        assert_eq!(self.stack.len(), 3);
+                        assert_eq!(self.stack.len(), 2);
                         self.emit(&Instruction::AsyncCallWasm {
                             name: &format!("[async]{}", func.name),
                             size: params_size,
@@ -983,21 +1033,6 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         retptr.clone().unwrap(),
                         Default::default(),
                     );
-                    // if guest_export_needs_post_return(self.resolve, func) {
-                    //     let post_sig = WasmSignature {
-                    //         params: vec![WasmType::Pointer],
-                    //         results: Vec::new(),
-                    //         indirect_params: false,
-                    //         retptr: false,
-                    //     };
-                    //     // TODO: can we get this name from somewhere?
-                    //     self.stack.push(retptr.unwrap());
-                    //     self.emit(&Instruction::CallWasm {
-                    //         name: &func.name,
-                    //         sig: &post_sig,
-                    //         module_prefix: "cabi_post_",
-                    //     });
-                    // }
                 } else if !(sig.retptr || self.async_) {
                     // With no return pointer in use we can simply lift the
                     // result(s) of the function from the result of the core
@@ -1013,7 +1048,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         // `self.return_pointer`) so we use that to read
                         // the result of the function from memory.
                         AbiVariant::GuestImport => {
-                            assert!(sig.results.is_empty());
+                            assert!(sig.results.is_empty() || self.async_);
                             self.return_pointer.take().unwrap()
                         }
 
@@ -1042,10 +1077,24 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     }
                 }
 
+                // if let Some(results) = async_results {
+                //     let name = &format!("[task-return]{}", func.name);
+
+                //     self.emit(&Instruction::AsyncCallReturn {
+                //         name,
+                //         params: &if results.len() > MAX_FLAT_PARAMS {
+                //             vec![WasmType::Pointer]
+                //         } else {
+                //             results
+                //         },
+                //     });
+                //     self.emit(&Instruction::Return { func, amt: 1 });
+                // } else {
                 self.emit(&Instruction::Return {
                     func,
                     amt: func.results.len(),
                 });
+                // }
             }
             false => {
                 if let (AbiVariant::GuestImport, true) = (self.variant, self.async_) {
@@ -1061,40 +1110,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         offset += self_.bindgen.sizes().size(ty);
                     }
                 };
-
-                if self.async_ {
-                    let mut params = Vec::new();
-                    for (_, ty) in func.params.iter() {
-                        self.resolve.push_flat(ty, &mut params);
-                    }
-
-                    let name = &format!("[async-start]{}", func.name);
-
-                    if params.len() > MAX_FLAT_RESULTS {
-                        let ElementInfo { size, align } = self
-                            .bindgen
-                            .sizes()
-                            .params(func.params.iter().map(|(_, ty)| ty));
-                        let ptr = self.bindgen.return_pointer(size, align);
-                        self.stack.push(ptr.clone());
-                        self.emit(&Instruction::AsyncCallStart {
-                            name,
-                            params: &[WasmType::Pointer],
-                            results: &[],
-                        });
-                        self.stack.push(ptr);
-                        read_from_memory(self);
-                    } else {
-                        self.emit(&Instruction::AsyncCallStart {
-                            name,
-                            params: &[],
-                            results: &params,
-                        });
-                        for (_, ty) in func.params.iter() {
-                            self.lift(ty);
-                        }
-                    }
-                } else if !sig.indirect_params {
+                if !sig.indirect_params {
                     // If parameters are not passed indirectly then we lift each
                     // argument in succession from the component wasm types that
                     // make-up the type.
@@ -1211,7 +1227,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 if let Some(results) = async_results {
-                    let name = &format!("[async-return]{}", func.name);
+                    let name = &format!("[task-return]{}", func.name);
 
                     self.emit(&Instruction::AsyncCallReturn {
                         name,
@@ -1435,8 +1451,8 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         ty: id,
                     });
                 }
-                TypeDefKind::Error => {
-                    self.emit(&ErrorLower { ty: id });
+                TypeDefKind::ErrorContext => {
+                    self.emit(&ErrorContextLower { ty: id });
                 }
                 TypeDefKind::Unknown => unreachable!(),
             },
@@ -1633,8 +1649,8 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         ty: id,
                     });
                 }
-                TypeDefKind::Error => {
-                    self.emit(&ErrorLift { ty: id });
+                TypeDefKind::ErrorContext => {
+                    self.emit(&ErrorContextLift { ty: id });
                 }
                 TypeDefKind::Unknown => unreachable!(),
             },
@@ -1705,7 +1721,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
 
                 TypeDefKind::Future(_)
                 | TypeDefKind::Stream(_)
-                | TypeDefKind::Error
+                | TypeDefKind::ErrorContext
                 | TypeDefKind::Handle(_) => {
                     if matches!(self.lift_lower, LiftLower::Symmetric) {
                         self.lower_and_emit(ty, addr, &PointerStore { offset });
@@ -1902,7 +1918,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
 
                 TypeDefKind::Future(_)
                 | TypeDefKind::Stream(_)
-                | TypeDefKind::Error
+                | TypeDefKind::ErrorContext
                 | TypeDefKind::Handle(_) => {
                     if matches!(self.lift_lower, LiftLower::Symmetric) {
                         self.emit_and_lift(ty, addr, &PointerLoad { offset })
@@ -2174,7 +2190,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
 
                 TypeDefKind::Future(_) => todo!("read future from memory"),
                 TypeDefKind::Stream(_) => todo!("read stream from memory"),
-                TypeDefKind::Error => todo!("read error from memory"),
+                TypeDefKind::ErrorContext => todo!("read error-context from memory"),
                 TypeDefKind::Unknown => unreachable!(),
             },
         }

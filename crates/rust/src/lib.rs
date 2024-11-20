@@ -33,6 +33,7 @@ enum Direction {
 #[derive(Default)]
 struct RustWasm {
     types: Types,
+    src_preamble: Source,
     src: Source,
     opts: Opts,
     import_modules: Vec<(String, Vec<String>)>,
@@ -50,11 +51,10 @@ struct RustWasm {
 
     rt_module: IndexSet<RuntimeItem>,
     export_macros: Vec<(String, String)>,
+
     /// Interface names to how they should be generated
     with: GenerationConfiguration,
 
-    unit_result: Option<TypeId>,
-    payload_results: HashMap<TypeId, TypeId>,
     future_payloads_emitted: HashSet<String>,
     stream_payloads_emitted: HashSet<String>,
 
@@ -112,7 +112,7 @@ enum RuntimeItem {
     AsF64,
     ResourceType,
     BoxType,
-    AsyncSupport,
+    StreamAndFutureSupport,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -146,16 +146,37 @@ pub enum AsyncConfig {
 
 #[cfg(feature = "clap")]
 fn parse_async(s: &str) -> Result<AsyncConfig, String> {
-    _ = s;
-    //Err("todo: parse `AsyncConfig`".into())
-    Ok(AsyncConfig::None)
-}
-
-#[cfg(feature = "clap")]
-impl std::fmt::Display for AsyncConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
+    Ok(match s {
+        "none" => AsyncConfig::None,
+        "all" => AsyncConfig::All,
+        _ => {
+            if let Some(values) = s.strip_prefix("some=") {
+                let mut imports = Vec::new();
+                let mut exports = Vec::new();
+                for value in values.split(',') {
+                    let error = || {
+                        Err(format!(
+                            "expected string of form `import:<name>` or `export:<name>`; got `{value}`"
+                        ))
+                    };
+                    if let Some((k, v)) = value.split_once(":") {
+                        match k {
+                            "import" => imports.push(v.into()),
+                            "export" => exports.push(v.into()),
+                            _ => return error(),
+                        }
+                    } else {
+                        return error();
+                    }
+                }
+                AsyncConfig::Some { imports, exports }
+            } else {
+                return Err(format!(
+                    "expected string of form `none`, `all`, or `some=<value>[,<value>...]`; got `{s}`"
+                ));
+            }
+        }
+    })
 }
 
 #[derive(Default, Debug, Clone)]
@@ -281,10 +302,6 @@ pub struct Opts {
     #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
     pub invert_direction: bool,
 
-    /// Determines which functions to lift or lower `async`, if any.
-    #[cfg_attr(feature = "clap", arg(long = "async", value_parser = parse_async, default_value_t = Default::default()))]
-    pub async_: AsyncConfig,
-
     /// Whether or not to generate helper function/constants to help link custom
     /// sections into the final output.
     ///
@@ -292,6 +309,18 @@ pub struct Opts {
     /// library-based usage of `generate!` prone to breakage.
     #[cfg_attr(feature = "clap", arg(long))]
     pub disable_custom_section_link_helpers: bool,
+
+    /// Determines which functions to lift or lower `async`, if any.
+    ///
+    /// Accepted values are:
+    ///     - none
+    ///     - all
+    ///     - some=<value>[,<value>...], where each <value> is of the form:
+    ///         - import:<name> or
+    ///         - export:<name>
+    #[cfg_attr(all(feature = "clap", feature = "async"), arg(long = "async", value_parser = parse_async))]
+    #[cfg_attr(all(feature = "clap", not(feature = "async")), skip)]
+    pub async_: AsyncConfig,
 }
 
 impl Opts {
@@ -354,16 +383,26 @@ impl RustWasm {
             }
             cur.contents.push(module);
         }
-        emit(&mut self.src, map);
-        fn emit(me: &mut Source, module: Module) {
+
+        emit(&mut self.src, map, &self.opts, true);
+        fn emit(me: &mut Source, module: Module, opts: &Opts, toplevel: bool) {
             for (name, submodule) in module.submodules {
-                // Ignore dead-code warnings. If the bindings are only used
-                // within a crate, and not exported to a different crate, some
-                // parts may be unused, and that's ok.
-                uwriteln!(me, "#[allow(dead_code)]");
+                if toplevel {
+                    // Disable rustfmt. By default we already format the code
+                    // using prettyplease, so we don't want `cargo fmt` to create
+                    // extra diffs for users to deal with.
+                    if opts.format {
+                        uwriteln!(me, "#[rustfmt::skip]");
+                    }
+
+                    // Ignore dead-code and clippy warnings. If the bindings are
+                    // only used within a crate, and not exported to a different
+                    // crate, some parts may be unused, and that's ok.
+                    uwriteln!(me, "#[allow(dead_code, clippy::all)]");
+                }
 
                 uwriteln!(me, "pub mod {name} {{");
-                emit(me, submodule);
+                emit(me, submodule, opts, false);
                 uwriteln!(me, "}}");
             }
             for submodule in module.contents {
@@ -425,10 +464,22 @@ impl RustWasm {
     }
 
     fn finish_runtime_module(&mut self) {
+        // TODO: This is a hack because there are currently functions and types in the `async_support` module that
+        // are useful to applications even if the generated bindings don't use it.  We should probably move those
+        // items to a library which the application can add as a dependency.
+        self.rt_module.insert(RuntimeItem::StreamAndFutureSupport);
+
         if self.rt_module.is_empty() {
             return;
         }
+
+        // As above, disable rustfmt, as we use prettyplease.
+        if self.opts.format {
+            uwriteln!(self.src, "#[rustfmt::skip]");
+        }
+
         self.src.push_str("mod _rt {\n");
+        self.src.push_str("#![allow(dead_code, clippy::all)]\n");
         let mut emitted = IndexSet::new();
         while !self.rt_module.is_empty() {
             for item in mem::take(&mut self.rt_module) {
@@ -438,8 +489,9 @@ impl RustWasm {
             }
         }
         self.src.push_str("}\n");
-        if emitted.contains(&RuntimeItem::AsyncSupport) {
-            self.src.push_str("pub use _rt::async_support;\n");
+        if emitted.contains(&RuntimeItem::StreamAndFutureSupport) {
+            self.src
+                .push_str("#[allow(unused_imports)]\npub use _rt::stream_and_future_support;\n");
         }
     }
 
@@ -681,9 +733,10 @@ impl<T: WasmResource> Drop for Resource<T> {{
                 ));
             }
 
-            RuntimeItem::AsyncSupport => {
-                self.src.push_str("pub mod async_support {");
-                self.src.push_str(include_str!("async_support.rs"));
+            RuntimeItem::StreamAndFutureSupport => {
+                self.src.push_str("pub mod stream_and_future_support {");
+                self.src
+                    .push_str(include_str!("stream_and_future_support.rs"));
                 self.src.push_str("}");
             }
         }
@@ -859,6 +912,7 @@ macro_rules! __export_{world_name}_impl {{
         .unwrap();
 
         self.src.push_str("#[doc(hidden)]\n");
+        self.src.push_str("#[allow(clippy::octal_escapes)]\n");
         self.src.push_str(&format!(
             "pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; {}] = *b\"\\\n",
             component_type.len()
@@ -916,44 +970,90 @@ macro_rules! __export_{world_name}_impl {{
 
 impl WorldGenerator for RustWasm {
     fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
-        wit_bindgen_core::generated_preamble(&mut self.src, env!("CARGO_PKG_VERSION"));
+        wit_bindgen_core::generated_preamble(&mut self.src_preamble, env!("CARGO_PKG_VERSION"));
 
         // Render some generator options to assist with debugging and/or to help
         // recreate it if the original generation command is lost.
-        uwriteln!(self.src, "// Options used:");
+        uwriteln!(self.src_preamble, "// Options used:");
         if self.opts.std_feature {
-            uwriteln!(self.src, "//   * std_feature");
+            uwriteln!(self.src_preamble, "//   * std_feature");
         }
         if self.opts.raw_strings {
-            uwriteln!(self.src, "//   * raw_strings");
+            uwriteln!(self.src_preamble, "//   * raw_strings");
         }
         if !self.opts.skip.is_empty() {
-            uwriteln!(self.src, "//   * skip: {:?}", self.opts.skip);
+            uwriteln!(self.src_preamble, "//   * skip: {:?}", self.opts.skip);
+        }
+        if self.opts.stubs {
+            uwriteln!(self.src_preamble, "//   * stubs");
+        }
+        if let Some(export_prefix) = &self.opts.export_prefix {
+            uwriteln!(
+                self.src_preamble,
+                "//   * export_prefix: {:?}",
+                export_prefix
+            );
+        }
+        if let Some(runtime_path) = &self.opts.runtime_path {
+            uwriteln!(self.src_preamble, "//   * runtime_path: {:?}", runtime_path);
+        }
+        if let Some(bitflags_path) = &self.opts.bitflags_path {
+            uwriteln!(
+                self.src_preamble,
+                "//   * bitflags_path: {:?}",
+                bitflags_path
+            );
         }
         if !matches!(self.opts.ownership, Ownership::Owning) {
-            uwriteln!(self.src, "//   * ownership: {:?}", self.opts.ownership);
+            uwriteln!(
+                self.src_preamble,
+                "//   * ownership: {:?}",
+                self.opts.ownership
+            );
         }
         if !self.opts.additional_derive_attributes.is_empty() {
             uwriteln!(
-                self.src,
+                self.src_preamble,
                 "//   * additional derives {:?}",
                 self.opts.additional_derive_attributes
             );
         }
         for (k, v) in self.opts.with.iter() {
-            uwriteln!(self.src, "//   * with {k:?} = {v}");
+            uwriteln!(self.src_preamble, "//   * with {k:?} = {v}");
+        }
+        if let Some(type_section_suffix) = &self.opts.type_section_suffix {
+            uwriteln!(
+                self.src_preamble,
+                "//   * type_section_suffix: {:?}",
+                type_section_suffix
+            );
         }
         if let Some(default) = &self.opts.default_bindings_module {
-            uwriteln!(self.src, "//   * default-bindings-module: {default:?}");
+            uwriteln!(
+                self.src_preamble,
+                "//   * default-bindings-module: {default:?}"
+            );
         }
         if self.opts.disable_run_ctors_once_workaround {
-            uwriteln!(self.src, "//   * disable-run-ctors-once-workaround");
+            uwriteln!(
+                self.src_preamble,
+                "//   * disable-run-ctors-once-workaround"
+            );
         }
         if let Some(s) = &self.opts.export_macro_name {
-            uwriteln!(self.src, "//   * export-macro-name: {s}");
+            uwriteln!(self.src_preamble, "//   * export-macro-name: {s}");
         }
         if self.opts.pub_export_macro {
-            uwriteln!(self.src, "//   * pub-export-macro");
+            uwriteln!(self.src_preamble, "//   * pub-export-macro");
+        }
+        if self.opts.generate_unused_types {
+            uwriteln!(self.src_preamble, "//   * generate_unused_types");
+        }
+        if self.opts.disable_custom_section_link_helpers {
+            uwriteln!(
+                self.src_preamble,
+                "//   * disable_custom_section_link_helpers"
+            );
         }
         self.types.analyze(resolve);
         self.world = Some(world);
@@ -975,10 +1075,6 @@ impl WorldGenerator for RustWasm {
             self.with.insert(k.clone(), v.clone().into());
         }
         self.with.generate_by_default = self.opts.generate_all;
-
-        let (unit_result, payload_results) = resolve.find_future_and_stream_results();
-        self.unit_result = unit_result;
-        self.payload_results = payload_results;
     }
 
     fn import_interface(
@@ -1010,7 +1106,10 @@ impl WorldGenerator for RustWasm {
 
         gen.generate_imports(resolve.interfaces[id].functions.values(), Some(name));
 
-        gen.finish_append_submodule(&snake, module_path);
+        let docs = &resolve.interfaces[id].docs;
+
+        gen.finish_append_submodule(&snake, module_path, docs);
+
         let _ = self.import_prefix.take();
         Ok(())
     }
@@ -1062,7 +1161,10 @@ impl WorldGenerator for RustWasm {
         gen.types(id);
         let macro_name =
             gen.generate_exports(Some((id, name)), resolve.interfaces[id].functions.values())?;
-        gen.finish_append_submodule(&snake, module_path);
+
+        let docs = &resolve.interfaces[id].docs;
+
+        gen.finish_append_submodule(&snake, module_path, docs);
         self.export_macros
             .push((macro_name, self.interface_names[&id].path.clone()));
 
@@ -1209,6 +1311,11 @@ impl WorldGenerator for RustWasm {
             let syntax_tree = syn::parse_file(src.as_str()).unwrap();
             *src.as_mut_string() = prettyplease::unparse(&syntax_tree);
         }
+
+        // Prepend the preamble. We do this after formatting because
+        // `syn::parse_file` + `prettyplease::unparse` does not preserve comments.
+        let src_preamble = mem::take(&mut self.src_preamble);
+        *src.as_mut_string() = format!("{}{}", src_preamble.as_str(), src.as_str());
 
         let module_name = name.to_snake_case();
         files.push(&format!("{module_name}.rs"), src.as_bytes());

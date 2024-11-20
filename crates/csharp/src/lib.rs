@@ -26,18 +26,6 @@ use wit_parser::{Alignment, ArchitectureSize};
 mod csproj;
 pub use csproj::CSProject;
 
-//TODO remove unused
-const CSHARP_IMPORTS: &str = "\
-using System;
-using System.Runtime.CompilerServices;
-using System.Collections;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-";
-
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct Opts {
@@ -107,6 +95,8 @@ struct InterfaceFragment {
     csharp_src: String,
     csharp_interop_src: String,
     stub: String,
+    usings: HashSet<String>,
+    interop_usings: HashSet<String>,
 }
 
 pub struct InterfaceTypeAndFragments {
@@ -134,6 +124,8 @@ pub enum FunctionLevel {
 pub struct CSharp {
     opts: Opts,
     name: String,
+    usings: HashSet<String>,
+    interop_usings: HashSet<String>,
     return_area_size: ArchitectureSize,
     return_area_align: Alignment,
     tuple_counts: HashSet<usize>,
@@ -181,6 +173,8 @@ impl CSharp {
             resolve,
             name,
             direction,
+            usings: HashSet::<String>::new(),
+            interop_usings: HashSet::<String>::new(),
         }
     }
 
@@ -195,6 +189,20 @@ impl CSharp {
             (qualifier.unwrap_or("").to_string(), last_part.to_string())
         } else {
             (String::new(), String::new())
+        }
+    }
+
+    fn require_using(&mut self, using_ns: &str) {
+        if !self.usings.contains(using_ns) {
+            let using_ns_string = using_ns.to_string();
+            self.usings.insert(using_ns_string);
+        }
+    }
+
+    fn require_interop_using(&mut self, using_ns: &str) {
+        if !self.interop_usings.contains(using_ns) {
+            let using_ns_string = using_ns.to_string();
+            self.interop_usings.insert(using_ns_string);
         }
     }
 }
@@ -406,10 +414,11 @@ impl WorldGenerator for CSharp {
 
         let access = self.access_modifier();
 
+        let using_pos = src.len();
+
         uwrite!(
             src,
-            "{CSHARP_IMPORTS}
-
+            "
              namespace {world_namespace} {{
 
              {access} interface I{name}World {{
@@ -425,6 +434,16 @@ impl WorldGenerator for CSharp {
                 .join("\n"),
         );
 
+        let usings: Vec<_> = self
+            .world_fragments
+            .iter()
+            .flat_map(|f| &f.usings)
+            .cloned()
+            .collect();
+        usings.iter().for_each(|u| {
+            self.require_using(u);
+        });
+
         let mut producers = wasm_metadata::Producers::empty();
         producers.add(
             "processed-by",
@@ -435,6 +454,7 @@ impl WorldGenerator for CSharp {
         src.push_str("}\n");
 
         if self.needs_result {
+            self.require_using("System.Runtime.InteropServices");
             uwrite!(
                 src,
                 r#"
@@ -442,7 +462,7 @@ impl WorldGenerator for CSharp {
                 {access} readonly struct None {{}}
 
                 [StructLayout(LayoutKind.Sequential)]
-                {access} readonly struct Result<Ok, Err>
+                {access} readonly struct Result<TOk, TErr>
                 {{
                     {access} readonly byte Tag;
                     private readonly object value;
@@ -453,49 +473,57 @@ impl WorldGenerator for CSharp {
                         this.value = value;
                     }}
 
-                    {access} static Result<Ok, Err> ok(Ok ok)
+                    {access} static Result<TOk, TErr> Ok(TOk ok)
                     {{
-                        return new Result<Ok, Err>(OK, ok!);
+                        return new Result<TOk, TErr>(Tags.Ok, ok!);
                     }}
 
-                    {access} static Result<Ok, Err> err(Err err)
+                    {access} static Result<TOk, TErr> Err(TErr err)
                     {{
-                        return new Result<Ok, Err>(ERR, err!);
+                        return new Result<TOk, TErr>(Tags.Err, err!);
                     }}
 
-                    {access} bool IsOk => Tag == OK;
-                    {access} bool IsErr => Tag == ERR;
+                    {access} bool IsOk => Tag == Tags.Ok;
+                    {access} bool IsErr => Tag == Tags.Err;
 
-                    {access} Ok AsOk
-                    {{
-                        get
-                        {{
-                            if (Tag == OK)
-                                return (Ok)value;
-                            else
-                                throw new ArgumentException("expected OK, got " + Tag);
-                        }}
-                    }}
-
-                    {access} Err AsErr
+                    {access} TOk AsOk
                     {{
                         get
                         {{
-                            if (Tag == ERR)
-                                return (Err)value;
-                            else
-                                throw new ArgumentException("expected ERR, got " + Tag);
+                            if (Tag == Tags.Ok)
+                            {{
+                                return (TOk)value;
+                            }}
+
+                            throw new ArgumentException("expected k, got " + Tag);
                         }}
                     }}
 
-                    {access} const byte OK = 0;
-                    {access} const byte ERR = 1;
+                    {access} TErr AsErr
+                    {{
+                        get
+                        {{
+                            if (Tag == Tags.Err)
+                            {{
+                                return (TErr)value;
+                            }}
+
+                            throw new ArgumentException("expected Err, got " + Tag);
+                        }}
+                    }}
+
+                    {access} class Tags
+                    {{
+                        {access} const byte Ok = 0;
+                        {access} const byte Err = 1;
+                    }}
                 }}
                 "#,
             )
         }
 
         if self.needs_option {
+            self.require_using("System.Diagnostics.CodeAnalysis");
             uwrite!(
                 src,
                 r#"
@@ -526,6 +554,8 @@ impl WorldGenerator for CSharp {
         }
 
         if self.needs_interop_string {
+            self.require_using("System.Text");
+            self.require_using("System.Runtime.InteropServices");
             uwrite!(
                 src,
                 r#"
@@ -571,6 +601,8 @@ impl WorldGenerator for CSharp {
                 self.return_area_size.size_wasm32(),
                 self.return_area_align.align_wasm32(),
             );
+
+            self.require_using("System.Runtime.CompilerServices");
             uwrite!(
                 ret_area_str,
                 "
@@ -610,6 +642,17 @@ impl WorldGenerator for CSharp {
             src.push_str("\n");
 
             src.push_str("namespace exports {\n");
+
+            src.push_str(
+                &self
+                    .world_fragments
+                    .iter()
+                    .flat_map(|f| &f.interop_usings)
+                    .map(|s| "using ".to_owned() + s + ";")
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            );
+
             src.push_str(&format!("{access} static class {name}World\n"));
             src.push_str("{");
 
@@ -625,6 +668,16 @@ impl WorldGenerator for CSharp {
         src.push_str("\n");
 
         src.push_str("}\n");
+
+        src.insert_str(
+            using_pos,
+            &self
+                .usings
+                .iter()
+                .map(|s| "using ".to_owned() + s + ";")
+                .collect::<Vec<String>>()
+                .join("\n"),
+        );
 
         files.push(&format!("{name}.cs"), indent(&src).as_bytes());
 
@@ -671,8 +724,6 @@ impl WorldGenerator for CSharp {
 
             let body = format!(
                 "{header}
-                 {CSHARP_IMPORTS}
-
                  namespace {fully_qualified_namespace};
 
                  {access} partial class {stub_class_name} : {interface_or_class_name} {{
@@ -792,14 +843,20 @@ impl WorldGenerator for CSharp {
             if body.len() > 0 {
                 let body = format!(
                     "{header}
-                    {CSHARP_IMPORTS}
+                    {0}
 
                     namespace {namespace};
 
                     {access} interface {interface_name} {{
                         {body}
                     }}
-                    "
+                    ",
+                    fragments
+                        .iter()
+                        .flat_map(|f| &f.usings)
+                        .map(|s| "using ".to_owned() + s + ";")
+                        .collect::<Vec<String>>()
+                        .join("\n"),
                 );
 
                 files.push(&format!("{full_name}.cs"), indent(&body).as_bytes());
@@ -815,7 +872,7 @@ impl WorldGenerator for CSharp {
             let class_name = interface_name.strip_prefix("I").unwrap();
             let body = format!(
                 "{header}
-                {CSHARP_IMPORTS}
+                 {0}
 
                 namespace {namespace}
                 {{
@@ -823,7 +880,13 @@ impl WorldGenerator for CSharp {
                       {body}
                   }}
                 }}
-                "
+                ",
+                fragments
+                    .iter()
+                    .flat_map(|f| &f.interop_usings)
+                    .map(|s| "using ".to_owned() + s + ";\n")
+                    .collect::<Vec<String>>()
+                    .join(""),
             );
 
             files.push(
@@ -848,6 +911,8 @@ struct InterfaceGenerator<'a> {
     resolve: &'a Resolve,
     name: &'a str,
     direction: Direction,
+    usings: HashSet<String>,
+    interop_usings: HashSet<String>,
 }
 
 impl InterfaceGenerator<'_> {
@@ -959,6 +1024,8 @@ impl InterfaceGenerator<'_> {
                 csharp_src: self.src,
                 csharp_interop_src: self.csharp_interop_src,
                 stub: self.stub,
+                usings: self.usings,
+                interop_usings: self.interop_usings,
             });
     }
 
@@ -967,6 +1034,8 @@ impl InterfaceGenerator<'_> {
             csharp_src: self.src,
             csharp_interop_src: self.csharp_interop_src,
             stub: self.stub,
+            usings: self.usings,
+            interop_usings: self.interop_usings,
         });
     }
 
@@ -1086,9 +1155,13 @@ impl InterfaceGenerator<'_> {
 
         let import_name = &func.name;
 
+        self.gen.require_using("System.Runtime.InteropServices");
+
         let target = if let FunctionKind::Freestanding = &func.kind {
+            self.require_interop_using("System.Runtime.InteropServices");
             &mut self.csharp_interop_src
         } else {
+            self.require_using("System.Runtime.InteropServices");
             &mut self.src
         };
 
@@ -1231,9 +1304,10 @@ impl InterfaceGenerator<'_> {
 
         let interop_name = format!("wasmExport{}", func.name.to_upper_camel_case());
         let core_module_name = interface_name.map(|s| self.resolve.name_world_key(s));
-        let export_name = func.core_export_name(core_module_name.as_deref());
+        let export_name = func.legacy_core_export_name(core_module_name.as_deref());
         let access = self.gen.access_modifier();
 
+        self.require_interop_using("System.Runtime.InteropServices");
         uwrite!(
             self.csharp_interop_src,
             r#"
@@ -1434,6 +1508,20 @@ impl InterfaceGenerator<'_> {
         }
     }
 
+    fn require_using(&mut self, using_ns: &str) {
+        if !self.usings.contains(using_ns) {
+            let using_ns_string = using_ns.to_string();
+            self.usings.insert(using_ns_string);
+        }
+    }
+
+    fn require_interop_using(&mut self, using_ns: &str) {
+        if !self.interop_usings.contains(using_ns) {
+            let using_ns_string = using_ns.to_string();
+            self.interop_usings.insert(using_ns_string);
+        }
+    }
+
     fn start_resource(&mut self, id: TypeId, key: Option<&WorldKey>) {
         let access = self.gen.access_modifier();
         let qualified = self.type_name_with_qualifier(&Type::Id(id), true);
@@ -1449,6 +1537,7 @@ impl InterfaceGenerator<'_> {
                     .map(|key| self.resolve.name_world_key(key))
                     .unwrap_or_else(|| "$root".into());
 
+                self.require_using("System.Runtime.InteropServices");
                 // As of this writing, we cannot safely drop a handle to an imported resource from a .NET finalizer
                 // because it may still have one or more open child resources.  Once WIT has explicit syntax for
                 // indicating parent/child relationships, we should be able to use that information to keep track
@@ -1487,6 +1576,7 @@ impl InterfaceGenerator<'_> {
                     .map(|s| format!("{}#", self.resolve.name_world_key(s)))
                     .unwrap_or_else(String::new);
 
+                self.require_interop_using("System.Runtime.InteropServices");
                 uwrite!(
                     self.csharp_interop_src,
                     r#"
@@ -1505,6 +1595,7 @@ impl InterfaceGenerator<'_> {
                     .map(|key| format!("[export]{}", self.resolve.name_world_key(key)))
                     .unwrap_or_else(|| "[export]$root".into());
 
+                self.require_using("System.Runtime.InteropServices");
                 // The ergonomics of exported resources are not ideal, currently. Implementing such a resource
                 // requires both extending a class and implementing an interface. The reason for the class is to
                 // allow implementers to inherit code which tracks and disposes of the resource handle; the reason
@@ -1788,7 +1879,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
             .iter()
             .map(|case| {
                 let case_name = case.name.to_csharp_ident();
-                let tag = case.name.to_shouty_snake_case();
+                let tag = case.name.to_csharp_ident_upper();
                 let (parameter, argument) = if let Some(ty) = self.non_empty_type(case.ty.as_ref())
                 {
                     (
@@ -1800,8 +1891,8 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
                 };
 
                 format!(
-                    "{access} static {name} {case_name}({parameter}) {{
-                         return new {name}({tag}, {argument});
+                    "{access} static {name} {tag}({parameter}) {{
+                         return new {name}(Tags.{tag}, {argument});
                      }}
                     "
                 )
@@ -1815,14 +1906,14 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
             .filter_map(|case| {
                 self.non_empty_type(case.ty.as_ref()).map(|ty| {
                     let case_name = case.name.to_upper_camel_case();
-                    let tag = case.name.to_shouty_snake_case();
+                    let tag = case.name.to_csharp_ident_upper();
                     let ty = self.type_name(ty);
                     format!(
                         r#"{access} {ty} As{case_name}
                         {{
                             get
                             {{
-                                if (Tag == {tag})
+                                if (Tag == Tags.{tag})
                                     return ({ty})value!;
                                 else
                                     throw new ArgumentException("expected {tag}, got " + Tag);
@@ -1840,7 +1931,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
             .iter()
             .enumerate()
             .map(|(i, case)| {
-                let tag = case.name.to_shouty_snake_case();
+                let tag = case.name.to_csharp_ident_upper();
                 format!("{access} const {tag_type} {tag} = {i};")
             })
             .collect::<Vec<_>>()
@@ -1860,7 +1951,10 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
                 {constructors}
                 {accessors}
-                {tags}
+
+                {access} class Tags {{
+                    {tags}
+                }}
             }}
             "
         );
@@ -1904,6 +1998,21 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
     fn type_list(&mut self, id: TypeId, _name: &str, _ty: &Type, _docs: &Docs) {
         self.type_name(&Type::Id(id));
+    }
+
+    fn type_future(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+        _ = (id, name, ty, docs);
+        todo!()
+    }
+
+    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
+        _ = (id, name, docs);
+        todo!()
     }
 
     fn type_builtin(&mut self, _id: TypeId, _name: &str, _ty: &Type, _docs: &Docs) {
@@ -2118,7 +2227,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                     String::new()
                 };
 
-                let method = case_name.to_csharp_ident();
+                let method = case_name.to_csharp_ident_upper();
 
                 let call = if let Some(position) = generics_position {
                     let (ty, generics) = ty.split_at(position);
@@ -2480,7 +2589,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 result,
                 ..
             } => self.lower_variant(
-                &[("ok", result.ok), ("err", result.err)],
+                &[("Ok", result.ok), ("Err", result.err)],
                 lowered_types,
                 &operands[0],
                 results,
@@ -2488,7 +2597,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::ResultLift { result, ty } => self.lift_variant(
                 &Type::Id(*ty),
-                &[("ok", result.ok), ("err", result.err)],
+                &[("Ok", result.ok), ("Err", result.err)],
                 &operands[0],
                 results,
             ),
@@ -2589,12 +2698,20 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.gen.gen.needs_interop_string = true;
             }
 
-            Instruction::StringLift { .. } => results.push(format!(
-                "Encoding.UTF8.GetString((byte*){}, {})",
-                operands[0], operands[1]
-            )),
+            Instruction::StringLift { .. } => {
+                if FunctionKind::Freestanding == *self.kind || self.gen.direction == Direction::Export {
+                    self.gen.require_interop_using("System.Text");
+                } else {
+                    self.gen.require_using("System.Text");
+                }
 
-            Instruction::ListLower { element, realloc } => {
+                results.push(format!(
+                    "Encoding.UTF8.GetString((byte*){}, {})",
+                    operands[0], operands[1]
+                ));
+            }
+
+            Instruction::ListLower { element, .. } => {
                 let Block {
                     body,
                     results: block_results,
@@ -2759,13 +2876,13 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                                         format!(
                                             "\
                                             case {index}: {{
-                                                ret = {head}{ty}.err(({err_ty}) e.Value){tail};
+                                                ret = {head}{ty}.Err(({err_ty}) e.Value){tail};
                                                 break;
                                             }}
                                             "
                                         )
                                     );
-                                    oks.push(format!("{ty}.ok("));
+                                    oks.push(format!("{ty}.Ok("));
                                     payload_is_void = result.ok.is_none();
                                 }
                                 if !self.results.is_empty() {
@@ -3011,18 +3128,20 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(resource);
             }
 
+            Instruction::Flush { amt } => {
+                results.extend(operands.iter().take(*amt).map(|v| v.clone()));
+            }
+
             Instruction::AsyncMalloc { .. }
-            | Instruction::AsyncCallStart { .. }
             | Instruction::AsyncPostCallInterface { .. }
-            | Instruction::AsyncCallReturn { .. } => todo!(),
-            Instruction::FutureLower { .. } => todo!(),
-            Instruction::FutureLift { .. } => todo!(),
-            Instruction::StreamLower { .. } => todo!(),
-            Instruction::StreamLift { .. } => todo!(),
-            Instruction::ErrorLower { .. } => todo!(),
-            Instruction::ErrorLift { .. } => todo!(),
-            Instruction::AsyncCallWasm { .. } => todo!(),
-            Instruction::Flush { .. } => todo!(),
+            | Instruction::AsyncCallReturn { .. }
+            | Instruction::FutureLower { .. }
+            | Instruction::FutureLift { .. }
+            | Instruction::StreamLower { .. }
+            | Instruction::StreamLift { .. }
+            | Instruction::ErrorContextLower { .. }
+            | Instruction::ErrorContextLift { .. }
+            | Instruction::AsyncCallWasm { .. } => todo!(),
         }
     }
 
@@ -3310,28 +3429,110 @@ fn is_primitive(ty: &Type) -> bool {
 }
 
 trait ToCSharpIdent: ToOwned {
+    fn csharp_keywords() -> Vec<&'static str>;
     fn to_csharp_ident(&self) -> Self::Owned;
+    fn to_csharp_ident_upper(&self) -> Self::Owned;
 }
 
 impl ToCSharpIdent for str {
+    // Source: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
+    fn csharp_keywords() -> Vec<&'static str> {
+        vec![
+            "abstract",
+            "as",
+            "base",
+            "bool",
+            "break",
+            "byte",
+            "case",
+            "catch",
+            "char",
+            "checked",
+            "class",
+            "const",
+            "continue",
+            "decimal",
+            "default",
+            "delegate",
+            "do",
+            "double",
+            "else",
+            "enum",
+            "event",
+            "explicit",
+            "extern",
+            "false",
+            "finally",
+            "fixed",
+            "float",
+            "for",
+            "foreach",
+            "goto",
+            "if",
+            "implicit",
+            "in",
+            "int",
+            "interface",
+            "internal",
+            "is",
+            "lock",
+            "long",
+            "namespace",
+            "new",
+            "null",
+            "object",
+            "operator",
+            "out",
+            "override",
+            "params",
+            "private",
+            "protected",
+            "public",
+            "readonly",
+            "ref",
+            "return",
+            "sbyte",
+            "sealed",
+            "short",
+            "sizeof",
+            "stackalloc",
+            "static",
+            "string",
+            "struct",
+            "switch",
+            "this",
+            "throw",
+            "true",
+            "try",
+            "typeof",
+            "uint",
+            "ulong",
+            "unchecked",
+            "unsafe",
+            "ushort",
+            "using",
+            "virtual",
+            "void",
+            "volatile",
+            "while",
+        ]
+    }
+
     fn to_csharp_ident(&self) -> String {
         // Escape C# keywords
-        // Source: https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/
+        if Self::csharp_keywords().contains(&self) {
+            format!("@{}", self)
+        } else {
+            self.to_lower_camel_case()
+        }
+    }
 
-        //TODO: Repace with actual keywords
-        match self {
-            "abstract" | "as" | "base" | "bool" | "break" | "byte" | "case" | "catch" | "char"
-            | "checked" | "class" | "const" | "continue" | "decimal" | "default" | "delegate"
-            | "do" | "double" | "else" | "enum" | "event" | "explicit" | "extern" | "false"
-            | "finally" | "fixed" | "float" | "for" | "foreach" | "goto" | "if" | "implicit"
-            | "in" | "int" | "interface" | "internal" | "is" | "lock" | "long" | "namespace"
-            | "new" | "null" | "object" | "operator" | "out" | "override" | "params"
-            | "private" | "protected" | "public" | "readonly" | "ref" | "return" | "sbyte"
-            | "sealed" | "short" | "sizeof" | "stackalloc" | "static" | "string" | "struct"
-            | "switch" | "this" | "throw" | "true" | "try" | "typeof" | "uint" | "ulong"
-            | "unchecked" | "unsafe" | "ushort" | "using" | "virtual" | "void" | "volatile"
-            | "while" => format!("@{self}"),
-            _ => self.to_lower_camel_case(),
+    fn to_csharp_ident_upper(&self) -> String {
+        // Escape C# keywords
+        if Self::csharp_keywords().contains(&self) {
+            format!("@{}", self)
+        } else {
+            self.to_upper_camel_case()
         }
     }
 }

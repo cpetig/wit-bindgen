@@ -7,15 +7,14 @@ use std::{
 
 use wit_bindgen_core::wit_parser::{Resolve, WorldId};
 
-fn tester_source_file(
-    dir_name: &str,
-    tester_source_dir: &PathBuf,
-) -> Option<PathBuf> {
+fn tester_source_file(dir_name: &str, tester_source_dir: &PathBuf) -> Option<PathBuf> {
     let mut tester_source_file = tester_source_dir.clone();
     tester_source_file.push(&format!("{dir_name}.rs"));
     if matches!(std::fs::exists(&tester_source_file), Ok(true)) {
         Some(tester_source_file)
-    } else { None }
+    } else {
+        None
+    }
 }
 
 fn create_cargo_files(
@@ -51,6 +50,8 @@ fn create_cargo_files(
             [dependencies]\n\
             wit-bindgen = {{ path = \"{toplevel}/crates/guest-rust\" }}\n\
             test-rust-wasm = {{ path = \"{toplevel}/crates/cpp/tests/symmetric_tests/test-rust-wasm\" }}\n\
+            futures = \"0.3\"\n\
+            once_cell = \"1.20\"\n\
             \n\
             [lib]\n\
             crate-type = [\"cdylib\"]\n\
@@ -81,6 +82,8 @@ fn create_cargo_files(
             [dependencies]\n\
             wit-bindgen = {{ path = \"{toplevel}/crates/guest-rust\" }}\n\
             {dir_name} = {{ path = \"rust\" }}\n\
+            futures = \"0.3\"\n\
+            once_cell = \"1.20\"\n\
             ",
         toplevel = toplevel.display()
     );
@@ -105,7 +108,7 @@ fn tests(
     tester_source_dir: &PathBuf,
 ) -> io::Result<()> {
     // modelled after wit-bindgen/tests/runtime/main.rs
-    let Some(tester_source_file) = tester_source_file(dir_name, tester_source_dir) else {
+    let Some(_tester_source_file) = tester_source_file(dir_name, tester_source_dir) else {
         println!("Skipping {}", dir_name);
         return Ok(());
     };
@@ -132,17 +135,17 @@ fn tests(
     testee_dir.push("rust");
     let mut filename = testee_dir.clone();
     filename.push("src");
-//    std::fs::create_dir(&filename)?;
+    //    std::fs::create_dir(&filename)?;
     filename.push(format!("lib.rs"));
     let mut original = dir.clone();
     original.push("wasm.rs");
-//    std::os::unix::fs::symlink(original, filename)?;
+    //    std::os::unix::fs::symlink(original, filename)?;
 
     let mut filename = out_dir.clone();
     filename.push("src");
-//    std::fs::create_dir(&filename)?;
+    //    std::fs::create_dir(&filename)?;
     filename.push(format!("main.rs"));
-//    std::os::unix::fs::symlink(tester_source_file, &filename)?;
+    //    std::os::unix::fs::symlink(tester_source_file, &filename)?;
 
     let mut cmd = Command::new("cargo");
     cmd.arg("build")
@@ -220,9 +223,10 @@ fn tests(
             panic!("failed to compile");
         } else {
             let mut tester = out_dir.clone();
+            tester.pop();
             tester.push("target");
             tester.push("debug");
-            tester.push("tester");
+            tester.push(&format!("tester-{dir_name}"));
             let run = Command::new(tester)
                 .env("LD_LIBRARY_PATH", cpp_dir)
                 .output();
@@ -321,9 +325,18 @@ fn symmetric_integration() -> io::Result<()> {
         );
         for dir_name in testcases.iter() {
             if tester_source_file(dir_name, &tester_source_dir).is_some() {
-            workspace.push_str(&format!("    \"{}\",\n    \"{}/rust\",\n", dir_name, dir_name));
+                workspace.push_str(&format!(
+                    "    \"{}\",\n    \"{}/rust\",\n",
+                    dir_name, dir_name
+                ));
             }
-            create_cargo_files(dir_name, &out_dir, &toplevel, &source_files, &tester_source_dir)?;
+            create_cargo_files(
+                dir_name,
+                &out_dir,
+                &toplevel,
+                &source_files,
+                &tester_source_dir,
+            )?;
         }
         workspace.push_str("]\n");
         let mut filename = out_dir.clone();

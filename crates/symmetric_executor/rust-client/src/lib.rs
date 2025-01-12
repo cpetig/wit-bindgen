@@ -2,6 +2,7 @@ use module::symmetric::runtime::symmetric_executor::{self, CallbackData, Callbac
 pub use module::symmetric::runtime::symmetric_executor::{
     run, CallbackState, EventGenerator, EventSubscription,
 };
+pub use module::symmetric::runtime::symmetric_stream;
 
 pub mod async_support;
 mod module;
@@ -17,7 +18,7 @@ pub fn register(
 }
 
 #[no_mangle]
-fn cabi_realloc_wit_bindgen_0_36_0(
+fn cabi_realloc_wit_bindgen_0_37_0(
     _old_ptr: *mut u8,
     _old_len: usize,
     _align: usize,

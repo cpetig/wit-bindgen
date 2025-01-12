@@ -1,4 +1,4 @@
-[workspace]
+#[workspace]
 
 [package]
 name = "wit-bindgen-symmetric-rt"
@@ -7,7 +7,11 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.31"
-wit-bindgen = { version = "0.36.0", path = "../../guest-rust" }
+#wit-bindgen = { path = "../../guest-rust" }
+
+[dependencies.wit-bindgen]
+package = "dummy-rt"
+path = "../dummy-rt"
 
 [features]
 # always off feature

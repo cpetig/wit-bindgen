@@ -11,16 +11,14 @@ pub mod test {
             static __FORCE_SECTION_REF: fn() =
                 super::super::super::__link_custom_section_describing_imports;
 
-            // use wit_bindgen_symmetric_rt::async_support::{self, AddressSend, StreamHandle2};
+            use wit_bindgen_symmetric_rt::async_support::Stream;
 
             use super::super::super::_rt;
 
             #[allow(unused_unsafe, clippy::all)]
             pub async fn create() -> wit_bindgen_symmetric_rt::async_support::StreamReader<u32> {
                 unsafe {
-                    // let layout0 = _rt::alloc::Layout::from_size_align_unchecked(0, 1);
-                    // let ptr0 = core::ptr::null_mut(); //_rt::alloc::alloc(layout0);
-                    let layout1 = _rt::alloc::Layout::from_size_align_unchecked(4, 4);
+                    let layout1 = _rt::alloc::Layout::from_size_align_unchecked(8, 8);
                     let ptr1 = _rt::alloc::alloc(layout1);
 
                     #[link(wasm_import_module = "test:test/stream-source")]
@@ -29,15 +27,15 @@ pub mod test {
                         #[cfg_attr(target_arch = "wasm32", link_name = "[async]create")]
                         fn testX3AtestX2Fstream_sourceX00X5BasyncX5Dcreate(_: *mut u8) -> *mut u8;
                     }
-                    // let layout2 = _rt::alloc::Layout::from_size_align_unchecked(0, 1);
                     ::wit_bindgen_symmetric_rt::async_support::await_result(move || unsafe {
                         testX3AtestX2Fstream_sourceX00X5BasyncX5Dcreate(ptr1)
                     })
                     .await;
                     let l3 = *ptr1.add(0).cast::<*mut u8>();
-                    let result4 =
-                        wit_bindgen_symmetric_rt::async_support::StreamReader::new(l3.cast());
-                    _rt::cabi_dealloc(ptr1, 4, 4);
+                    let result4 = wit_bindgen_symmetric_rt::async_support::StreamReader::new(
+                        Stream::from_handle(l3 as usize),
+                    );
+                    _rt::cabi_dealloc(ptr1, 8, 8);
                     result4
                 }
             }
@@ -56,7 +54,6 @@ pub mod exports {
                 static __FORCE_SECTION_REF: fn() =
                     super::super::super::super::__link_custom_section_describing_imports;
 
-                use super::super::super::super::_rt;
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 pub unsafe fn _export_create_cabi<T: Guest>(results: *mut u8) -> *mut u8 {
@@ -73,17 +70,6 @@ pub mod exports {
 
                     result.cast()
                 }
-                // #[doc(hidden)]
-                // #[allow(non_snake_case)]
-                // pub unsafe fn __callback_create(
-                //     ctx: *mut u8,
-                //     event0: i32,
-                //     event1: i32,
-                //     event2: i32,
-                // ) -> i32 {
-                //     todo!()
-                //     // ::wit_bindgen_symmetric_rt::async_support::callback(ctx, event0, event1, event2)
-                // }
                 pub trait Guest {
                     fn create() -> impl ::core::future::Future<
                         Output = ::wit_bindgen_symmetric_rt::async_support::StreamReader<u32>,
@@ -99,10 +85,6 @@ pub mod exports {
           unsafe extern "C" fn testX3AtestX2Fstream_testX00X5BasyncX5Dcreate(results: *mut u8) -> *mut u8 {
             $($path_to_types)*::_export_create_cabi::<$ty>(results)
           }
-          // #[export_name = "[callback]create"]
-          // unsafe extern "C" fn _callback_create(ctx: *mut u8, event0: i32, event1: i32, event2: i32) -> i32 {
-          //   $($path_to_types)*::__callback_create(ctx, event0, event1, event2)
-          // }
         };);
       }
                 #[doc(hidden)]
@@ -132,16 +114,9 @@ pub mod wit_stream {
 
     use wit_bindgen_symmetric_rt::async_support::stream_support::new_stream;
 
-    pub trait StreamPayload: Unpin + Sized + 'static {
-        // fn new() -> *mut ();
-        //u32, &'static ::wit_bindgen_symmetric_rt::async_support::StreamVtable<Self>);
-    }
+    pub trait StreamPayload: Unpin + Sized + 'static {}
 
-    impl StreamPayload for u32 {
-        // fn new() -> *mut () {
-        //     todo!()
-        // }
-    }
+    impl StreamPayload for u32 {}
 
     pub fn new<T: StreamPayload>() -> (
         ::wit_bindgen_symmetric_rt::async_support::StreamWriter<T>,
@@ -150,8 +125,6 @@ pub mod wit_stream {
         new_stream()
     }
 }
-// #[allow(unused_imports)]
-// pub use _rt::stream_and_future_support;
 
 /// Generates `#[no_mangle]` functions to export the specified type as the
 /// root implementation of all generated traits.

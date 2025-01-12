@@ -56,3 +56,38 @@ interface symmetric-executor {
     /// Register a callback for an event
     register: func(trigger: event-subscription, callback: callback-function, data: callback-data);
 }
+
+// language neutral stream implementation
+interface symmetric-stream {
+    use symmetric-executor.{event-subscription};
+
+    resource address;
+    // special zero allocation/copy data type (caller provided buffer)
+    resource buffer {
+        constructor(addr: address, capacity: u64);
+        get-address: func () -> address;
+        get-size: func() -> u64;
+        set-size: func(size: u64);
+        capacity: func() -> u64;
+    }
+
+    resource stream-obj {
+        constructor();
+        // create a new instance e.g. for reading or tasks
+        clone: func() -> stream-obj;
+        // reading (in roughly chronological order)
+        is-write-closed: func() -> bool;
+        start-reading: func(buffer: buffer);
+        write-ready-activate: func();
+        read-ready-subscribe: func() -> event-subscription;
+        // none is EOF
+        read-result: func() -> option<buffer>;
+        // writing
+        is-ready-to-write: func() -> bool;
+        write-ready-subscribe: func() -> event-subscription;
+        start-writing: func() -> buffer;
+        // none is EOF
+        finish-writing: func(buffer: option<buffer>);
+        read-ready-activate: func();
+    }
+}

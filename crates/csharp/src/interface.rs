@@ -179,10 +179,13 @@ impl InterfaceGenerator<'_> {
 
     pub(crate) fn import(&mut self, import_module_name: &str, func: &Function) {
         let (camel_name, modifiers) = match &func.kind {
-            FunctionKind::Freestanding | FunctionKind::Static(_) => {
-                (func.item_name().to_upper_camel_case(), "static")
+            FunctionKind::Freestanding
+            | FunctionKind::Static(_)
+            | FunctionKind::AsyncFreestanding
+            | FunctionKind::AsyncStatic(_) => (func.item_name().to_upper_camel_case(), "static"),
+            FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) => {
+                (func.item_name().to_upper_camel_case(), "")
             }
-            FunctionKind::Method(_) => (func.item_name().to_upper_camel_case(), ""),
             FunctionKind::Constructor(id) => (
                 self.csharp_gen.all_resources[id].name.to_upper_camel_case(),
                 "",
@@ -206,12 +209,13 @@ impl InterfaceGenerator<'_> {
         let (result_type, results) = if let FunctionKind::Constructor(_) = &func.kind {
             (String::new(), Vec::new())
         } else {
-            match func.results.len() {
-                0 => ("void".to_string(), Vec::new()),
-                1 => {
+            match func.result {
+                None => ("void".to_string(), Vec::new()),
+                Some(ty) => {
                     let (payload, results) = payload_and_results(
                         self.resolve,
-                        *func.results.iter_types().next().unwrap(),
+                        ty,
+                        self.csharp_gen.opts.with_wit_results,
                     );
                     (
                         if let Some(ty) = payload {
@@ -222,15 +226,6 @@ impl InterfaceGenerator<'_> {
                         },
                         results,
                     )
-                }
-                _ => {
-                    let types = func
-                        .results
-                        .iter_types()
-                        .map(|ty| self.type_name_with_qualifier(ty, true))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    (format!("({})", types), Vec::new())
                 }
             }
         };
@@ -246,6 +241,67 @@ impl InterfaceGenerator<'_> {
             .collect::<Vec<_>>()
             .join(", ");
 
+        let mut funcs: Vec<(String, String)> = Vec::new();
+        funcs.push(self.gen_import_src(func, &results, ParameterType::ABI));
+
+        let include_additional_functions = func
+            .params
+            .iter()
+            .skip(if let FunctionKind::Method(_) = &func.kind {
+                1
+            } else {
+                0
+            })
+            .any(|param| self.is_primative_list(&param.1));
+
+        if include_additional_functions {
+            funcs.push(self.gen_import_src(func, &results, ParameterType::Span));
+            funcs.push(self.gen_import_src(func, &results, ParameterType::Memory));
+        }
+
+        let import_name = &func.name;
+
+        self.csharp_gen
+            .require_using("System.Runtime.InteropServices");
+
+        let target = if let FunctionKind::Freestanding = &func.kind {
+            self.require_interop_using("System.Runtime.InteropServices");
+            &mut self.csharp_interop_src
+        } else {
+            self.require_using("System.Runtime.InteropServices");
+            &mut self.src
+        };
+
+        uwrite!(
+            target,
+            r#"
+            internal static class {interop_camel_name}WasmInterop
+            {{
+                [DllImport("{import_module_name}", EntryPoint = "{import_name}"), WasmImportLinkage]
+                internal static extern {wasm_result_type} wasmImport{interop_camel_name}({wasm_params});
+            }}
+            "#
+        );
+
+        for (src, params) in funcs {
+            uwrite!(
+                target,
+                r#"
+                    {access} {extra_modifiers} {modifiers} unsafe {result_type} {camel_name}({params})
+                    {{
+                        {src}
+                    }}
+                "#
+            );
+        }
+    }
+
+    fn gen_import_src(
+        &mut self,
+        func: &Function,
+        results: &Vec<TypeId>,
+        parameter_type: ParameterType,
+    ) -> (String, String) {
         let mut bindgen = FunctionBindgen::new(
             self,
             &func.item_name(),
@@ -261,7 +317,8 @@ impl InterfaceGenerator<'_> {
                     }
                 })
                 .collect(),
-            results,
+            results.clone(),
+            parameter_type,
         );
 
         abi::call(
@@ -284,7 +341,7 @@ impl InterfaceGenerator<'_> {
                 0
             })
             .map(|param| {
-                let ty = self.type_name_with_qualifier(&param.1, true);
+                let ty = self.name_with_qualifier(&param.1, true, parameter_type);
                 let param_name = &param.0;
                 let param_name = param_name.to_csharp_ident();
                 format!("{ty} {param_name}")
@@ -292,54 +349,20 @@ impl InterfaceGenerator<'_> {
             .collect::<Vec<_>>()
             .join(", ");
 
-        let import_name = &func.name;
-
-        self.csharp_gen
-            .require_using("System.Runtime.InteropServices");
-
-        let target = if let FunctionKind::Freestanding = &func.kind {
-            self.require_interop_using("System.Runtime.InteropServices");
-            &mut self.csharp_interop_src
-        } else {
-            self.require_using("System.Runtime.InteropServices");
-            &mut self.src
-        };
-
-        uwrite!(
-            target,
-            r#"
-            internal static class {interop_camel_name}WasmInterop
-            {{
-                [DllImport("{import_module_name}", EntryPoint = "{import_name}"), WasmImportLinkage]
-                internal static extern {wasm_result_type} wasmImport{interop_camel_name}({wasm_params});
-            "#
-        );
-
-        uwrite!(
-            target,
-            r#"
-            }}
-            "#,
-        );
-
-        uwrite!(
-            target,
-            r#"
-                {access} {extra_modifiers} {modifiers} unsafe {result_type} {camel_name}({params})
-                {{
-                    {src}
-                    //TODO: free alloc handle (interopString) if exists
-                }}
-            "#
-        );
+        (src, params)
     }
 
     pub(crate) fn export(&mut self, func: &Function, interface_name: Option<&WorldKey>) {
         let (camel_name, modifiers) = match &func.kind {
-            FunctionKind::Freestanding | FunctionKind::Static(_) => {
+            FunctionKind::Freestanding
+            | FunctionKind::Static(_)
+            | FunctionKind::AsyncFreestanding
+            | FunctionKind::AsyncStatic(_) => {
                 (func.item_name().to_upper_camel_case(), "static abstract")
             }
-            FunctionKind::Method(_) => (func.item_name().to_upper_camel_case(), ""),
+            FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) => {
+                (func.item_name().to_upper_camel_case(), "")
+            }
             FunctionKind::Constructor(id) => (
                 self.csharp_gen.all_resources[id].name.to_upper_camel_case(),
                 "",
@@ -353,12 +376,13 @@ impl InterfaceGenerator<'_> {
         let (result_type, results) = if let FunctionKind::Constructor(_) = &func.kind {
             (String::new(), Vec::new())
         } else {
-            match func.results.len() {
-                0 => ("void".to_owned(), Vec::new()),
-                1 => {
+            match func.result {
+                None => ("void".to_owned(), Vec::new()),
+                Some(ty) => {
                     let (payload, results) = payload_and_results(
                         self.resolve,
-                        *func.results.iter_types().next().unwrap(),
+                        ty,
+                        self.csharp_gen.opts.with_wit_results,
                     );
                     (
                         if let Some(ty) = payload {
@@ -370,15 +394,6 @@ impl InterfaceGenerator<'_> {
                         results,
                     )
                 }
-                _ => {
-                    let types = func
-                        .results
-                        .iter_types()
-                        .map(|ty| self.type_name(ty))
-                        .collect::<Vec<String>>()
-                        .join(", ");
-                    (format!("({}) ", types), Vec::new())
-                }
             }
         };
 
@@ -388,6 +403,7 @@ impl InterfaceGenerator<'_> {
             &func.kind,
             (0..sig.params.len()).map(|i| format!("p{i}")).collect(),
             results,
+            ParameterType::ABI,
         );
 
         abi::call(
@@ -398,8 +414,6 @@ impl InterfaceGenerator<'_> {
             &mut bindgen,
             false,
         );
-
-        assert!(!bindgen.needs_cleanup_list);
 
         let src = bindgen.src;
 
@@ -460,13 +474,37 @@ impl InterfaceGenerator<'_> {
             "#
         );
 
-        if !sig.results.is_empty() {
+        if abi::guest_export_needs_post_return(self.resolve, func) {
+            let params = sig
+                .results
+                .iter()
+                .enumerate()
+                .map(|(i, param)| {
+                    let ty = crate::world_generator::wasm_type(*param);
+                    format!("{ty} p{i}")
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let mut bindgen = FunctionBindgen::new(
+                self,
+                "INVALID",
+                &func.kind,
+                (0..sig.results.len()).map(|i| format!("p{i}")).collect(),
+                Vec::new(),
+                ParameterType::ABI,
+            );
+
+            abi::post_return(bindgen.interface_gen.resolve, func, &mut bindgen, false);
+
+            let src = bindgen.src;
+
             uwrite!(
                 self.csharp_interop_src,
                 r#"
                 [UnmanagedCallersOnly(EntryPoint = "cabi_post_{export_name}")]
-                {access} static void cabi_post_{interop_name}({wasm_result_type} returnValue) {{
-                    Console.WriteLine("TODO: cabi_post_{export_name}");
+                {access} static unsafe void cabi_post_{interop_name}({params}) {{
+                    {src}
                 }}
                 "#
             );
@@ -518,6 +556,31 @@ impl InterfaceGenerator<'_> {
     }
 
     pub(crate) fn type_name_with_qualifier(&mut self, ty: &Type, qualifier: bool) -> String {
+        self.name_with_qualifier(ty, qualifier, ParameterType::ABI)
+    }
+
+    fn is_primative_list(&mut self, ty: &Type) -> bool {
+        match ty {
+            Type::Id(id) => {
+                let ty = &self.resolve.types[*id];
+                match &ty.kind {
+                    TypeDefKind::Type(ty) => self.is_primative_list(ty),
+                    TypeDefKind::List(ty) if crate::world_generator::is_primitive(ty) => {
+                        return true
+                    }
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn name_with_qualifier(
+        &mut self,
+        ty: &Type,
+        qualifier: bool,
+        parameter_type: ParameterType,
+    ) -> String {
         match ty {
             Type::Bool => "bool".to_owned(),
             Type::U8 => "byte".to_owned(),
@@ -532,12 +595,25 @@ impl InterfaceGenerator<'_> {
             Type::F64 => "double".to_owned(),
             Type::Char => "uint".to_owned(),
             Type::String => "string".to_owned(),
+            Type::ErrorContext => todo!("error context name with qualifier"),
             Type::Id(id) => {
                 let ty = &self.resolve.types[*id];
                 match &ty.kind {
-                    TypeDefKind::Type(ty) => self.type_name_with_qualifier(ty, qualifier),
+                    TypeDefKind::Type(ty) => {
+                        self.name_with_qualifier(ty, qualifier, parameter_type)
+                    }
                     TypeDefKind::List(ty) => {
-                        if crate::world_generator::is_primitive(ty) {
+                        if crate::world_generator::is_primitive(ty)
+                            && self.direction == Direction::Import
+                            && parameter_type == ParameterType::Span
+                        {
+                            format!("Span<{}>", self.type_name(ty))
+                        } else if crate::world_generator::is_primitive(ty)
+                            && self.direction == Direction::Import
+                            && parameter_type == ParameterType::Memory
+                        {
+                            format!("Memory<{}>", self.type_name(ty))
+                        } else if crate::world_generator::is_primitive(ty) {
                             format!("{}[]", self.type_name(ty))
                         } else {
                             format!("List<{}>", self.type_name_with_qualifier(ty, qualifier))
@@ -838,12 +914,13 @@ impl InterfaceGenerator<'_> {
         let result_type = if let FunctionKind::Constructor(_) = &func.kind {
             String::new()
         } else {
-            match func.results.len() {
-                0 => "void".into(),
-                1 => {
+            match func.result {
+                None => "void".into(),
+                Some(ty) => {
                     let (payload, _) = payload_and_results(
                         self.resolve,
-                        *func.results.iter_types().next().unwrap(),
+                        ty,
+                        self.csharp_gen.opts.with_wit_results,
                     );
                     if let Some(ty) = payload {
                         self.csharp_gen.needs_result = true;
@@ -851,17 +928,6 @@ impl InterfaceGenerator<'_> {
                     } else {
                         "void".to_string()
                     }
-                }
-                count => {
-                    self.csharp_gen.tuple_counts.insert(count);
-                    format!(
-                        "({})",
-                        func.results
-                            .iter_types()
-                            .map(|ty| self.type_name_with_qualifier(ty, qualifier))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
                 }
             }
         };
@@ -883,10 +949,13 @@ impl InterfaceGenerator<'_> {
             .join(", ");
 
         let (camel_name, modifiers) = match &func.kind {
-            FunctionKind::Freestanding | FunctionKind::Static(_) => {
-                (func.item_name().to_upper_camel_case(), "static")
+            FunctionKind::Freestanding
+            | FunctionKind::AsyncFreestanding
+            | FunctionKind::Static(_)
+            | FunctionKind::AsyncStatic(_) => (func.item_name().to_upper_camel_case(), "static"),
+            FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) => {
+                (func.item_name().to_upper_camel_case(), "")
             }
-            FunctionKind::Method(_) => (func.item_name().to_upper_camel_case(), ""),
             FunctionKind::Constructor(id) => (
                 self.csharp_gen.all_resources[id].name.to_upper_camel_case(),
                 "",
@@ -1166,18 +1235,28 @@ impl<'a> CoreInterfaceGenerator<'a> for InterfaceGenerator<'a> {
         todo!()
     }
 
-    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
         _ = (id, name, ty, docs);
-        todo!()
-    }
-
-    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
-        _ = (id, name, docs);
         todo!()
     }
 }
 
-fn payload_and_results(resolve: &Resolve, ty: Type) -> (Option<Type>, Vec<TypeId>) {
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub(crate) enum ParameterType {
+    ABI,
+    Span,
+    Memory,
+}
+
+fn payload_and_results(
+    resolve: &Resolve,
+    ty: Type,
+    with_wit_results: bool,
+) -> (Option<Type>, Vec<TypeId>) {
+    if with_wit_results {
+        return (Some(ty), Vec::new());
+    }
+
     fn recurse(resolve: &Resolve, ty: Type, results: &mut Vec<TypeId>) -> Option<Type> {
         if let Type::Id(id) = ty {
             if let TypeDefKind::Result(result) = &resolve.types[id].kind {

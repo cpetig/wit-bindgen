@@ -1,8 +1,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use wit_bindgen_symmetric_rt::{
-    async_support::Stream, register, CallbackState, EventSubscription,
-};
+use wit_bindgen_symmetric_rt::{async_support::Stream, register, CallbackState, EventSubscription};
 
 static COUNT: AtomicU32 = AtomicU32::new(1);
 
@@ -41,11 +39,10 @@ extern "C" fn write_ready(data: *mut ()) -> CallbackState {
 
 #[allow(non_snake_case)]
 #[no_mangle]
-pub fn testX3AtestX2Fstream_sourceX00X5BasyncX5Dcreate(results: *mut u8) -> *mut u8 {
+pub fn testX3AtestX2Fstream_sourceX00create() -> usize {
     let stream = Stream::new();
     let event = stream.write_ready_subscribe();
     let stream_copy = stream.clone();
     register(event, write_ready, stream_copy.take_handle() as *mut ());
-    *unsafe { &mut *results.cast::<usize>() } = stream.take_handle();
-    std::ptr::null_mut()
+    stream.take_handle()
 }

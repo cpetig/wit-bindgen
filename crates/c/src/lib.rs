@@ -556,7 +556,7 @@ impl C {
     fn push_type_name(&mut self, ty: &Type, dst: &mut String) {
         match ty {
             Type::Bool => dst.push_str("bool"),
-            Type::Char => dst.push_str("uint32_t"), // TODO: better type?
+            Type::Char => dst.push_str("uint32_t"),
             Type::U8 => dst.push_str("uint8_t"),
             Type::S8 => dst.push_str("int8_t"),
             Type::U16 => dst.push_str("uint16_t"),
@@ -573,6 +573,7 @@ impl C {
                 dst.push_str("string_t");
                 self.needs_string = true;
             }
+            Type::ErrorContext => todo!("C error context type name"),
             Type::Id(id) => {
                 if let Some(name) = self.type_names.get(id) {
                     dst.push_str(name);
@@ -720,7 +721,6 @@ fn is_prim_type_id(resolve: &Resolve, id: TypeId) -> bool {
         | TypeDefKind::Result(_)
         | TypeDefKind::Future(_)
         | TypeDefKind::Stream(_)
-        | TypeDefKind::ErrorContext
         | TypeDefKind::Unknown => false,
     }
 }
@@ -740,6 +740,7 @@ pub fn push_ty_name(resolve: &Resolve, ty: &Type, src: &mut String) {
         Type::F32 => src.push_str("f32"),
         Type::F64 => src.push_str("f64"),
         Type::String => src.push_str("string"),
+        Type::ErrorContext => todo!(),
         Type::Id(id) => {
             let ty = &resolve.types[*id];
             if let Some(name) = &ty.name {
@@ -784,7 +785,6 @@ pub fn push_ty_name(resolve: &Resolve, ty: &Type, src: &mut String) {
                 }
                 TypeDefKind::Future(_) => todo!(),
                 TypeDefKind::Stream(_) => todo!(),
-                TypeDefKind::ErrorContext => todo!(),
                 TypeDefKind::Handle(Handle::Own(resource)) => {
                     src.push_str("own_");
                     push_ty_name(resolve, &Type::Id(*resource), src);
@@ -953,6 +953,7 @@ impl Return {
                 self.retptrs.push(*orig_ty);
                 return;
             }
+            Type::ErrorContext => todo!("return_single for error-context"),
             _ => {
                 self.scalar = Some(Scalar::Type(*orig_ty));
                 return;
@@ -1001,7 +1002,6 @@ impl Return {
 
             TypeDefKind::Future(_) => todo!("return_single for future"),
             TypeDefKind::Stream(_) => todo!("return_single for stream"),
-            TypeDefKind::ErrorContext => todo!("return_single for error-context"),
             TypeDefKind::Resource => todo!("return_single for resource"),
             TypeDefKind::Unknown => unreachable!(),
         }
@@ -1354,13 +1354,8 @@ void __wasm_export_{ns}_{snake}_dtor({ns}_{snake}_t* arg) {{
         todo!()
     }
 
-    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
         _ = (id, name, ty, docs);
-        todo!()
-    }
-
-    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
-        _ = (id, name, docs);
         todo!()
     }
 
@@ -1452,12 +1447,8 @@ impl<'a> wit_bindgen_core::AnonymousTypeGenerator<'a> for InterfaceGenerator<'a>
         todo!("print_anonymous_type for future");
     }
 
-    fn anonymous_type_stream(&mut self, _id: TypeId, _ty: &Type, _docs: &Docs) {
+    fn anonymous_type_stream(&mut self, _id: TypeId, _ty: &Option<Type>, _docs: &Docs) {
         todo!("print_anonymous_type for stream");
-    }
-
-    fn anonymous_type_error_context(&mut self) {
-        todo!("print_anonymous_type for error-context");
     }
 
     fn anonymous_type_type(&mut self, _id: TypeId, _ty: &Type, _docs: &Docs) {
@@ -1634,7 +1625,6 @@ impl InterfaceGenerator<'_> {
             }
             TypeDefKind::Future(_) => todo!("print_dtor for future"),
             TypeDefKind::Stream(_) => todo!("print_dtor for stream"),
-            TypeDefKind::ErrorContext => todo!("print_dtor for error-context"),
             TypeDefKind::Resource => {}
             TypeDefKind::Handle(Handle::Borrow(id) | Handle::Own(id)) => {
                 self.free(&Type::Id(*id), "*ptr");
@@ -1674,6 +1664,7 @@ impl InterfaceGenerator<'_> {
             | Type::F32
             | Type::F64
             | Type::Char => {}
+            Type::ErrorContext => todo!("error context free"),
         }
     }
 
@@ -1999,14 +1990,10 @@ impl InterfaceGenerator<'_> {
 
     fn classify_ret(&mut self, func: &Function, sig_flattening: bool) -> Return {
         let mut ret = Return::default();
-        match func.results.len() {
-            0 => ret.scalar = Some(Scalar::Void),
-            1 => {
-                let ty = func.results.iter_types().next().unwrap();
+        match &func.result {
+            None => ret.scalar = Some(Scalar::Void),
+            Some(ty) => {
                 ret.return_single(self.resolve, ty, ty, sig_flattening);
-            }
-            _ => {
-                ret.retptrs.extend(func.results.iter_types().cloned());
             }
         }
         return ret;
@@ -2109,9 +2096,7 @@ impl InterfaceGenerator<'_> {
 
                 TypeDefKind::List(ty) => self.contains_droppable_borrow(ty),
 
-                TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::ErrorContext => {
-                    false
-                }
+                TypeDefKind::Future(_) | TypeDefKind::Stream(_) => false,
 
                 TypeDefKind::Type(ty) => self.contains_droppable_borrow(ty),
 
@@ -2842,8 +2827,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     }
                     Some(Scalar::Type(_)) => {
                         let ret = self.locals.tmp("ret");
-                        let ty = func.results.iter_types().next().unwrap();
-                        let ty = self.gen.gen.type_name(ty);
+                        let ty = func.result.unwrap();
+                        let ty = self.gen.gen.type_name(&ty);
                         uwriteln!(self.src, "{} {} = {}({});", ty, ret, self.sig.name, args);
                         results.push(ret);
                     }
@@ -2858,8 +2843,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         let payload_ty = self.gen.gen.type_name(ty);
                         uwriteln!(self.src, "{} {};", payload_ty, val);
                         uwriteln!(self.src, "bool {} = {}({});", ret, self.sig.name, args);
-                        let ty = func.results.iter_types().next().unwrap();
-                        let option_ty = self.gen.gen.type_name(ty);
+                        let ty = func.result.unwrap();
+                        let option_ty = self.gen.gen.type_name(&ty);
                         let option_ret = self.locals.tmp("ret");
                         uwrite!(
                             self.src,
@@ -2872,7 +2857,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         results.push(option_ret);
                     }
                     Some(Scalar::ResultBool(ok, err)) => {
-                        let ty = func.results.iter_types().next().unwrap();
+                        let ty = &func.result.unwrap();
                         let result_ty = self.gen.gen.type_name(ty);
                         let ret = self.locals.tmp("ret");
                         let mut ret_iter = self.sig.ret.retptrs.iter();
@@ -3195,7 +3180,6 @@ pub fn is_arg_by_pointer(resolve: &Resolve, ty: &Type) -> bool {
             TypeDefKind::Tuple(_) | TypeDefKind::Record(_) | TypeDefKind::List(_) => true,
             TypeDefKind::Future(_) => todo!("is_arg_by_pointer for future"),
             TypeDefKind::Stream(_) => todo!("is_arg_by_pointer for stream"),
-            TypeDefKind::ErrorContext => todo!("is_arg_by_pointer for error-context"),
             TypeDefKind::Resource => todo!("is_arg_by_pointer for resource"),
             TypeDefKind::Unknown => unreachable!(),
         },

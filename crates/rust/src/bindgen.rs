@@ -20,6 +20,8 @@ pub(super) struct FunctionBindgen<'a, 'b> {
     pub import_return_pointer_area_align: Alignment,
     pub handle_decls: Vec<String>,
     always_owned: bool,
+    pub async_result_name: Option<String>,
+    emitted_cleanup: bool,
 }
 
 pub const POINTER_SIZE_EXPRESSION: &str = "core::mem::size_of::<*const u8>()";
@@ -47,10 +49,16 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             import_return_pointer_area_align: Default::default(),
             handle_decls: Vec::new(),
             always_owned,
+            async_result_name: None,
+            emitted_cleanup: false,
         }
     }
 
     fn emit_cleanup(&mut self) {
+        if self.emitted_cleanup {
+            return;
+        }
+        self.emitted_cleanup = true;
         for (ptr, layout) in mem::take(&mut self.cleanup) {
             let alloc = self.gen.path_to_std_alloc_module();
             self.push_str(&format!(
@@ -277,7 +285,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
         // stack whereas exports use a per-module return area to cut down on
         // stack usage. Note that for imports this also facilitates "adapter
         // modules" for components to not have data segments.
-        if self.gen.in_import {
+        if size.is_empty() {
+            // If the size requested is 0 then we know it won't be written to so
+            // hand out a null pointer. This can happen with async for example
+            // when the params or results are zero-sized.
+            uwrite!(self.src, "let ptr{tmp} = core::ptr::null_mut::<u8>();");
+        } else if self.gen.in_import {
+            // Import return areas are stored on the stack since this stack
+            // frame will be around for the entire function call.
             self.import_return_pointer_area_size = self.import_return_pointer_area_size.max(size);
             self.import_return_pointer_area_align =
                 self.import_return_pointer_area_align.max(align);
@@ -286,6 +301,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 "let ptr{tmp} = ret_area.0.as_mut_ptr().cast::<u8>();"
             );
         } else {
+            // Export return areas are stored in `static` memory as they need to
+            // persist beyond the function call itself (and are cleaned-up in
+            // `post-return`).
             self.gen.return_pointer_area_size = self.gen.return_pointer_area_size.max(size);
             self.gen.return_pointer_area_align = self.gen.return_pointer_area_align.max(align);
             uwriteln!(
@@ -503,11 +521,15 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::FutureLower { .. } => {
                 let op = &operands[0];
-                results.push(format!("({op}).take_handle() as i32"))
+                if self.gen.gen.opts.symmetric {
+                    results.push(format!("({op}).take_handle() as *mut u8"))
+                } else {
+                    results.push(format!("({op}).take_handle() as i32"))
+                }
             }
 
             Instruction::FutureLift { payload, .. } => {
-                let async_support = self.gen.path_to_async_support();
+                let async_support = self.gen.gen.async_support_path();
                 let op = &operands[0];
                 let name = payload
                     .as_ref()
@@ -517,30 +539,46 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     })
                     .unwrap_or_else(|| "()".into());
                 let ordinal = self.gen.gen.future_payloads.get_index_of(&name).unwrap();
-                let path = self.gen.path_to_root();
-                results.push(format!(
-                    "{async_support}::FutureReader::from_handle_and_vtable\
-                     ({op} as u32, &{path}wit_future::vtable{ordinal}::VTABLE)"
-                ))
+                if self.gen.gen.opts.symmetric {
+                    results.push(format!("{async_support}::FutureReader::from_handle({op})"))
+                } else {
+                    let path = self.gen.path_to_root();
+                    results.push(format!(
+                        "{async_support}::FutureReader::from_handle_and_vtable\
+                        ({op} as u32, &{path}wit_future::vtable{ordinal}::VTABLE)"
+                    ))
+                }
             }
 
             Instruction::StreamLower { .. } => {
                 let op = &operands[0];
-                results.push(format!("({op}).take_handle() as i32"))
+                if self.gen.gen.opts.symmetric {
+                    results.push(format!("({op}).take_handle() as *mut u8"))
+                } else {
+                    results.push(format!("({op}).take_handle() as i32"))
+                }
             }
 
             Instruction::StreamLift { payload, .. } => {
-                let async_support = self.gen.path_to_async_support();
+                let async_support = self.gen.gen.async_support_path();
                 let op = &operands[0];
-                let name = self
-                    .gen
-                    .type_name_owned_with_id(payload, Identifier::StreamOrFuturePayload);
+                let name = payload
+                    .as_ref()
+                    .map(|ty| {
+                        self.gen
+                            .type_name_owned_with_id(ty, Identifier::StreamOrFuturePayload)
+                    })
+                    .unwrap_or_else(|| "()".into());
                 let ordinal = self.gen.gen.stream_payloads.get_index_of(&name).unwrap();
-                let path = self.gen.path_to_root();
-                results.push(format!(
-                    "{async_support}::StreamReader::from_handle_and_vtable\
+                if self.gen.gen.opts.symmetric {
+                    results.push(format!("{async_support}::StreamReader::from_handle({op})"))
+                } else {
+                    let path = self.gen.path_to_root();
+                    results.push(format!(
+                        "{async_support}::StreamReader::from_handle_and_vtable\
                      ({op} as u32, &{path}wit_stream::vtable{ordinal}::VTABLE)"
-                ))
+                    ))
+                }
             }
 
             Instruction::ErrorContextLower { .. } => {
@@ -549,7 +587,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::ErrorContextLift { .. } => {
-                let async_support = self.gen.path_to_async_support();
+                let async_support = self.gen.gen.async_support_path();
                 let op = &operands[0];
                 results.push(format!(
                     "{async_support}::ErrorContext::from_handle({op} as u32)"
@@ -959,40 +997,33 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
             }
 
-            Instruction::AsyncCallWasm { name, size, align } => {
+            Instruction::AsyncCallWasm { name, .. } => {
                 let func = self.declare_import("", name, &[WasmType::Pointer; 3], &[WasmType::I32]);
 
-                let async_support = self.gen.path_to_async_support();
-                let tmp = self.tmp();
-                let layout = format!("layout{tmp}");
-                let alloc = self.gen.path_to_std_alloc_module();
-                self.push_str(&format!(
-                    "let {layout} = {alloc}::Layout::from_size_align_unchecked({size}, {align});\n",
-                    size = size.format(POINTER_SIZE_EXPRESSION),
-                    align = align.format(POINTER_SIZE_EXPRESSION)
-                ));
+                let async_support = self.gen.gen.async_support_path();
                 let operands = operands.join(", ");
                 uwriteln!(
                     self.src,
-                    "{async_support}::await_result({func}, {layout}, {operands}).await;"
+                    "{async_support}::await_result({func}, {operands}).await;"
                 );
             }
 
             Instruction::CallInterface { func, .. } => {
                 if self.async_ {
-                    let tmp = self.tmp();
-                    let result = format!("result{tmp}");
-                    self.push_str(&format!("let {result} = "));
-                    results.push(result);
+                    self.push_str(&format!("let result = "));
+                    results.push("result".into());
                 } else {
-                    self.let_results(func.results.len(), results);
+                    self.let_results(usize::from(func.result.is_some()), results);
                 };
                 let constructor_type = match &func.kind {
-                    FunctionKind::Freestanding => {
+                    FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
                         self.push_str(&format!("T::{}", to_rust_ident(&func.name)));
                         None
                     }
-                    FunctionKind::Method(_) | FunctionKind::Static(_) => {
+                    FunctionKind::Method(_)
+                    | FunctionKind::Static(_)
+                    | FunctionKind::AsyncMethod(_)
+                    | FunctionKind::AsyncStatic(_) => {
                         self.push_str(&format!("T::{}", to_rust_ident(func.item_name())));
                         None
                     }
@@ -1003,7 +1034,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                             .unwrap()
                             .to_upper_camel_case();
                         let call = if self.async_ {
-                            let async_support = self.gen.path_to_async_support();
+                            let async_support = self.gen.gen.async_support_path();
                             format!("{async_support}::futures::FutureExt::map(T::new")
                         } else {
                             format!("{ty}::new(T::new",)
@@ -1035,28 +1066,17 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         ")".into()
                     });
                 }
+                if self.async_ {
+                    self.push_str(".await");
+                }
                 self.push_str(";\n");
-            }
-
-            Instruction::AsyncMalloc { size, align } => {
-                let alloc = self.gen.path_to_std_alloc_module();
-                let tmp = self.tmp();
-                let ptr = format!("ptr{tmp}");
-                let layout = format!("layout{tmp}");
-                uwriteln!(
-                    self.src,
-                    "let {layout} = {alloc}::Layout::from_size_align_unchecked({size}, {align});
-                     let {ptr} = {alloc}::alloc({layout});",
-                    size = size.format(POINTER_SIZE_EXPRESSION),
-                    align = align.format(POINTER_SIZE_EXPRESSION)
-                );
-                results.push(ptr);
             }
 
             Instruction::AsyncPostCallInterface { func } => {
                 let result = &operands[0];
+                self.async_result_name = Some(result.clone());
                 results.push("result".into());
-                let params = (0..func.results.len())
+                let params = (0..usize::from(func.result.is_some()))
                     .map(|_| {
                         let tmp = self.tmp();
                         let param = format!("result{}", tmp);
@@ -1065,12 +1085,12 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
-                let params = if func.results.len() != 1 {
+                let params = if func.result.is_none() {
                     format!("({params})")
                 } else {
                     params
                 };
-                let async_support = self.gen.path_to_async_support();
+                let async_support = self.gen.gen.async_support_path();
                 // TODO: This relies on `abi::Generator` emitting
                 // `AsyncCallReturn` immediately after this instruction to
                 // complete the incomplete expression we generate here.  We
@@ -1078,12 +1098,18 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // `abi::Generator` emit a `AsyncCallReturn` first, which would
                 // push a closure expression we can consume here).
                 //
+                // Also, see `InterfaceGenerator::generate_guest_export` for
+                // where we emit the open bracket corresponding to the `};` we
+                // emit here.
+                //
                 // The async-specific `Instruction`s will probably need to be
                 // refactored anyway once we start implementing support for
                 // other languages besides Rust.
                 uwriteln!(
                     self.src,
                     "\
+                            {result}
+                        }};
                         let result = {async_support}::first_poll({result}, |{params}| {{
                     "
                 );
@@ -1096,10 +1122,11 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     self.src,
                     "\
                             {func}({});
-                        }});
                     ",
                     operands.join(", ")
                 );
+                self.emit_cleanup();
+                self.src.push_str("});\n");
             }
 
             Instruction::Flush { amt } => {

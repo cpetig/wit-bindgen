@@ -44,24 +44,12 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 
     pub(crate) fn process_returns(&mut self) {
-        match self.func.results.len() {
-            0 => {}
-            1 => {
-                let ty = self.func.results.iter_types().next().unwrap();
-                match self.interface.direction {
-                    Direction::Import => self.lift("ret", ty),
-                    Direction::Export => self.lower("result", ty),
-                }
+        if let Some(ty) = &self.func.result {
+            match self.interface.direction {
+                Direction::Import => self.lift("ret", ty),
+                Direction::Export => self.lower("result", ty),
             }
-            _ => {
-                for (i, ty) in self.func.results.iter_types().enumerate() {
-                    match self.interface.direction {
-                        Direction::Import => self.lift(&format!("ret{i}"), ty),
-                        Direction::Export => self.lower(&format!("result{i}"), ty),
-                    }
-                }
-            }
-        };
+        }
     }
 
     pub(crate) fn lower(&mut self, name: &str, ty: &Type) {
@@ -189,6 +177,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                     {lower_name}.len = C.size_t(len({param}))"
                 );
             }
+            Type::ErrorContext => todo!("impl error-context"),
             Type::Id(id) => {
                 let ty = &self.interface.resolve.types[*id]; // receive type
 
@@ -319,7 +308,6 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                     }
                     TypeDefKind::Future(_) => todo!("impl future"),
                     TypeDefKind::Stream(_) => todo!("impl stream"),
-                    TypeDefKind::ErrorContext => todo!("impl error-context"),
                     TypeDefKind::Resource => todo!("impl resource"),
                     TypeDefKind::Handle(h) => {
                         match self.interface.direction {
@@ -429,6 +417,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                         value = self.interface.get_ty(ty),
                     );
             }
+            Type::ErrorContext => todo!("impl error-context"),
             Type::Id(id) => {
                 let ty = &self.interface.resolve.types[*id]; // receive type
                 match &ty.kind {
@@ -610,7 +599,6 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                     }
                     TypeDefKind::Future(_) => todo!("impl future"),
                     TypeDefKind::Stream(_) => todo!("impl stream"),
-                    TypeDefKind::ErrorContext => todo!("impl error-context"),
                     TypeDefKind::Resource => todo!("impl resource"),
                     TypeDefKind::Handle(h) => {
                         match self.interface.direction {

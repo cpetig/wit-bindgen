@@ -28,7 +28,7 @@ pub mod results {
 }
 
 pub struct StreamWriter<T: 'static> {
-    handle: StreamHandle2,
+    handle: Stream,
     future: Option<Pin<Box<dyn Future<Output = ()> + 'static + Send>>>,
     _phantom: PhantomData<T>,
 }
@@ -125,19 +125,9 @@ impl<T> Drop for StreamWriter<T> {
 
 /// Represents the readable end of a Component Model `stream`.
 pub struct StreamReader<T: 'static> {
-    handle: StreamHandle2,
+    handle: Stream,
     future: Option<Pin<Box<dyn Future<Output = Option<Vec<T>>> + 'static + Send>>>,
     _phantom: PhantomData<T>,
-}
-
-impl<T> StreamReader<T> {
-    /// Cancel the current pending read operation.
-    ///
-    /// This will panic if no such operation is pending.
-    pub fn cancel(&mut self) {
-        assert!(self.future.is_some());
-        self.future = None;
-    }
 }
 
 impl<T> fmt::Debug for StreamReader<T> {
@@ -157,7 +147,26 @@ impl<T> StreamReader<T> {
             _phantom: PhantomData,
         }
     }
+
+    pub unsafe fn from_handle(handle: *mut u8) -> Self {
+        Self::new(unsafe { Stream::from_handle(handle as usize) })
+    }
+
+    /// Cancel the current pending read operation.
+    ///
+    /// This will panic if no such operation is pending.
+    pub fn cancel(&mut self) {
+        assert!(self.future.is_some());
+        self.future = None;
+    }
+
     #[doc(hidden)]
+    pub fn take_handle(&self) -> usize {
+        self.handle.take_handle()
+    }
+
+    #[doc(hidden)]
+    // remove this as it is weirder than take_handle
     pub fn into_handle(self) -> *mut () {
         self.handle.take_handle() as *mut ()
     }
@@ -210,7 +219,7 @@ impl<T> Drop for StreamReader<T> {
     }
 }
 
-pub type StreamHandle2 = Stream;
+// pub type StreamHandle2 = Stream;
 
 pub fn new_stream<T: 'static>() -> (StreamWriter<T>, StreamReader<T>) {
     let handle = Stream::new();

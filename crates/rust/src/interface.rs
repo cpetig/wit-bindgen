@@ -1,7 +1,8 @@
 use crate::bindgen::{FunctionBindgen, POINTER_SIZE_EXPRESSION};
 use crate::{
-    int_repr, to_rust_ident, to_upper_camel_case, wasm_type, AsyncConfig, FnSig, Identifier,
-    InterfaceName, Ownership, RuntimeItem, RustFlagsRepr, RustWasm,
+    full_wit_type_name, int_repr, to_rust_ident, to_upper_camel_case, wasm_type, AsyncConfig,
+    FnSig, Identifier, InterfaceName, Ownership, RuntimeItem, RustFlagsRepr, RustWasm,
+    TypeGeneration,
 };
 use anyhow::Result;
 use heck::*;
@@ -169,12 +170,7 @@ impl<'i> InterfaceGenerator<'i> {
                     })
                 }
             };
-            let resource = match func.kind {
-                FunctionKind::Freestanding => None,
-                FunctionKind::Method(id)
-                | FunctionKind::Constructor(id)
-                | FunctionKind::Static(id) => Some(id),
-            };
+            let resource = func.kind.resource();
 
             funcs_to_export.push((func, resource, async_));
             let (trait_name, methods) = traits.get_mut(&resource).unwrap();
@@ -191,7 +187,7 @@ impl<'i> InterfaceGenerator<'i> {
                 sig.self_arg = Some("&self".into());
                 sig.self_is_first_param = true;
             }
-            self.print_signature(func, true, &sig, false);
+            self.print_signature(func, true, &sig);
             self.src.push_str(";\n");
             let trait_method = mem::replace(&mut self.src, prev);
             methods.push(trait_method);
@@ -565,7 +561,7 @@ macro_rules! {macro_name} {{
                     .unwrap_or_else(|| "$root".into())
             );
             let func_name = &func.name;
-            let async_support = self.path_to_async_support();
+            let async_support = self.gen.async_support_path();
 
             match &self.resolve.types[ty].kind {
                 TypeDefKind::Future(payload_type) => {
@@ -604,8 +600,11 @@ macro_rules! {macro_name} {{
                         };
 
                         let box_ = self.path_to_box();
-                        let code = format!(
-                            r#"
+                        let code = if self.gen.opts.symmetric {
+                            format!("\nimpl FuturePayload for {name} {{}}\n")
+                        } else {
+                            format!(
+                                r#"
 #[doc(hidden)]
 pub mod vtable{ordinal} {{
     fn write(future: u32, value: {name}) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = bool>>> {{
@@ -621,155 +620,111 @@ pub mod vtable{ordinal} {{
                 fn wit_import(_: u32, _: *mut u8) -> u32;
             }}
 
-            unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }}
+            match unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }} {{
+                {async_support}::AsyncWaitResult::Values(_) => true,
+                {async_support}::AsyncWaitResult::End => false,
+                {async_support}::AsyncWaitResult::Error(_) => unreachable!("received error while performing write"),
+            }}
         }})
     }}
 
-    fn read(future: u32) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = Option<{name}>>>> {{
+    fn read(future: u32) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = ::std::option::Option<::std::result::Result<{name}, {async_support}::ErrorContext>>>>> {{
         {box_}::pin(async move {{
             struct Buffer([::core::mem::MaybeUninit::<u8>; {size}]);
             let mut buffer = Buffer([::core::mem::MaybeUninit::uninit(); {size}]);
             let address = buffer.0.as_mut_ptr() as *mut u8;
 
-            #[cfg(not(target_arch = "wasm32"))]
-            unsafe extern "C" fn wit_import(_: u32, _: *mut u8) -> u32 {{
-                unreachable!()
-            }}
-
-            #[cfg(target_arch = "wasm32")]
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[async][future-read-{index}]{func_name}"]
-                fn wit_import(_: u32, _: *mut u8) -> u32;
-            }}
-
-            if unsafe {{ {async_support}::await_future_result(wit_import, future, address).await }} {{
-                {lift}
-                Some(value)
-            }} else {{
-               None
+            match unsafe {{ {async_support}::await_future_result(start_read, future, address).await }} {{
+                    {async_support}::AsyncWaitResult::Values(v) => {{
+                        {lift}
+                        Some(Ok(value))
+                    }},
+                    {async_support}::AsyncWaitResult::Error(e) => {{
+                        Some(Err({async_support}::ErrorContext::from_handle(e)))
+                    }},
+                    {async_support}::AsyncWaitResult::End => None,
             }}
         }})
     }}
 
-    fn cancel_write(writer: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn cancel_write(_: u32) -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn cancel_read(_: u32) -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn close_writable(_: u32, _: u32) {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn close_readable(_: u32, _: u32) {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn new() -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn start_read(_: u32, _: *mut u8) -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn start_write(_: u32, _: *mut u8) -> u32 {{ unreachable!() }}
 
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[future-cancel-write-{index}]{func_name}"]
-                fn cancel(_: u32) -> u32;
-            }}
-            unsafe {{ cancel(writer) }};
-        }}
+    #[cfg(target_arch = "wasm32")]
+    #[link(wasm_import_module = "{module}")]
+    extern "C" {{
+        #[link_name = "[future-new-{index}]{func_name}"]
+        fn new() -> u32;
+        #[link_name = "[future-cancel-write-{index}]{func_name}"]
+        fn cancel_write(_: u32) -> u32;
+        #[link_name = "[future-cancel-read-{index}]{func_name}"]
+        fn cancel_read(_: u32) -> u32;
+        #[link_name = "[future-close-writable-{index}]{func_name}"]
+        fn close_writable(_: u32, _: u32);
+        #[link_name = "[future-close-readable-{index}]{func_name}"]
+        fn close_readable(_: u32, _: u32);
+        #[link_name = "[async-lower][future-read-{index}]{func_name}"]
+        fn start_read(_: u32, _: *mut u8) -> u32;
+        #[link_name = "[async-lower][future-write-{index}]{func_name}"]
+        fn start_write(_: u32, _: *mut u8) -> u32;
     }}
 
-    fn cancel_read(reader: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
-
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[future-cancel-read-{index}]{func_name}"]
-                fn cancel(_: u32) -> u32;
-            }}
-            unsafe {{ cancel(reader) }};
-        }}
-    }}
-
-    fn close_writable(writer: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
-
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[future-close-writable-{index}]{func_name}"]
-                fn drop(_: u32, _: u32);
-            }}
-            unsafe {{ drop(writer, 0) }}
-        }}
-    }}
-
-    fn close_readable(reader: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
-
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[future-close-readable-{index}]{func_name}"]
-                fn drop(_: u32);
-            }}
-            unsafe {{ drop(reader) }}
-        }}
-    }}
 
     pub static VTABLE: {async_support}::FutureVtable<{name}> = {async_support}::FutureVtable::<{name}> {{
-        write, read, cancel_write, cancel_read, close_writable, close_readable
+        write, read, cancel_write, cancel_read, close_writable, close_readable, new
     }};
 
     impl super::FuturePayload for {name} {{
-        fn new() -> (u32, &'static {async_support}::FutureVtable<Self>) {{
-            #[cfg(not(target_arch = "wasm32"))]
-            {{
-                unreachable!();
-            }}
-
-            #[cfg(target_arch = "wasm32")]
-            {{
-                #[link(wasm_import_module = "{module}")]
-                extern "C" {{
-                    #[link_name = "[future-new-{index}]{func_name}"]
-                    fn new() -> u32;
-                }}
-                (unsafe {{ new() }}, &VTABLE)
-            }}
-        }}
+        const VTABLE: &'static {async_support}::FutureVtable<Self> = &VTABLE;
     }}
 }}
                         "#,
-                        );
+                            )
+                        };
 
                         self.gen.future_payloads.insert(name, code);
                     }
                 }
                 TypeDefKind::Stream(payload_type) => {
-                    let name = self.type_name_owned(payload_type);
+                    let name = if let Some(payload_type) = payload_type {
+                        self.type_name_owned(payload_type)
+                    } else {
+                        "()".into()
+                    };
 
                     if !self.gen.stream_payloads.contains_key(&name) {
                         let ordinal = self.gen.stream_payloads.len();
-                        let size = self.sizes.size(payload_type).size_wasm32();
-                        let align = self.sizes.align(payload_type).align_wasm32();
+                        let (size, align) = if let Some(payload_type) = payload_type {
+                            (
+                                self.sizes.size(payload_type),
+                                self.sizes.align(payload_type),
+                            )
+                        } else {
+                            (
+                                ArchitectureSize {
+                                    bytes: 0,
+                                    pointers: 0,
+                                },
+                                Alignment::default(),
+                            )
+                        };
+                        let size = size.size_wasm32();
+                        let align = align.align_wasm32();
                         let alloc = self.path_to_std_alloc_module();
-                        let (lower_address, lower, lift_address, lift) =
-                            if stream_direct(payload_type) {
-                                let lower_address =
-                                    "let address = values.as_ptr() as *mut u8;".into();
-                                let lift_address =
-                                    "let address = values.as_mut_ptr() as *mut u8;".into();
-                                (
-                                    lower_address,
-                                    String::new(),
-                                    lift_address,
-                                    "let value = ();\n".into(),
-                                )
-                            } else {
+                        let (lower_address, lower, lift_address, lift) = match payload_type {
+                            Some(payload_type) if !stream_direct(payload_type) => {
                                 let address = format!(
                                     "let address = unsafe {{ {alloc}::alloc\
                                      ({alloc}::Layout::from_size_align_unchecked\
@@ -805,11 +760,27 @@ for (index, dst) in values.iter_mut().take(count).enumerate() {{
                                 "#
                                 );
                                 (address.clone(), lower, address, lift)
-                            };
+                            }
+                            _ => {
+                                let lower_address =
+                                    "let address = values.as_ptr() as *mut u8;".into();
+                                let lift_address =
+                                    "let address = values.as_mut_ptr() as *mut u8;".into();
+                                (
+                                    lower_address,
+                                    String::new(),
+                                    lift_address,
+                                    "let value = ();\n".into(),
+                                )
+                            }
+                        };
 
                         let box_ = self.path_to_box();
-                        let code = format!(
-                            r#"
+                        let code = if self.gen.opts.symmetric {
+                            format!("\nimpl StreamPayload for {name} {{}}\n")
+                        } else {
+                            format!(
+                                r#"
 #[doc(hidden)]
 pub mod vtable{ordinal} {{
     fn write(stream: u32, values: &[{name}]) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = usize> + '_>> {{
@@ -824,26 +795,28 @@ pub mod vtable{ordinal} {{
 
             let mut total = 0;
             while total < values.len() {{
-                let count = unsafe {{
+
+                match unsafe {{
                     {async_support}::await_stream_result(
-                        wit_import,
+                        start_write,
                         stream,
                         address.add(total * {size}),
-                        u32::try_from(values.len()).unwrap()
+                        u32::try_from(values.len() - (total * {size})).unwrap()
                     ).await
-                }};
-
-                if let Some(count) = count {{
-                    total += count;
-                }} else {{
-                    break
+                }} {{
+                    {async_support}::AsyncWaitResult::Values(count) => total += count,
+                    {async_support}::AsyncWaitResult::Error(_) => unreachable!("encountered error during write"),
+                    {async_support}::AsyncWaitResult::End => break,
                 }}
             }}
             total
         }})
     }}
 
-    fn read(stream: u32, values: &mut [::core::mem::MaybeUninit::<{name}>]) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = Option<usize>> + '_>> {{
+    fn read(
+        stream: u32,
+        values: &mut [::core::mem::MaybeUninit::<{name}>]
+    ) -> ::core::pin::Pin<{box_}<dyn ::core::future::Future<Output = ::std::option::Option<::std::result::Result<usize, {async_support}::ErrorContext>>> + '_>> {{
         {box_}::pin(async move {{
             {lift_address}
             #[link(wasm_import_module = "{module}")]
@@ -852,115 +825,69 @@ pub mod vtable{ordinal} {{
                 fn wit_import(_: u32, _: *mut u8, _: u32) -> u32;
             }}
 
-            let count = unsafe {{
+            match unsafe {{
                 {async_support}::await_stream_result(
-                    wit_import,
+                    start_read,
                     stream,
                     address,
                     u32::try_from(values.len()).unwrap()
                 ).await
-            }};
-            #[allow(unused)]
-            if let Some(count) = count {{
-                {lift}
+            }} {{
+                {async_support}::AsyncWaitResult::Values(count) => {{
+                    {lift}
+                    Some(Ok(count))
+                }},
+                {async_support}::AsyncWaitResult::Error(e) => Some(Err({async_support}::ErrorContext::from_handle(e))),
+                {async_support}::AsyncWaitResult::End => None,
             }}
-            count
         }})
     }}
 
-    fn cancel_write(writer: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn cancel_write(_: u32) -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn cancel_read(_: u32) -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn close_writable(_: u32, _: u32) {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn close_readable(_: u32, _: u32) {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn new() -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn start_read(_: u32, _: *mut u8, _: u32) -> u32 {{ unreachable!() }}
+    #[cfg(not(target_arch = "wasm32"))]
+    unsafe extern "C" fn start_write(_: u32, _: *mut u8, _: u32) -> u32 {{ unreachable!() }}
 
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[stream-cancel-write-{index}]{func_name}"]
-                fn cancel(_: u32) -> u32;
-            }}
-            unsafe {{ cancel(writer) }};
-        }}
-    }}
-
-    fn cancel_read(reader: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
-
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[stream-cancel-read-{index}]{func_name}"]
-                fn cancel(_: u32) -> u32;
-            }}
-            unsafe {{ cancel(reader) }};
-        }}
-    }}
-
-    fn close_writable(writer: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
-
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[stream-close-writable-{index}]{func_name}"]
-                fn drop(_: u32, _: u32);
-            }}
-            unsafe {{ drop(writer, 0) }}
-        }}
-    }}
-
-    fn close_readable(reader: u32) {{
-        #[cfg(not(target_arch = "wasm32"))]
-        {{
-            unreachable!();
-        }}
-
-        #[cfg(target_arch = "wasm32")]
-        {{
-            #[link(wasm_import_module = "{module}")]
-            extern "C" {{
-                #[link_name = "[stream-close-readable-{index}]{func_name}"]
-                fn drop(_: u32);
-            }}
-            unsafe {{ drop(reader) }}
-        }}
+    #[cfg(target_arch = "wasm32")]
+    #[link(wasm_import_module = "{module}")]
+    extern "C" {{
+        #[link_name = "[stream-new-{index}]{func_name}"]
+        fn new() -> u32;
+        #[link_name = "[stream-cancel-write-{index}]{func_name}"]
+        fn cancel_write(_: u32) -> u32;
+        #[link_name = "[stream-cancel-read-{index}]{func_name}"]
+        fn cancel_read(_: u32) -> u32;
+        #[link_name = "[stream-close-writable-{index}]{func_name}"]
+        fn close_writable(_: u32, _: u32);
+        #[link_name = "[stream-close-readable-{index}]{func_name}"]
+        fn close_readable(_: u32, _: u32);
+        #[link_name = "[async-lower][stream-read-{index}]{func_name}"]
+        fn start_read(_: u32, _: *mut u8, _: u32) -> u32;
+        #[link_name = "[async-lower][stream-write-{index}]{func_name}"]
+        fn start_write(_: u32, _: *mut u8, _: u32) -> u32;
     }}
 
     pub static VTABLE: {async_support}::StreamVtable<{name}> = {async_support}::StreamVtable::<{name}> {{
-        write, read, cancel_write, cancel_read, close_writable, close_readable
+        write, read, cancel_write, cancel_read, close_writable, close_readable, new
     }};
 
     impl super::StreamPayload for {name} {{
-        fn new() -> (u32, &'static {async_support}::StreamVtable<Self>) {{
-            #[cfg(not(target_arch = "wasm32"))]
-            {{
-                unreachable!();
-            }}
-
-            #[cfg(target_arch = "wasm32")]
-            {{
-                #[link(wasm_import_module = "{module}")]
-                extern "C" {{
-                    #[link_name = "[stream-new-{index}]{func_name}"]
-                    fn new() -> u32;
-                }}
-                (unsafe {{ new() }}, &VTABLE)
-            }}
-        }}
+        const VTABLE: &'static {async_support}::StreamVtable<Self> = &VTABLE;
     }}
 }}
                         "#,
-                        );
+                            )
+                        };
 
                         self.gen.stream_payloads.insert(name, code);
                     }
@@ -977,7 +904,7 @@ pub mod vtable{ordinal} {{
             return;
         }
 
-        self.generate_payloads("[import-payload]", func, interface);
+        self.generate_payloads("", func, interface);
 
         let async_ = match &self.gen.opts.async_ {
             AsyncConfig::None => false,
@@ -992,21 +919,18 @@ pub mod vtable{ordinal} {{
             async_,
             ..Default::default()
         };
-        match func.kind {
-            FunctionKind::Freestanding => {}
-            FunctionKind::Method(id) | FunctionKind::Static(id) | FunctionKind::Constructor(id) => {
-                let name = self.resolve.types[id].name.as_ref().unwrap();
-                let name = to_upper_camel_case(name);
-                uwriteln!(self.src, "impl {name} {{");
-                sig.use_item_name = true;
-                if let FunctionKind::Method(_) = &func.kind {
-                    sig.self_arg = Some("&self".into());
-                    sig.self_is_first_param = true;
-                }
+        if let Some(id) = func.kind.resource() {
+            let name = self.resolve.types[id].name.as_ref().unwrap();
+            let name = to_upper_camel_case(name);
+            uwriteln!(self.src, "impl {name} {{");
+            sig.use_item_name = true;
+            if let FunctionKind::Method(_) = &func.kind {
+                sig.self_arg = Some("&self".into());
+                sig.self_is_first_param = true;
             }
         }
         self.src.push_str("#[allow(unused_unsafe, clippy::all)]\n");
-        let params = self.print_signature(func, false, &sig, true);
+        let params = self.print_signature(func, false, &sig);
         self.src.push_str("{\n");
         if self.gen.opts.symmetric
             && symmetric::has_non_canonical_list_rust(self.resolve, &func.params)
@@ -1024,11 +948,8 @@ pub mod vtable{ordinal} {{
         self.src.push_str("}\n");
         self.src.push_str("}\n");
 
-        match func.kind {
-            FunctionKind::Freestanding => {}
-            FunctionKind::Method(_) | FunctionKind::Static(_) | FunctionKind::Constructor(_) => {
-                self.src.push_str("}\n");
-            }
+        if func.kind.resource().is_some() {
+            self.src.push_str("}\n");
         }
     }
 
@@ -1103,7 +1024,7 @@ pub mod vtable{ordinal} {{
     ) {
         let name_snake = func.name.to_snake_case().replace('.', "_");
 
-        self.generate_payloads("[export-payload]", func, interface);
+        self.generate_payloads("[export]", func, interface);
 
         uwrite!(
             self.src,
@@ -1149,9 +1070,29 @@ pub mod vtable{ordinal} {{
             needs_cleanup_list,
             src,
             handle_decls,
+            async_result_name,
             ..
         } = f;
-        assert!(!needs_cleanup_list);
+        if async_ {
+            if needs_cleanup_list {
+                let vec = self.path_to_vec();
+                uwriteln!(self.src, "let mut cleanup_list = {vec}::new();");
+            }
+        } else {
+            assert!(!needs_cleanup_list);
+        }
+        if let Some(name) = async_result_name {
+            // When `async_result_name` is `Some(_)`, we wrap the call and any
+            // `handle_decls` in a block scope to ensure any resource handles
+            // are dropped before we call `async_support::first_poll`, which may
+            // call `task.return` at which point any borrow handles must already
+            // have been dropped.
+            //
+            // The corresponding close bracket is emitted in the
+            // `Instruction::AsyncPostCallInterface` case inside
+            // `FunctionBindgen::emit`.
+            uwriteln!(self.src, "let {name} = async move {{");
+        }
         for decl in handle_decls {
             self.src.push_str(&decl);
             self.src.push_str("\n");
@@ -1160,7 +1101,7 @@ pub mod vtable{ordinal} {{
         self.src.push_str("}\n");
 
         if async_ {
-            let async_support = self.path_to_async_support();
+            let async_support = self.gen.async_support_path();
             uwrite!(
                 self.src,
                 "\
@@ -1408,14 +1349,8 @@ pub mod vtable{ordinal} {{
                 sig.self_arg = Some("&self".into());
                 sig.self_is_first_param = true;
             }
-            self.print_signature(func, true, &sig, false);
-            let call = if async_ {
-                let async_support = self.path_to_async_support();
-                format!("{{ #[allow(unreachable_code)]{async_support}::futures::future::ready(unreachable!()) }}\n")
-            } else {
-                "{ unreachable!() }\n".into()
-            };
-            self.src.push_str(&call);
+            self.print_signature(func, true, &sig);
+            self.src.push_str("{ unreachable!() }\n");
         }
 
         self.src.push_str("}\n");
@@ -1472,22 +1407,12 @@ pub mod vtable{ordinal} {{
         // }
     }
 
-    fn print_signature(
-        &mut self,
-        func: &Function,
-        params_owned: bool,
-        sig: &FnSig,
-        use_async_sugar: bool,
-    ) -> Vec<String> {
-        let params = self.print_docs_and_params(func, params_owned, sig, use_async_sugar);
+    fn print_signature(&mut self, func: &Function, params_owned: bool, sig: &FnSig) -> Vec<String> {
+        let params = self.print_docs_and_params(func, params_owned, sig);
         if let FunctionKind::Constructor(_) = &func.kind {
-            self.push_str(if sig.async_ && !use_async_sugar {
-                " -> impl ::core::future::Future<Output = Self>"
-            } else {
-                " -> Self"
-            })
+            self.push_str(" -> Self")
         } else {
-            self.print_results(&func.results, sig.async_ && !use_async_sugar);
+            self.print_results(&func.result);
         }
         params
     }
@@ -1497,7 +1422,6 @@ pub mod vtable{ordinal} {{
         func: &Function,
         params_owned: bool,
         sig: &FnSig,
-        use_async_sugar: bool,
     ) -> Vec<String> {
         self.rustdoc(&func.docs);
         self.rustdoc_params(&func.params, "Parameters");
@@ -1510,7 +1434,7 @@ pub mod vtable{ordinal} {{
         if sig.unsafe_ {
             self.push_str("unsafe ");
         }
-        if sig.async_ && use_async_sugar {
+        if sig.async_ {
             self.push_str("async ");
         }
         self.push_str("fn ");
@@ -1600,36 +1524,18 @@ pub mod vtable{ordinal} {{
         params
     }
 
-    fn print_results(&mut self, results: &Results, async_: bool) {
+    fn print_results(&mut self, result: &Option<Type>) {
         self.push_str(" -> ");
-        if async_ {
-            self.push_str("impl ::core::future::Future<Output = ");
-        }
 
-        match results.len() {
-            0 => {
+        match result {
+            None => {
                 self.push_str("()");
             }
-            1 => {
-                let ty = results.iter_types().next().unwrap();
+            Some(ty) => {
                 let mode = self.type_mode_for(ty, TypeOwnershipStyle::Owned, "'INVALID");
                 assert!(mode.lifetime.is_none());
                 self.print_ty(ty, mode);
             }
-            _ => {
-                self.push_str("(");
-                for ty in results.iter_types() {
-                    let mode = self.type_mode_for(ty, TypeOwnershipStyle::Owned, "'INVALID");
-                    assert!(mode.lifetime.is_none());
-                    self.print_ty(ty, mode);
-                    self.push_str(", ")
-                }
-                self.push_str(")")
-            }
-        }
-
-        if async_ {
-            self.push_str("> + 'static");
         }
     }
 
@@ -1878,6 +1784,11 @@ pub mod vtable{ordinal} {{
                     }
                 }
             }
+
+            Type::ErrorContext => {
+                let async_support = self.gen.async_support_path();
+                self.push_str(&format!("{async_support}::ErrorContext"));
+            }
         }
     }
 
@@ -1892,14 +1803,19 @@ pub mod vtable{ordinal} {{
     }
 
     pub fn type_path(&self, id: TypeId, owned: bool) -> String {
-        self.type_path_with_name(
-            id,
-            if owned {
-                self.result_name(id)
-            } else {
-                self.param_name(id)
-            },
-        )
+        let full_wit_type_name = full_wit_type_name(self.resolve, id);
+        if let Some(TypeGeneration::Remap(remapped_path)) = self.gen.with.get(&full_wit_type_name) {
+            remapped_path.clone()
+        } else {
+            self.type_path_with_name(
+                id,
+                if owned {
+                    self.result_name(id)
+                } else {
+                    self.param_name(id)
+                },
+            )
+        }
     }
 
     fn type_path_with_name(&self, id: TypeId, name: String) -> String {
@@ -2612,10 +2528,6 @@ pub mod vtable{ordinal} {{
         self.path_from_runtime_module(RuntimeItem::StdAllocModule, "alloc")
     }
 
-    pub fn path_to_async_support(&mut self) -> String {
-        "::wit_bindgen_rt::async_support".into()
-    }
-
     fn path_from_runtime_module(
         &mut self,
         item: RuntimeItem,
@@ -2956,7 +2868,7 @@ impl<'a> {camel}Borrow<'a>{{
     }
 
     fn type_future(&mut self, _id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
-        let async_support = self.path_to_async_support();
+        let async_support = self.gen.async_support_path();
         let mode = TypeMode {
             style: TypeOwnershipStyle::Owned,
             lists_borrowed: false,
@@ -2972,8 +2884,8 @@ impl<'a> {camel}Borrow<'a>{{
         self.push_str(";\n");
     }
 
-    fn type_stream(&mut self, _id: TypeId, name: &str, ty: &Type, docs: &Docs) {
-        let async_support = self.path_to_async_support();
+    fn type_stream(&mut self, _id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
+        let async_support = self.gen.async_support_path();
         let mode = TypeMode {
             style: TypeOwnershipStyle::Owned,
             lists_borrowed: false,
@@ -2984,16 +2896,8 @@ impl<'a> {camel}Borrow<'a>{{
         self.print_generics(mode.lifetime);
         self.push_str(" = ");
         self.push_str(&format!("{async_support}::StreamReader<"));
-        self.print_ty(ty, mode);
+        self.print_optional_ty(ty.as_ref(), mode);
         self.push_str(">");
-        self.push_str(";\n");
-    }
-
-    fn type_error_context(&mut self, _id: TypeId, name: &str, docs: &Docs) {
-        let async_support = self.path_to_async_support();
-        self.rustdoc(docs);
-        self.push_str(&format!("pub type {} = ", name.to_upper_camel_case()));
-        self.push_str(&format!("{async_support}::ErrorContext"));
         self.push_str(";\n");
     }
 
@@ -3086,7 +2990,7 @@ impl<'a, 'b> wit_bindgen_core::AnonymousTypeGenerator<'a> for AnonTypeGenerator<
     }
 
     fn anonymous_type_future(&mut self, _id: TypeId, ty: &Option<Type>, _docs: &Docs) {
-        let async_support = self.interface.path_to_async_support();
+        let async_support = self.interface.gen.async_support_path();
         let mode = TypeMode {
             style: TypeOwnershipStyle::Owned,
             lists_borrowed: false,
@@ -3098,8 +3002,8 @@ impl<'a, 'b> wit_bindgen_core::AnonymousTypeGenerator<'a> for AnonTypeGenerator<
         self.interface.push_str(">");
     }
 
-    fn anonymous_type_stream(&mut self, _id: TypeId, ty: &Type, _docs: &Docs) {
-        let async_support = self.interface.path_to_async_support();
+    fn anonymous_type_stream(&mut self, _id: TypeId, ty: &Option<Type>, _docs: &Docs) {
+        let async_support = self.interface.gen.async_support_path();
         let mode = TypeMode {
             style: TypeOwnershipStyle::Owned,
             lists_borrowed: false,
@@ -3107,14 +3011,8 @@ impl<'a, 'b> wit_bindgen_core::AnonymousTypeGenerator<'a> for AnonTypeGenerator<
         };
         self.interface
             .push_str(&format!("{async_support}::StreamReader<"));
-        self.interface.print_ty(ty, mode);
+        self.interface.print_optional_ty(ty.as_ref(), mode);
         self.interface.push_str(">");
-    }
-
-    fn anonymous_type_error_context(&mut self) {
-        let async_support = self.interface.path_to_async_support();
-        self.interface
-            .push_str(&format!("{async_support}::ErrorContext"));
     }
 }
 

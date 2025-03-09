@@ -12,8 +12,7 @@ use wit_bindgen_core::{
     make_external_component, make_external_symbol, symmetric, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId,
-        Resolve, Results, SizeAlign, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId,
-        WorldKey,
+        Resolve, SizeAlign, Stability, Type, TypeDefKind, TypeId, TypeOwner, WorldId, WorldKey,
     },
     Files, InterfaceGenerator, Source, WorldGenerator,
 };
@@ -971,7 +970,6 @@ impl CppInterfaceGenerator<'_> {
             TypeDefKind::Stream(_) => todo!("generate for stream"),
             TypeDefKind::Handle(_) => todo!("generate for handle"),
             TypeDefKind::Unknown => unreachable!(),
-            TypeDefKind::ErrorContext => todo!(),
         }
     }
 
@@ -987,6 +985,9 @@ impl CppInterfaceGenerator<'_> {
             FunctionKind::Method(i) => Some(i),
             FunctionKind::Static(i) => Some(i),
             FunctionKind::Constructor(i) => Some(i),
+            FunctionKind::AsyncFreestanding => todo!(),
+            FunctionKind::AsyncMethod(_id) => todo!(),
+            FunctionKind::AsyncStatic(_id) => todo!(),
         }
         .map(|i| {
             let ty = &self.resolve.types[*i];
@@ -1217,7 +1218,7 @@ impl CppInterfaceGenerator<'_> {
         func: &Function,
         abi_variant: AbiVariant,
         // import: bool,
-        from_namespace: &Vec<String>,
+        _from_namespace: &Vec<String>,
     ) -> HighlevelSignature {
         let mut res = HighlevelSignature::default();
         // let abi_variant = if import ^ self.gen.opts.host_side() {
@@ -1245,39 +1246,15 @@ impl CppInterfaceGenerator<'_> {
                 && matches!(abi_variant, AbiVariant::GuestExport)
                 && self.gen.opts.host_side())
         {
-            match &func.results {
-                wit_bindgen_core::wit_parser::Results::Named(n) => {
-                    if n.is_empty() {
-                        res.result = "void".into();
-                    } else {
-                        res.result = "std::tuple<".into();
-                        for (i, (_name, ty)) in n.iter().enumerate() {
-                            if i > 0 {
-                                res.result.push_str(", ");
-                            }
-                            res.result.push_str(&self.type_name(
-                                ty,
-                                &res.namespace,
-                                Flavor::Result(abi_variant),
-                            ));
-                        }
-                        res.result.push('>');
-                    }
-                }
-                wit_bindgen_core::wit_parser::Results::Anon(ty) => {
-                    if matches!(is_drop, SpecialMethod::Allocate) {
-                        res.result = OWNED_CLASS_NAME.into();
-                    } else {
-                        res.result =
-                            self.type_name(ty, from_namespace, Flavor::Result(abi_variant));
-                        if matches!(
-                            is_drop,
-                            SpecialMethod::Allocate | SpecialMethod::ResourceRep
-                        ) {
-                            res.result.push('*');
-                        }
-                    }
-                }
+            if let Some(ty) = &func.result {
+                res.result.push_str(&self.type_name(
+                    ty,
+                    &res.namespace,
+                    Flavor::Result(abi_variant),
+                ));
+                res.result.push('>');
+            } else {
+                res.result = "void".into();
             }
             if matches!(abi_variant, AbiVariant::GuestExport)
                 && abi::guest_export_needs_post_return(self.resolve, func)
@@ -1746,6 +1723,9 @@ impl CppInterfaceGenerator<'_> {
                             FunctionKind::Constructor(id) => *id,
                             FunctionKind::Method(id) => *id,
                             FunctionKind::Freestanding => unreachable!(),
+                            FunctionKind::AsyncFreestanding => todo!(),
+                            FunctionKind::AsyncMethod(_id) => todo!(),
+                            FunctionKind::AsyncStatic(_id) => todo!(),
                         }]
                         .clone();
                         let mut namespace = namespace(
@@ -2009,6 +1989,7 @@ impl CppInterfaceGenerator<'_> {
                         (false, Flavor::Result(AbiVariant::GuestImport))
                         | (true, Flavor::Result(AbiVariant::GuestExport)) => (),
                         (_, Flavor::InStruct) => (),
+                        (false, Flavor::BorrowedArgument) => (),
                         (_, _) => todo!(),
                     }
                     typename
@@ -2093,8 +2074,8 @@ impl CppInterfaceGenerator<'_> {
                 TypeDefKind::Stream(_) => todo!(),
                 TypeDefKind::Type(ty) => self.type_name(ty, from_namespace, flavor),
                 TypeDefKind::Unknown => todo!(),
-                TypeDefKind::ErrorContext => todo!(),
             },
+            Type::ErrorContext => todo!(),
         }
     }
 
@@ -2270,7 +2251,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     name: name,
                     kind: FunctionKind::Static(id),
                     params: vec![("self".into(), Type::Id(id))],
-                    results: Results::Named(vec![]),
+                    result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
                 };
@@ -2287,6 +2268,9 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     FunctionKind::Method(mid) => *mid == id,
                     FunctionKind::Static(mid) => *mid == id,
                     FunctionKind::Constructor(mid) => *mid == id,
+                    FunctionKind::AsyncFreestanding => todo!(),
+                    FunctionKind::AsyncMethod(_id) => todo!(),
+                    FunctionKind::AsyncStatic(_id) => todo!(),
                 } {
                     self.generate_function(func, &TypeOwner::Interface(intf), variant);
                     if matches!(func.kind, FunctionKind::Constructor(_))
@@ -2298,7 +2282,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                             kind: FunctionKind::Static(id),
                             // same params as constructor
                             params: func.params.clone(),
-                            results: Results::Anon(Type::Id(id)),
+                            result: Some(Type::Id(id)),
                             docs: Docs::default(),
                             stability: Stability::Unknown,
                         };
@@ -2331,7 +2315,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     name: "[resource-new]".to_string() + &name,
                     kind: FunctionKind::Static(id),
                     params: vec![("self".into(), Type::Id(id))],
-                    results: Results::Anon(id_type),
+                    result: Some(id_type),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
                 };
@@ -2341,7 +2325,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     name: "[resource-rep]".to_string() + &name,
                     kind: FunctionKind::Static(id),
                     params: vec![("id".into(), id_type)],
-                    results: Results::Anon(Type::Id(id)),
+                    result: Some(Type::Id(id)),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
                 };
@@ -2351,7 +2335,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     name: "[resource-drop]".to_string() + &name,
                     kind: FunctionKind::Static(id),
                     params: vec![("id".into(), id_type)],
-                    results: Results::Named(vec![]),
+                    result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
                 };
@@ -2554,11 +2538,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
         todo!()
     }
 
-    fn type_stream(&mut self, _id: TypeId, _name: &str, _ty: &Type, _docs: &Docs) {
-        todo!()
-    }
-
-    fn type_error_context(&mut self, _id: TypeId, _name: &str, _docs: &Docs) {
+    fn type_stream(&mut self, _id: TypeId, _name: &str, _ty: &Option<Type>, _docs: &Docs) {
         todo!()
     }
 }
@@ -2712,8 +2692,9 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             | Type::F32
             | Type::F64
             | Type::Char => false,
-            Type::String => false, // correct?
+            Type::String => false,
             Type::Id(id) => self.has_resources(id),
+            Type::ErrorContext => todo!(),
         }
     }
     fn has_resources(&self, id: &TypeId) -> bool {
@@ -2735,7 +2716,6 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 _ => false,
             },
             TypeDefKind::Unknown => todo!(),
-            TypeDefKind::ErrorContext => todo!(),
         }
     }
 }
@@ -3486,9 +3466,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     Flavor::InStruct
                 };
-                let type_name = self
-                    .gen
-                    .type_name(*payload, &self.namespace, flavor);
+                let type_name = self.gen.type_name(*payload, &self.namespace, flavor);
                 let full_type = if self.gen.gen.opts.autosar {
                     format!("::ara::core::Optional<{type_name}>")
                 } else {
@@ -3756,7 +3734,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::CallInterface { func, .. } => {
                 // dbg!(func);
-                self.let_results(func.results.len(), results);
+                self.let_results(if func.result.is_some() { 1 } else { 0 }, results);
                 let (mut namespace, func_name_h) =
                     self.gen
                         .func_namespace_name(func, !self.gen.gen.opts.host_side(), true);
@@ -3852,20 +3830,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                                 self.src.push_str(&operands[0]);
                             }
                         } else {
-                            self.src.push_str("std::tuple<");
-                            if let Results::Named(params) = &func.results {
-                                for (num, (_name, ty)) in params.iter().enumerate() {
-                                    if num > 0 {
-                                        self.src.push_str(", ");
-                                    }
-                                    let tname =
-                                        self.gen.type_name(ty, &self.namespace, Flavor::InStruct);
-                                    self.src.push_str(&tname);
-                                }
-                            }
-                            self.src.push_str(">(");
-                            self.src.push_str(&operands.join(", "));
-                            self.src.push_str(")");
+                            todo!();
+                            // self.src.push_str("std::tuple<");
+                            // if let Results::Named(params) = &func.results {
+                            //     for (num, (_name, ty)) in params.iter().enumerate() {
+                            //         if num > 0 {
+                            //             self.src.push_str(", ");
+                            //         }
+                            //         let tname =
+                            //             self.gen.type_name(ty, &self.namespace, Flavor::InStruct);
+                            //         self.src.push_str(&tname);
+                            //     }
+                            // }
+                            // self.src.push_str(">(");
+                            // self.src.push_str(&operands.join(", "));
+                            // self.src.push_str(")");
                         }
                         if let Some(CabiPostInformation {
                             module: func_module,
@@ -3976,7 +3955,6 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::StreamLift { .. } => todo!(),
             abi::Instruction::ErrorContextLower { .. } => todo!(),
             abi::Instruction::ErrorContextLift { .. } => todo!(),
-            abi::Instruction::AsyncMalloc { .. } => todo!(),
             abi::Instruction::AsyncCallWasm { .. } => todo!(),
             abi::Instruction::AsyncPostCallInterface { .. } => todo!(),
             abi::Instruction::AsyncCallReturn { .. } => todo!(),

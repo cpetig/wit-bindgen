@@ -157,9 +157,13 @@ impl InterfaceGenerator<'_> {
     /// Returns the function name of the given function.
     pub(crate) fn func_name(&self, func: &Function) -> String {
         match func.kind {
-            FunctionKind::Freestanding => func.name.to_upper_camel_case(),
-            FunctionKind::Static(_) => func.name.replace('.', " ").to_upper_camel_case(),
-            FunctionKind::Method(_) => match self.direction {
+            FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
+                func.name.to_upper_camel_case()
+            }
+            FunctionKind::Static(_) | FunctionKind::AsyncStatic(_) => {
+                func.name.replace('.', " ").to_upper_camel_case()
+            }
+            FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) => match self.direction {
                 Direction::Import => func.name.split('.').last().unwrap().to_upper_camel_case(),
                 Direction::Export => func.name.replace('.', " ").to_upper_camel_case(),
             },
@@ -221,6 +225,7 @@ impl InterfaceGenerator<'_> {
             Type::F64 => "float64".into(),
             Type::Char => "rune".into(),
             Type::String => "string".into(),
+            Type::ErrorContext => todo!(),
             Type::Id(id) => {
                 let ty = &self.resolve().types[*id];
                 match &ty.kind {
@@ -263,6 +268,7 @@ impl InterfaceGenerator<'_> {
             Type::F64 => "F64".into(),
             Type::Char => "Byte".into(),
             Type::String => "String".into(),
+            Type::ErrorContext => todo!(),
             Type::Id(id) => {
                 let ty = &self.resolve.types[*id];
                 // if a type has name, return the name
@@ -322,11 +328,10 @@ impl InterfaceGenerator<'_> {
                     TypeDefKind::Stream(t) => {
                         let mut src = String::new();
                         src.push_str("Stream");
-                        src.push_str(&self.ty_name(t));
+                        src.push_str(&self.optional_ty_name(t.as_ref()));
                         src.push('T');
                         src
                     }
-                    TypeDefKind::ErrorContext => "ErrorContext".to_owned(),
                     TypeDefKind::Handle(Handle::Own(ty)) => {
                         // Currently there is no different between Own and Borrow
                         // in the Go code. They are just represented as
@@ -396,22 +401,9 @@ impl InterfaceGenerator<'_> {
     pub(crate) fn func_results(&mut self, func: &Function) -> String {
         let mut results = String::new();
         results.push(' ');
-        match func.results.len() {
-            0 => {}
-            1 => {
-                results.push_str(&self.get_ty(func.results.iter_types().next().unwrap()));
-                results.push(' ');
-            }
-            _ => {
-                results.push('(');
-                for (i, ty) in func.results.iter_types().enumerate() {
-                    if i > 0 {
-                        results.push_str(", ");
-                    }
-                    results.push_str(&self.get_ty(ty));
-                }
-                results.push_str(") ");
-            }
+        if let Some(ty) = &func.result {
+            results.push_str(&self.get_ty(ty));
+            results.push(' ');
         }
         results
     }
@@ -491,14 +483,13 @@ impl InterfaceGenerator<'_> {
                 src.push_str(", ");
             }
         };
-        match func.results.len() {
-            0 => {
+        match &func.result {
+            None => {
                 // no return
                 src.push_str(")");
             }
-            1 => {
+            Some(return_ty) => {
                 // one return
-                let return_ty = func.results.iter_types().next().unwrap();
                 if is_arg_by_pointer(self.resolve, return_ty) {
                     add_param_seperator(src);
                     self.c_param(src, "ret", return_ty, direction);
@@ -509,21 +500,6 @@ impl InterfaceGenerator<'_> {
                         src.push_str(&format!(" {ty}", ty = self.gen.get_c_ty(return_ty)));
                     }
                 }
-            }
-            _n => {
-                // multi-return
-                add_param_seperator(src);
-                for (i, ty) in func.results.iter_types().enumerate() {
-                    if i > 0 {
-                        src.push_str(", ");
-                    }
-                    if matches!(direction, Direction::Import) {
-                        src.push_str(&format!("&ret{i}"));
-                    } else {
-                        src.push_str(&format!("ret{i} *{ty}", i = i, ty = self.gen.get_c_ty(ty)));
-                    }
-                }
-                src.push_str(")");
             }
         }
     }
@@ -678,7 +654,6 @@ impl InterfaceGenerator<'_> {
             }
             TypeDefKind::Future(_) => todo!("anonymous_type for future"),
             TypeDefKind::Stream(_) => todo!("anonymous_type for stream"),
-            TypeDefKind::ErrorContext => todo!("anonymous_type for error-context"),
             TypeDefKind::Unknown => unreachable!(),
         }
     }
@@ -772,13 +747,12 @@ impl InterfaceGenerator<'_> {
         ret: Vec<String>,
     ) {
         let invoke = self.c_func_sig(resolve, func, Direction::Import);
-        match func.results.len() {
-            0 => {
+        match &func.result {
+            None => {
                 self.src.push_str(&invoke);
                 self.src.push_str("\n");
             }
-            1 => {
-                let return_ty = func.results.iter_types().next().unwrap();
+            Some(return_ty) => {
                 if is_arg_by_pointer(self.resolve, return_ty) {
                     let c_ret_type = self.gen.get_c_ty(return_ty);
                     self.src.push_str(&format!("var ret {c_ret_type}\n"));
@@ -789,24 +763,6 @@ impl InterfaceGenerator<'_> {
                 }
                 self.src.push_str(lift_src);
                 self.src.push_str(&format!("return {ret}\n", ret = ret[0]));
-            }
-            _n => {
-                for (i, ty) in func.results.iter_types().enumerate() {
-                    let ty_name = self.gen.get_c_ty(ty);
-                    let var_name = format!("ret{i}");
-                    self.src.push_str(&format!("var {var_name} {ty_name}\n"));
-                }
-                self.src.push_str(&invoke);
-                self.src.push_str("\n");
-                self.src.push_str(lift_src);
-                self.src.push_str("return ");
-                for (i, _) in func.results.iter_types().enumerate() {
-                    if i > 0 {
-                        self.src.push_str(", ");
-                    }
-                    self.src.push_str(&format!("lift_ret{i}"));
-                }
-                self.src.push_str("\n");
             }
         }
     }
@@ -889,12 +845,11 @@ impl InterfaceGenerator<'_> {
             };
 
             // prepare ret
-            match func.results.len() {
-                0 => {
+            match &func.result {
+                None => {
                     src.push_str(&format!("{invoke}\n"));
                 }
-                1 => {
-                    let return_ty = func.results.iter_types().next().unwrap();
+                Some(return_ty) => {
                     src.push_str(&format!("result := {invoke}\n"));
                     src.push_str(&lower_src);
 
@@ -903,19 +858,6 @@ impl InterfaceGenerator<'_> {
                         src.push_str(&format!("*ret = {lower_result}\n"));
                     } else {
                         src.push_str(&format!("return {ret}\n", ret = &ret[0]));
-                    }
-                }
-                _ => {
-                    for i in 0..func.results.len() {
-                        if i > 0 {
-                            src.push_str(", ")
-                        }
-                        src.push_str(&format!("result{i}"));
-                    }
-                    src.push_str(&format!(" := {invoke}\n"));
-                    src.push_str(&lower_src);
-                    for (i, lower_result) in ret.iter().enumerate() {
-                        src.push_str(&format!("*ret{i} = {lower_result}\n"));
                     }
                 }
             };
@@ -1271,13 +1213,8 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
         todo!()
     }
 
-    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
         _ = (id, name, ty, docs);
-        todo!()
-    }
-
-    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
-        _ = (id, name, docs);
         todo!()
     }
 

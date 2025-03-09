@@ -668,6 +668,7 @@ impl InterfaceGenerator<'_> {
             Type::F32 => "float".into(),
             Type::F64 => "double".into(),
             Type::String => "String".into(),
+            Type::ErrorContext => todo!("error context type name"),
             Type::Id(id) => {
                 let ty = &self.resolve.types[*id];
                 match &ty.kind {
@@ -792,23 +793,9 @@ impl InterfaceGenerator<'_> {
     fn sig_string(&mut self, func: &Function, qualifier: bool) -> String {
         let name = func.name.to_java_ident();
 
-        let result_type = match func.results.len() {
-            0 => "void".into(),
-            1 => {
-                self.type_name_with_qualifier(func.results.iter_types().next().unwrap(), qualifier)
-            }
-            count => {
-                self.gen.tuple_counts.insert(count);
-                format!(
-                    "{}Tuple{count}<{}>",
-                    self.gen.qualifier(),
-                    func.results
-                        .iter_types()
-                        .map(|ty| self.type_name_boxed(ty, qualifier))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
+        let result_type = match &func.result {
+            None => "void".into(),
+            Some(ty) => self.type_name_with_qualifier(ty, qualifier),
         };
 
         let params = func
@@ -1075,13 +1062,8 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
         todo!()
     }
 
-    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs) {
+    fn type_stream(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs) {
         _ = (id, name, ty, docs);
-        todo!()
-    }
-
-    fn type_error_context(&mut self, id: TypeId, name: &str, docs: &Docs) {
-        _ = (id, name, docs);
         todo!()
     }
 
@@ -1783,47 +1765,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::CallInterface { func, .. } => {
-                let (assignment, destructure) = match func.results.len() {
-                    0 => (String::new(), String::new()),
-                    1 => {
-                        let ty = self
-                            .gen
-                            .type_name(func.results.iter_types().next().unwrap());
+                let (assignment, destructure) = match &func.result {
+                    None => (String::new(), String::new()),
+                    Some(ty) => {
+                        let ty = self.gen.type_name(ty);
                         let result = self.locals.tmp("result");
                         let assignment = format!("{ty} {result} = ");
                         results.push(result);
                         (assignment, String::new())
-                    }
-                    count => {
-                        self.gen.gen.tuple_counts.insert(count);
-                        let ty = format!(
-                            "{}Tuple{count}<{}>",
-                            self.gen.gen.qualifier(),
-                            func.results
-                                .iter_types()
-                                .map(|ty| self.gen.type_name_boxed(ty, false))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        );
-
-                        let result = self.locals.tmp("result");
-                        let assignment = format!("{ty} {result} = ");
-
-                        let destructure = func
-                            .results
-                            .iter_types()
-                            .enumerate()
-                            .map(|(index, ty)| {
-                                let ty = self.gen.type_name(ty);
-                                let my_result = self.locals.tmp("result");
-                                let assignment = format!("{ty} {my_result} = {result}.f{index};");
-                                results.push(my_result);
-                                assignment
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
-
-                        (assignment, destructure)
                     }
                 };
 
@@ -2068,8 +2017,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.extend(operands.iter().take(*amt).map(|v| v.clone()));
             }
 
-            Instruction::AsyncMalloc { .. }
-            | Instruction::AsyncPostCallInterface { .. }
+            Instruction::AsyncPostCallInterface { .. }
             | Instruction::AsyncCallReturn { .. }
             | Instruction::FutureLower { .. }
             | Instruction::FutureLift { .. }

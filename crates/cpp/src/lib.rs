@@ -2070,7 +2070,11 @@ impl CppInterfaceGenerator<'_> {
                         }
                     }
                 }
-                TypeDefKind::Future(_) => todo!(),
+                TypeDefKind::Future(ty) => {
+                    "std::future<".to_string()
+                        + &self.optional_type_name(ty.as_ref(), from_namespace, flavor)
+                        + ">"
+                }
                 TypeDefKind::Stream(_) => todo!(),
                 TypeDefKind::Type(ty) => self.type_name(ty, from_namespace, flavor),
                 TypeDefKind::Unknown => todo!(),
@@ -2982,7 +2986,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             operands[0]
                         );
                     }
-                    format!("{string_view}((char const*)({}), {len})", operands[0])
+                    format!("std::string_view((char const*)({}), {len})", operands[0])
                 } else {
                     format!("wit::string((char const*)({}), {len})", operands[0])
                 };
@@ -3084,7 +3088,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 results.push(result);
             }
             abi::Instruction::HandleLower {
-                handle: Handle::Own(ty),
+                handle: Handle::Own(_ty),
                 ..
             } => {
                 let op = &operands[0];
@@ -3098,32 +3102,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         results.push(format!("{op}.get_handle()"));
                     }
                 } else {
-                    let tp = self.gen.resolve.types.get(*ty).map(|td| td.owner);
-                    let if_id = match tp {
-                        Some(TypeOwner::Interface(id)) => Some(id),
-                        Some(_) | None => None,
-                    };
-                    println!(
-                        "{:?} if {:?} {:?}",
-                        self.gen
-                            .resolve
-                            .types
-                            .get(*ty)
-                            .map_or(None, |o| o.name.clone()),
-                        tp,
-                        if_id.map_or(None, |ifc| self
-                            .gen
-                            .resolve
-                            .interfaces
-                            .get(ifc)
-                            .and_then(|i| i.name.clone()))
-                    );
-                    if matches!(self.variant, AbiVariant::GuestImport)
-                        || (self.gen.gen.opts.symmetric
-                            && if_id.map_or(false, |owner| {
-                                self.gen.gen.imported_interfaces.contains(&owner)
-                            }))
-                    {
+                    if matches!(self.variant, AbiVariant::GuestImport) {
                         results.push(format!("{op}.into_handle()"));
                     } else {
                         results.push(format!("{op}.release()->handle"));
@@ -3584,6 +3563,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     &self.namespace,
                     Flavor::InStruct,
                 );
+                let full_type = format!("std::expected<{ok_type}, {err_type}>",);
+                let err_type = "std::unexpected";
+                let operand = &operands[0];
+
+                let tmp = self.tmp();
+                let resultname = self.tempname("result", tmp);
                 if self.gen.gen.opts.autosar {
                     let full_type = format!("::ara::core::Result<{ok_type}, {err_type}>",);
                     let operand = &operands[0];
@@ -3592,13 +3577,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     uwriteln!(
                         self.src,
                         "::ara::core::Optional<{full_type} > {resultname};
-                        if ({operand}==0) {{
-                            {ok}
-                            {resultname}.emplace({full_type}::FromValue({ok_result}));
-                        }} else {{
-                            {err}
-                            {resultname}.emplace({full_type}::FromError({err_result}));
-                        }}"
+                                if ({operand}==0) {{
+                                    {ok}
+                                    {resultname}.emplace({full_type}::FromValue({ok_result}));
+                                }} else {{
+                                    {err}
+                                    {resultname}.emplace({full_type}::FromError({err_result}));
+                                }}"
                     );
                     results.push(format!("std::move(*std::move({resultname}))"));
                 } else {
@@ -3611,13 +3596,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     uwriteln!(
                         self.src,
                         "{full_type} {resultname};
-                        if ({operand}==0) {{
-                            {ok}
-                            {resultname}.emplace({ok_result});
-                        }} else {{
-                            {err}
-                            {resultname}={err_type}{{{err_result}}};
-                        }}"
+                                if ({operand}==0) {{
+                                    {ok}
+                                    {resultname}.emplace({ok_result});
+                                }} else {{
+                                    {err}
+                                    {resultname}={err_type}{{{err_result}}};
+                                }}"
                     );
                     results.push(resultname);
                 }
@@ -3949,15 +3934,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.store(ptr_type, *offset, operands)
             }
             abi::Instruction::LengthStore { offset } => self.store("size_t", *offset, operands),
-            abi::Instruction::FutureLower { .. } => todo!(),
-            abi::Instruction::FutureLift { .. } => todo!(),
+            abi::Instruction::FutureLower { .. } => {
+                self.src.push_str("future_lower()");
+                results.push(String::from("future"));
+            }
+            abi::Instruction::FutureLift { .. } => {
+                self.src.push_str("future_lift()");
+                results.push(String::from("future"));
+            }
             abi::Instruction::StreamLower { .. } => todo!(),
             abi::Instruction::StreamLift { .. } => todo!(),
             abi::Instruction::ErrorContextLower { .. } => todo!(),
             abi::Instruction::ErrorContextLift { .. } => todo!(),
-            abi::Instruction::AsyncCallWasm { .. } => todo!(),
-            abi::Instruction::AsyncPostCallInterface { .. } => todo!(),
-            abi::Instruction::AsyncCallReturn { .. } => todo!(),
             abi::Instruction::Flush { amt } => {
                 for i in 0..*amt {
                     let tmp = self.tmp();
@@ -3966,6 +3954,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results.push(result);
                 }
             }
+            abi::Instruction::AsyncTaskReturn { .. } => todo!(),
         }
     }
 

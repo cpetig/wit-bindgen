@@ -1657,11 +1657,11 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::List(_) => self.write_list_to_memory(ty, addr, offset),
 
                 TypeDefKind::Future(_) | TypeDefKind::Stream(_) | TypeDefKind::Handle(_) => {
-                    if matches!(self.lift_lower, LiftLower::Symmetric) {
-                        self.lower_and_emit(ty, addr, &PointerStore { offset });
-                    } else {
-                        self.lower_and_emit(ty, addr, &I32Store { offset });
-                    }
+                    // if self.config.symmetric {
+                    //     self.lower_and_emit(ty, addr, &PointerStore { offset });
+                    // } else {
+                    self.lower_and_emit(ty, addr, &I32Store { offset });
+                    // }
                 }
 
                 // Decompose the record into its components and then write all

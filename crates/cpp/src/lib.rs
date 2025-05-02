@@ -4006,6 +4006,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
             }
             abi::Instruction::AsyncTaskReturn { .. } => todo!(),
+            abi::Instruction::DropHandle { .. } => todo!(),
         }
     }
 

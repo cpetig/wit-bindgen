@@ -5,8 +5,11 @@ use std::{
     task::{Context, Poll, RawWaker, RawWakerVTable},
 };
 
-use crate::module::symmetric::runtime::symmetric_executor::{
-    self, CallbackState, EventGenerator, EventSubscription,
+use crate::{
+    module::symmetric::runtime::symmetric_executor::{
+        CallbackState, EventGenerator, EventSubscription,
+    },
+    EventSubscription2,
 };
 
 pub use future_support::{FutureReader, FutureWriter};
@@ -78,7 +81,7 @@ pub async fn wait_on(wait_for: EventSubscription) {
     .await
 }
 
-extern "C" fn symmetric_callback(obj: *mut ()) -> symmetric_executor::CallbackState {
+extern "C" fn symmetric_callback(obj: *mut ()) -> CallbackState {
     match unsafe { poll(obj.cast()) } {
         Poll::Ready(_) => CallbackState::Ready,
         Poll::Pending => {

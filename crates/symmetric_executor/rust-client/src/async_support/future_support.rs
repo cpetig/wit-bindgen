@@ -12,20 +12,20 @@ use crate::symmetric_stream::{Address, Buffer};
 
 use super::{wait_on, Stream};
 
-//use super::Future;
-
 pub struct FutureWriter<T: 'static> {
     handle: Stream,
-    future: Option<Pin<Box<dyn Future<Output = ()> + 'static + Send>>>,
+    // future: Option<Pin<Box<dyn Future<Output = ()> + 'static + Send>>>,
     _phantom: PhantomData<T>,
+    lower: unsafe fn(value: T, dst: *mut u8),
 }
 
 impl<T> FutureWriter<T> {
-    pub fn new(handle: Stream) -> Self {
+    pub fn new(handle: Stream, lower: unsafe fn(value: T, dst: *mut u8)) -> Self {
         Self {
             handle,
-            future: None,
+            // future: None,
             _phantom: PhantomData,
+            lower,
         }
     }
 
@@ -56,14 +56,15 @@ impl<T: Unpin + Send> Future for CancelableWrite<T> {
         if me.future.is_none() {
             let handle = me.writer.handle.clone();
             let data = me.data.take().unwrap();
+            let lower = me.writer.lower;
             me.future = Some(Box::pin(async move {
                 if !handle.is_ready_to_write() {
                     let subsc = handle.write_ready_subscribe();
                     wait_on(subsc).await;
                 }
                 let buffer = handle.start_writing();
-                let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T>;
-                unsafe { (*addr).write(data) };
+                let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T> as *mut u8;
+                unsafe { (lower)(data, addr) };
                 buffer.set_size(1);
                 handle.finish_writing(Some(buffer));
             }) as Pin<Box<dyn Future<Output = _> + Send>>);
@@ -88,14 +89,16 @@ pub struct FutureReader<T: 'static> {
     handle: Stream,
     // future: Option<Pin<Box<dyn Future<Output = Option<Vec<T>>> + 'static + Send>>>,
     _phantom: PhantomData<T>,
+    lift: unsafe fn(src: *const u8) -> T,
 }
 
 impl<T> FutureReader<T> {
-    pub fn new(handle: Stream) -> Self {
+    pub fn new(handle: Stream, lift: unsafe fn(src: *const u8) -> T) -> Self {
         Self {
             handle,
             // future: None,
             _phantom: PhantomData,
+            lift,
         }
     }
 
@@ -106,8 +109,8 @@ impl<T> FutureReader<T> {
         }
     }
 
-    pub unsafe fn from_handle(handle: *mut u8) -> Self {
-        Self::new(unsafe { Stream::from_handle(handle as usize) })
+    pub unsafe fn from_handle(handle: *mut u8, lift: unsafe fn(src: *const u8) -> T) -> Self {
+        Self::new(unsafe { Stream::from_handle(handle as usize) }, lift)
     }
 
     pub fn take_handle(&self) -> *mut () {
@@ -123,6 +126,7 @@ impl<T: Unpin + Sized + Send> Future for CancelableRead<T> {
 
         if me.future.is_none() {
             let handle = me.reader.handle.clone();
+            let lift = me.reader.lift;
             me.future = Some(Box::pin(async move {
                 let mut buffer0 = MaybeUninit::<T>::uninit();
                 let address = unsafe { Address::from_handle(&mut buffer0 as *mut _ as usize) };
@@ -135,7 +139,7 @@ impl<T: Unpin + Sized + Send> Future for CancelableRead<T> {
                 if let Some(buffer2) = buffer2 {
                     let count = buffer2.get_size();
                     if count > 0 {
-                        Some(unsafe { buffer0.assume_init() })
+                        Some(unsafe { (lift)(buffer2.get_address().take_handle() as *const u8) })
                     } else {
                         None
                     }
@@ -177,8 +181,14 @@ impl<T: Send + Unpin + Sized> IntoFuture for FutureReader<T> {
     }
 }
 
-pub fn new_future<T: 'static>() -> (FutureWriter<T>, FutureReader<T>) {
+pub fn new_future<T: 'static>(
+    lower: unsafe fn(value: T, dst: *mut u8),
+    lift: unsafe fn(src: *const u8) -> T,
+) -> (FutureWriter<T>, FutureReader<T>) {
     let handle = Stream::new();
     let handle2 = handle.clone();
-    (FutureWriter::new(handle), FutureReader::new(handle2))
+    (
+        FutureWriter::new(handle, lower),
+        FutureReader::new(handle2, lift),
+    )
 }

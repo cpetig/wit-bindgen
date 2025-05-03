@@ -1,3 +1,1 @@
-mod test;
-
-include!("../runner.rs");
+../../../../../tests/runtime-async/async/stream-string/runner.rs

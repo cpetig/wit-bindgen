@@ -161,6 +161,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "stream-string"
+version = "0.1.0"
+dependencies = [
+ "mini-bindgen",
+ "symmetric_executor",
+ "symmetric_stream",
+ "wit-bindgen-symmetric-rt",
+]
+
+[[package]]
 name = "symmetric_executor"
 version = "0.1.0"
 dependencies = [
@@ -179,18 +189,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "symmetric_stream_string"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "mini-bindgen",
- "symmetric_executor",
- "symmetric_stream",
- "test",
- "wit-bindgen-symmetric-rt",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -199,14 +197,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "test"
-version = "0.1.0"
-dependencies = [
- "mini-bindgen",
- "wit-bindgen-symmetric-rt",
 ]
 
 [[package]]

@@ -281,6 +281,10 @@ pub struct Opts {
     #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
     pub symmetric: bool,
 
+    /// Library to link to for imports
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub link_name: Option<String>,
+
     /// Flip import and export on world (used for symmetric testing)
     #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
     pub invert_direction: bool,
@@ -480,7 +484,7 @@ impl RustWasm {
             let construct = if self.opts.symmetric {
                 format!("{async_support}::future_support::new_future()")
             } else {
-                format!("unsafe {{ {async_support}::future_new::<T>(T::VTABLE) }}")
+                format!("unsafe {{ {async_support}::future_new::<T>(default, T::VTABLE) }}")
             };
             self.src.push_str(&format!(
                 "\
@@ -496,7 +500,10 @@ pub mod wit_future {{
             self.src.push_str(&format!(
                 "\
     /// Creates a new Component Model `future` with the specified payload type.
-    pub fn new<T: FuturePayload>() -> ({async_support}::FutureWriter<T>, {async_support}::FutureReader<T>) {{
+    ///
+    /// The `default` function provided computes the default value to be sent in
+    /// this future if no other value was otherwise sent.
+    pub fn new<T: FuturePayload>(default: fn() -> T) -> ({async_support}::FutureWriter<T>, {async_support}::FutureReader<T>) {{
         {construct}
     }}
 }}
@@ -1732,6 +1739,38 @@ fn wasm_type(ty: WasmType) -> &'static str {
         // [documented]: https://github.com/rust-lang/rfcs/blob/master/text/3559-rust-has-provenance.md#reference-level-explanation
         WasmType::PointerOrI64 => "::core::mem::MaybeUninit::<u64>",
     }
+}
+
+fn declare_import(
+    //    module_prefix: &str,
+    wasm_import_module: &str,
+    wasm_import_name: &str,
+    rust_name: &str,
+    params: &[WasmType],
+    results: &[WasmType],
+) -> String {
+    let mut sig = "(".to_owned();
+    for param in params.iter() {
+        sig.push_str("_: ");
+        sig.push_str(wasm_type(*param));
+        sig.push_str(", ");
+    }
+    sig.push(')');
+    assert!(results.len() < 2);
+    for result in results.iter() {
+        sig.push_str(" -> ");
+        sig.push_str(wasm_type(*result));
+    }
+    format!(
+        "
+            #[link(wasm_import_module = \"{wasm_import_module}\")]
+            unsafe extern \"C\" {{
+                #[allow(non_snake_case)]
+                #[cfg_attr(target_arch = \"wasm32\", link_name = \"{wasm_import_name}\")]
+                fn {rust_name}{sig};
+            }}
+        "
+    )
 }
 
 fn int_repr(repr: Int) -> &'static str {

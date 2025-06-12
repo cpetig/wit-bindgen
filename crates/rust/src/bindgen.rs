@@ -1,4 +1,4 @@
-use crate::{int_repr, to_rust_ident, wasm_type, Identifier, InterfaceGenerator, RustFlagsRepr};
+use crate::{int_repr, to_rust_ident, Identifier, InterfaceGenerator, RustFlagsRepr};
 use heck::*;
 use std::fmt::Write as _;
 use std::mem;
@@ -59,34 +59,20 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         params: &[WasmType],
         results: &[WasmType],
     ) -> String {
-        // Define the actual function we're calling inline
-        // let tmp = self.tmp();
-        let mut sig = "(".to_owned();
-        for param in params.iter() {
-            sig.push_str("_: ");
-            sig.push_str(wasm_type(*param));
-            sig.push_str(", ");
+        let rust_name = String::from(module_prefix)
+            + &make_external_symbol(self.wasm_import_module, name, AbiVariant::GuestImport);
+        if let Some(library) = &self.r#gen.r#gen.opts.link_name {
+            self.src
+                .push_str(&format!("\n#[link(name = \"{}\")]", library));
         }
-        sig.push(')');
-        assert!(results.len() < 2);
-        for result in results.iter() {
-            sig.push_str(" -> ");
-            sig.push_str(wasm_type(*result));
-        }
-        let module_name = self.wasm_import_module;
-        let export_name = String::from(module_prefix)
-            + &make_external_symbol(module_name, name, AbiVariant::GuestImport);
-        uwrite!(
-            self.src,
-            "
-                #[link(wasm_import_module = \"{module_prefix}{module_name}\")]
-                unsafe extern \"C\" {{
-                    #[cfg_attr(target_arch = \"wasm32\", link_name = \"{name}\")]
-                    fn {export_name}{sig};
-                }}
-            "
-        );
-        export_name
+        self.src.push_str(&crate::declare_import(
+            self.wasm_import_module,
+            name,
+            &rust_name,
+            params,
+            results,
+        ));
+        rust_name
     }
 
     fn let_results(&mut self, amt: usize, results: &mut Vec<String>) {
@@ -790,7 +776,6 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::StringLift => {
-                let vec = self.r#gen.path_to_vec();
                 let tmp = self.tmp();
                 let len = format!("len{}", tmp);
                 uwriteln!(self.src, "let {len} = {};", operands[1]);
@@ -802,6 +787,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     );
                     results.push(format!("string{tmp}"));
                 } else {
+                    let vec = self.r#gen.path_to_vec();
                     if self.r#gen.r#gen.opts.symmetric {
                         // symmetric must not access zero page memory
                         uwriteln!(
@@ -857,13 +843,13 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     assert!(self.r#gen.needs_deallocate);
                     //}
                     self.push_str(&format!(
-                        "if !ptr.is_null() {{ _deallocate.push((ptr, {layout})); }}\n"
+                        "if !{result}.is_null() {{ _deallocate.push(({result}, {layout})); }}\n"
                     ));
                 }
-                self.push_str(&format!(
-                    "if ptr.is_null()\n{{\n{alloc}::handle_alloc_error({layout});\n}}\nptr\n}}",
-                ));
-                self.push_str("else {\n::core::ptr::null_mut()\n};\n");
+                // self.push_str(&format!(
+                //     "if ptr.is_null()\n{{\n{alloc}::handle_alloc_error({layout});\n}}\nptr\n}}",
+                // ));
+                // self.push_str("else {\n::core::ptr::null_mut()\n};\n");
                 if realloc.is_none() {
                     // If an allocator isn't requested then we must clean up the
                     // allocation ourselves since our callee isn't taking

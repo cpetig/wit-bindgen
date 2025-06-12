@@ -14,6 +14,7 @@ use wit_component::{ComponentEncoder, StringEncoding};
 
 mod c;
 mod config;
+mod cpp;
 mod csharp;
 mod custom;
 mod moonbit;
@@ -103,6 +104,10 @@ pub struct Opts {
     /// Passing `--lang rust` will only test Rust for example.
     #[clap(short, long, required = true, value_delimiter = ',')]
     languages: Vec<String>,
+
+    /// Generate code for symmetric ABI and compile to native
+    #[clap(short, long)]
+    symmetric: bool,
 }
 
 impl Opts {
@@ -191,6 +196,7 @@ enum Language {
     Rust,
     C,
     Cpp,
+    Cpp17,
     Wat,
     Csharp,
     MoonBit,
@@ -408,10 +414,10 @@ impl Runner<'_> {
             .and_then(|s| s.to_str())
             .context("non-utf-8 path extension")?;
 
-        let language = match extension {
+        let mut language = match extension {
             "rs" => Language::Rust,
             "c" => Language::C,
-            "cpp" => Language::Cpp,
+            "cpp" => Language::Cpp17,
             "wat" => Language::Wat,
             "cs" => Language::Csharp,
             "mbt" => Language::MoonBit,
@@ -427,6 +433,33 @@ impl Runner<'_> {
         };
         assert!(bindgen.args.is_empty());
         bindgen.args = config.args.into();
+        let mut has_link_name = false;
+        if language == Language::Cpp17 {
+            bindgen.args.retain(|elem| {
+                if elem == "--language=Cpp" {
+                    language = Language::Cpp;
+                    false
+                } else {
+                    if elem.starts_with("--link_name") {
+                        has_link_name = true;
+                    }
+                    true
+                }
+            });
+        }
+
+        if self.is_symmetric() && matches!(kind, Kind::Runner) && !has_link_name {
+            match &language {
+                Language::Rust => {
+                    bindgen.args.push(String::from("--link-name"));
+                    bindgen.args.push(String::from("test-rust"));
+                }
+                _ => {
+                    println!("Symmetric: --link_name missing from language {language:?}");
+                    // todo!();
+                }
+            }
+        }
 
         Ok(Component {
             name: path.file_stem().unwrap().to_str().unwrap().to_string(),
@@ -445,12 +478,12 @@ impl Runner<'_> {
         let all_languages = self.all_languages();
 
         let mut prepared = HashSet::new();
-        let mut prepare = |lang: &Language| -> Result<()> {
+        let mut prepare = |lang: &Language, name: &str| -> Result<()> {
             if !self.include_language(lang) || !prepared.insert(lang.clone()) {
                 return Ok(());
             }
             lang.obj()
-                .prepare(self)
+                .prepare(self, name)
                 .with_context(|| format!("failed to prepare language {lang}"))
         };
 
@@ -458,12 +491,12 @@ impl Runner<'_> {
             match &test.kind {
                 TestKind::Runtime(c) => {
                     for component in c {
-                        prepare(&component.language)?
+                        prepare(&component.language, &test.name)?
                     }
                 }
                 TestKind::Codegen(_) => {
                     for lang in all_languages.iter() {
-                        prepare(lang)?;
+                        prepare(lang, &test.name)?;
                     }
                 }
             }
@@ -511,6 +544,10 @@ impl Runner<'_> {
                 let mut args = Vec::new();
                 for arg in language.obj().default_bindgen_args_for_codegen() {
                     args.push(arg.to_string());
+                }
+
+                if self.is_symmetric() {
+                    args.push(String::from("--symmetric"))
                 }
 
                 codegen_tests.push((
@@ -647,10 +684,23 @@ impl Runner<'_> {
 
         println!("Compiling {} components:", components.len());
 
+        //     if self.is_symmetric() {
+        //     for (_, comp) in tests.iter_mut() {
+        //         match comp.kind {
+        //             Kind::Runner => {
+        //                 comp.bindgen.args.push(String::from("--"));
+        //                 // TODO: proper language handling
+        //                 comp.bindgen.args.push(String::from("test-rust"));
+        //             }
+        //             Kind::Test => (),
+        //         }
+        //     }
+        // }
+
         // In parallel compile all sources to their binary component
         // form.
         let compile_results = components
-            .par_iter()
+            .iter()
             .map(|(test, component)| {
                 let path = self
                     .compile_component(test, component)
@@ -795,7 +845,14 @@ impl Runner<'_> {
         let artifacts_dir = root_dir.join(format!("{}-{}", component.name, component.language));
         let _ = fs::remove_dir_all(&artifacts_dir);
         let bindings_dir = artifacts_dir.join("bindings");
-        let output = root_dir.join(format!("{}-{}.wasm", component.name, component.language));
+        let output = root_dir.join(if self.is_symmetric() {
+            match &component.kind {
+                Kind::Runner => format!("{}-{}_exe", component.name, component.language),
+                Kind::Test => format!("lib{}-{}.so", component.name, component.language),
+            }
+        } else {
+            format!("{}-{}.wasm", component.name, component.language)
+        });
         component
             .language
             .obj()
@@ -808,15 +865,17 @@ impl Runner<'_> {
         };
         component.language.obj().compile(self, &result)?;
 
-        // Double-check the output is indeed a component and it's indeed valid.
-        let wasm = fs::read(&output)
-            .with_context(|| format!("failed to read output wasm file {output:?}"))?;
-        if !wasmparser::Parser::is_component(&wasm) {
-            bail!("output file {output:?} is not a component");
+        if !self.is_symmetric() {
+            // Double-check the output is indeed a component and it's indeed valid.
+            let wasm = fs::read(&output)
+                .with_context(|| format!("failed to read output wasm file {output:?}"))?;
+            if !wasmparser::Parser::is_component(&wasm) {
+                bail!("output file {output:?} is not a component");
+            }
+            wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all())
+                .validate_all(&wasm)
+                .with_context(|| format!("compiler produced invalid wasm file {output:?}"))?;
         }
-        wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all())
-            .validate_all(&wasm)
-            .with_context(|| format!("compiler produced invalid wasm file {output:?}"))?;
 
         Ok(output)
     }
@@ -1069,6 +1128,10 @@ status: {}",
             std::process::exit(1);
         }
     }
+
+    fn is_symmetric(&self) -> bool {
+        self.opts.symmetric
+    }
 }
 
 struct StepResult<'a> {
@@ -1126,7 +1189,17 @@ trait LanguageMethods {
 
     /// Performs any one-time preparation necessary for this language, such as
     /// downloading or caching dependencies.
-    fn prepare(&self, runner: &mut Runner<'_>) -> Result<()>;
+    fn prepare(&self, runner: &mut Runner<'_>, name: &str) -> Result<()>;
+
+    /// Add some files to the generated directory _before_ calling bindgen
+    fn generate_bindings_prepare(
+        &self,
+        _runner: &Runner<'_>,
+        _bindgen: &Bindgen,
+        _dir: &Path,
+    ) -> Result<()> {
+        Ok(())
+    }
 
     /// Generates bindings for `component` into `dir`.
     ///
@@ -1136,6 +1209,7 @@ trait LanguageMethods {
             Some(name) => name,
             None => return Ok(()),
         };
+        self.generate_bindings_prepare(runner, bindgen, dir)?;
         let mut cmd = Command::new(runner.wit_bindgen);
         cmd.arg(name)
             .arg(&bindgen.wit_path)
@@ -1143,6 +1217,9 @@ trait LanguageMethods {
             .arg(format!("%{}", bindgen.world))
             .arg("--out-dir")
             .arg(dir);
+        if runner.is_symmetric() {
+            cmd.arg("--symmetric");
+        }
 
         match bindgen.wit_config.default_bindgen_args {
             Some(true) | None => {
@@ -1201,6 +1278,7 @@ impl Language {
         Language::Rust,
         Language::C,
         Language::Cpp,
+        Language::Cpp17,
         Language::Wat,
         Language::Csharp,
         Language::MoonBit,
@@ -1211,6 +1289,7 @@ impl Language {
             Language::Rust => &rust::Rust,
             Language::C => &c::C,
             Language::Cpp => &c::Cpp,
+            Language::Cpp17 => &cpp::Cpp17,
             Language::Wat => &wat::Wat,
             Language::Csharp => &csharp::Csharp,
             Language::MoonBit => &moonbit::MoonBit,

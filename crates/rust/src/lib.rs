@@ -405,11 +405,7 @@ impl RustWasm {
     }
 
     fn async_support_path(&self) -> String {
-        if self.opts.symmetric {
-            "wit_bindgen_symmetric_rt::async_support".into()
-        } else {
-            format!("{}::async_support", self.runtime_path())
-        }
+        format!("{}::async_support", self.runtime_path())
     }
 
     fn name_interface(
@@ -472,20 +468,13 @@ impl RustWasm {
 
         if !self.future_payloads.is_empty() {
             let async_support = self.async_support_path();
-            let vtable_def = if self.opts.symmetric {
-                "".into()
-            } else {
-                format!(
-                    "
+            let vtable_def = format!(
+                "
         const VTABLE: &'static {async_support}::FutureVtable<Self>;
     "
-                )
-            };
-            let construct = if self.opts.symmetric {
-                format!("{async_support}::future_support::new_future()")
-            } else {
-                format!("unsafe {{ {async_support}::future_new::<T>(default, T::VTABLE) }}")
-            };
+            );
+            let construct =
+                format!("unsafe {{ {async_support}::future_new::<T>(default, T::VTABLE) }}");
             self.src.push_str(&format!(
                 "\
 pub mod wit_future {{
@@ -513,17 +502,14 @@ pub mod wit_future {{
 
         if !self.stream_payloads.is_empty() {
             let async_support = self.async_support_path();
-            let vtable_def = if self.opts.symmetric {
-                "".into()
-            } else {
-                format!(
-                    "
+            let vtable_def = format!(
+                "
         const VTABLE: &'static {async_support}::StreamVtable<Self>;
     "
-                )
-            };
+            );
             let construct = if self.opts.symmetric {
-                format!("{async_support}::stream_support::new_stream()")
+                // no unsafe needed
+                format!("{async_support}::stream_new::<T>(T::VTABLE)")
             } else {
                 format!("unsafe {{ {async_support}::stream_new::<T>(T::VTABLE) }}")
             };
@@ -724,7 +710,7 @@ pub unsafe trait WasmResource {{
 impl<T: WasmResource> Resource<T> {{
     #[doc(hidden)]
     pub unsafe fn from_handle(handle: {handle_type}) -> Self {{
-        debug_assert!(handle != {invalid_value});
+        debug_assert!(handle != 0 && handle != {invalid_value});
         Self {{
             handle: {atomic_type}::new(handle),
             _marker: marker::PhantomData,

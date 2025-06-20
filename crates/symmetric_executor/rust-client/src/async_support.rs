@@ -11,12 +11,19 @@ use crate::module::symmetric::runtime::symmetric_executor::{
     self, CallbackState, EventGenerator, EventSubscription,
 };
 
-pub use future_support::{FutureReader, FutureVtable, FutureWriter};
-pub use stream_support::{results, Stream, StreamReader, StreamVtable, StreamWriter};
+pub use future_support::{future_new, FutureReader, FutureVtable, FutureWriter};
+pub use stream_support::{
+    results, stream_new, Stream, StreamReader, StreamResult, StreamVtable, StreamWriter,
+};
+pub use subtask::Subtask;
 
+#[path = "../../../guest-rust/rt/src/async_support/abi_buffer.rs"]
+pub mod abi_buffer;
 pub mod future_support;
-// later make it non-pub
 pub mod stream_support;
+mod subtask;
+#[path = "../../../guest-rust/rt/src/async_support/waitable.rs"]
+mod waitable;
 
 // See https://github.com/rust-lang/rust/issues/13231 for the limitation
 // / Send constraint on futures for spawn, loosen later
@@ -168,4 +175,23 @@ pub fn block_on<T: 'static>(future: impl Future<Output = T> + 'static) -> T {
     unsafe { spawn_unchecked(future2) };
     symmetric_executor::run();
     return unsafe { result.to_owned().write().unwrap().assume_init_read() };
+}
+
+pub struct TaskCancelOnDrop;
+
+impl TaskCancelOnDrop {
+    pub fn new() -> Self {
+        todo!();
+        // Self
+    }
+    pub fn forget(self) {}
+}
+
+pub fn start_task(future: impl Future<Output = ()>) -> i32 {
+    unsafe { spawn_unchecked(future) };
+    todo!()
+}
+
+pub unsafe fn callback(_event0: u32, _event1: u32, _event2: u32) -> u32 {
+    todo!();
 }

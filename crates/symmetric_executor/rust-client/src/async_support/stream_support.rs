@@ -1,6 +1,6 @@
 pub use crate::module::symmetric::runtime::symmetric_stream::StreamObj as Stream;
 use crate::{
-    async_support::wait_on,
+    async_support::{abi_buffer::AbiBuffer, wait_on},
     symmetric_stream::{Address, Buffer},
 };
 use {
@@ -35,12 +35,10 @@ pub mod results {
     pub const CANCELED: isize = 0;
 }
 
-pub struct AbiBuffer<T: 'static>(PhantomData<T>);
-
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum StreamResult {
     Complete(usize),
-    // Closed,
+    Dropped,
     // Cancelled,
 }
 
@@ -61,13 +59,17 @@ impl<T: Unpin + Send + 'static> Future for StreamWrite<'_, T> {
                 let values: Vec<_> = me.values.drain(..).collect();
                 if values.is_empty() {
                     // delayed flush
-                    Poll::Ready((StreamResult::Complete(1), AbiBuffer(PhantomData)))
+                    Poll::Ready((
+                        StreamResult::Complete(1),
+                        AbiBuffer::new(Vec::new(), me.writer._vtable),
+                    ))
                 } else {
                     Pin::new(&mut me.writer).start_send(values).unwrap();
                     match Pin::new(&mut me.writer).poll_ready(cx) {
-                        Poll::Ready(_) => {
-                            Poll::Ready((StreamResult::Complete(1), AbiBuffer(PhantomData)))
-                        }
+                        Poll::Ready(_) => Poll::Ready((
+                            StreamResult::Complete(1),
+                            AbiBuffer::new(Vec::new(), me.writer._vtable),
+                        )),
                         Poll::Pending => Poll::Pending,
                     }
                 }
@@ -158,6 +160,7 @@ impl<T: Unpin> Sink<Vec<T>> for StreamWriter<T> {
         let slice =
             unsafe { std::slice::from_raw_parts_mut(addr.cast::<MaybeUninit<T>>(), item_len) };
         for (a, b) in slice.iter_mut().zip(item.drain(..)) {
+            // TODO: lower
             a.write(b);
         }
         buffer.set_size(item_len as u64);
@@ -199,16 +202,16 @@ impl<T> fmt::Debug for StreamReader<T> {
 
 impl<T> StreamReader<T> {
     #[doc(hidden)]
-    pub fn new(handle: Stream, vtable: &'static StreamVtable<T>) -> Self {
+    pub unsafe fn new(handle: *mut u8, vtable: &'static StreamVtable<T>) -> Self {
         Self {
-            handle,
+            handle: unsafe { Stream::from_handle(handle as usize) },
             future: None,
             _vtable: vtable,
         }
     }
 
     pub unsafe fn from_handle(handle: *mut u8, vtable: &'static StreamVtable<T>) -> Self {
-        Self::new(unsafe { Stream::from_handle(handle as usize) }, vtable)
+        Self::new(handle, vtable)
     }
 
     /// Cancel the current pending read operation.
@@ -228,6 +231,14 @@ impl<T> StreamReader<T> {
     // remove this as it is weirder than take_handle
     pub fn into_handle(self) -> *mut () {
         self.handle.take_handle() as *mut ()
+    }
+
+    pub fn read(&mut self, buf: Vec<T>) -> StreamRead<'_, T> {
+        StreamRead {
+            // marker: PhantomData,
+            reader: self,
+            buf,
+        }
     }
 }
 
@@ -253,6 +264,7 @@ impl<T: Unpin + Send> futures::stream::Stream for StreamReader<T> {
                 if let Some(buffer2) = buffer2 {
                     let count = buffer2.get_size();
                     buffer0.truncate(count as usize);
+                    // TODO: lift
                     Some(unsafe { mem::transmute::<Vec<MaybeUninit<T>>, Vec<T>>(buffer0) })
                 } else {
                     None
@@ -278,13 +290,80 @@ impl<T> Drop for StreamReader<T> {
     }
 }
 
+pub struct StreamRead<'a, T: 'static> {
+    // marker: PhantomData<(&'a mut StreamReader<T>, T)>,
+    buf: Vec<T>,
+    reader: &'a mut StreamReader<T>,
+}
+
+impl<T: 'static> Future for StreamRead<'_, T> {
+    type Output = (StreamResult, Vec<T>);
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // TODO: Check whether WaitableOperation helps here
+        //self.pin_project().poll_complete(cx)
+
+        todo!()
+
+        // let me2 = self.get_mut();
+        // let me = &mut me2.reader;
+
+        // if me.future.is_none() {
+        //     let mut buffer2 = Vec::new();
+        //     std::mem::swap(&mut buffer2, &mut me2.buf);
+        //     let handle = me.handle.clone();
+        //     me.future = Some(Box::pin(async move {
+        //         let mut buffer0 = iter::repeat_with(MaybeUninit::uninit)
+        //             .take(ceiling(4 * 1024, mem::size_of::<T>()))
+        //             .collect::<Vec<_>>();
+        //         let address = unsafe { Address::from_handle(buffer0.as_mut_ptr() as usize) };
+        //         let buffer = Buffer::new(address, buffer0.capacity() as u64);
+        //         handle.start_reading(buffer);
+        //         let subsc = handle.read_ready_subscribe();
+        //         subsc.reset();
+        //         wait_on(subsc).await;
+        //         let buffer2 = handle.read_result();
+        //         if let Some(buffer2) = buffer2 {
+        //             let count = buffer2.get_size();
+        //             buffer0.truncate(count as usize);
+        //             Some(unsafe { mem::transmute::<Vec<MaybeUninit<T>>, Vec<T>>(buffer0) })
+        //         } else {
+        //             None
+        //         }
+        //     }) as Pin<Box<dyn Future<Output = _> + Send>>);
+        // }
+
+        // match me.future.as_mut().unwrap().as_mut().poll(cx) {
+        //     Poll::Ready(v) => {
+        //         me.future = None;
+        //         Poll::Ready(v)
+        //     }
+        //     Poll::Pending => Poll::Pending,
+        // }
+    }
+}
+
+// impl<'a, T> StreamRead<'a, T> {
+//     fn pin_project(self: Pin<&mut Self>) -> Pin<&mut WaitableOperation<StreamReadOp<'a, T>>> {
+//         // SAFETY: we've chosen that when `Self` is pinned that it translates to
+//         // always pinning the inner field, so that's codified here.
+//         unsafe { Pin::new_unchecked(&mut self.get_unchecked_mut().op) }
+//     }
+// }
+
+/// deprecate this, replace with stream_new
 pub fn new_stream<T: 'static>(
     vtable: &'static StreamVtable<T>,
 ) -> (StreamWriter<T>, StreamReader<T>) {
     let handle = Stream::new();
     let handle2 = handle.clone();
-    (
-        StreamWriter::new(handle, vtable),
-        StreamReader::new(handle2, vtable),
-    )
+    (StreamWriter::new(handle, vtable), unsafe {
+        StreamReader::new(handle2.take_handle() as *mut u8, vtable)
+    })
+}
+
+pub fn stream_new<T: 'static>(
+    vtable: &'static StreamVtable<T>,
+) -> (StreamWriter<T>, StreamReader<T>) {
+    new_stream(vtable)
 }

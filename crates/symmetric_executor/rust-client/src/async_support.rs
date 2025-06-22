@@ -23,8 +23,8 @@ pub mod future_support;
 pub mod rust_buffer;
 pub mod stream_support;
 mod subtask;
-#[path = "../../../guest-rust/rt/src/async_support/waitable.rs"]
-mod waitable;
+// #[path = "../../../guest-rust/rt/src/async_support/waitable.rs"]
+// mod waitable;
 
 // See https://github.com/rust-lang/rust/issues/13231 for the limitation
 // / Send constraint on futures for spawn, loosen later
@@ -70,18 +70,22 @@ unsafe fn poll(state: *mut FutureState) -> Poll<()> {
         })
 }
 
+pub fn context_set_wait(cx: &Context, wait_for: &EventSubscription) {
+    // remember this eventsubscription in the context
+    let data = cx.waker().data();
+    let mut copy = Some(wait_for.dup());
+    std::mem::swap(
+        unsafe { &mut *(data.cast::<Option<EventSubscription>>().cast_mut()) },
+        &mut copy,
+    );
+}
+
 pub async fn wait_on(wait_for: EventSubscription) {
     std::future::poll_fn(move |cx| {
         if wait_for.ready() {
             Poll::Ready(())
         } else {
-            // remember this eventsubscription in the context
-            let data = cx.waker().data();
-            let mut copy = Some(wait_for.dup());
-            std::mem::swap(
-                unsafe { &mut *(data.cast::<Option<EventSubscription>>().cast_mut()) },
-                &mut copy,
-            );
+            context_set_wait(cx, &wait_for);
             Poll::Pending
         }
     })

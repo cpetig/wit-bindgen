@@ -3905,10 +3905,19 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     format!("{resultname}={err_type}{{{err_result}}};")
                 };
+                if self.gen.gen.opts.autosar {
+                    uwriteln!(
+                        self.src,
+                        "::ara::core::Optional<{full_type}> {resultname};\n"
+                    );
+                    results.push(format!("std::move({resultname}).value()"));
+                } else {
+                    uwriteln!(self.src, "{full_type} {resultname};\n");
+                    results.push(resultname);
+                }
                 uwriteln!(
                     self.src,
-                    "{full_type} {resultname};
-                    if ({operand}==0) {{
+                    "if ({operand}==0) {{
                         {ok}
                         {ok_assign}
                     }} else {{
@@ -3916,7 +3925,6 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         {err_assign}
                     }}"
                 );
-                results.push(resultname);
             }
             abi::Instruction::CallWasm {
                 name,

@@ -7,7 +7,7 @@
 extern crate std;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::boxed::Box;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::future::Future;
 use std::mem;
@@ -68,7 +68,14 @@ struct FutureState {
 
     /// State of all waitables in `waitable_set`, and the ptr/callback they're
     /// associated with.
-    waitables: HashMap<u32, (*mut c_void, unsafe extern "C" fn(*mut c_void, u32))>,
+    //
+    // Note that this is a `BTreeMap` rather than a `HashMap` only because, as
+    // of this writing, initializing the default hasher for `HashMap` requires
+    // calling `wasi_snapshot_preview1:random_get`, which requires initializing
+    // the `wasi_snapshot_preview1` adapter when targeting `wasm32-wasip2` and
+    // later, and that's expensive enough that we'd prefer to avoid it for apps
+    // which otherwise make no use of the adapter.
+    waitables: BTreeMap<u32, (*mut c_void, unsafe extern "C" fn(*mut c_void, u32))>,
 
     /// Raw structure used to pass to `cabi::wasip3_task_set`
     wasip3_task: cabi::wasip3_task,
@@ -89,7 +96,7 @@ impl FutureState {
             waker,
             tasks: [future].into_iter().collect(),
             waitable_set: None,
-            waitables: HashMap::new(),
+            waitables: BTreeMap::new(),
             wasip3_task: cabi::wasip3_task {
                 // This pointer is filled in before calling `wasip3_task_set`.
                 ptr: ptr::null_mut(),
@@ -309,19 +316,19 @@ const STATUS_RETURNED_CANCELLED: u32 = 4;
 
 const BLOCKED: u32 = 0xffff_ffff;
 const COMPLETED: u32 = 0x0;
-const CLOSED: u32 = 0x1;
+const DROPPED: u32 = 0x1;
 const CANCELLED: u32 = 0x2;
 
 /// Return code of stream/future operations.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 enum ReturnCode {
     /// The operation is blocked and has not completed.
     Blocked,
     /// The operation completed with the specified number of items.
     Completed(u32),
-    /// The other end is closed, but before that the specified number of items
+    /// The other end is dropped, but before that the specified number of items
     /// were transferred.
-    Closed(u32),
+    Dropped(u32),
     /// The operation was cancelled, but before that the specified number of
     /// items were transferred.
     Cancelled(u32),
@@ -335,7 +342,7 @@ impl ReturnCode {
         let amt = val >> 4;
         match val & 0xf {
             COMPLETED => ReturnCode::Completed(amt),
-            CLOSED => ReturnCode::Closed(amt),
+            DROPPED => ReturnCode::Dropped(amt),
             CANCELLED => ReturnCode::Cancelled(amt),
             _ => panic!("unknown return code {val:#x}"),
         }
@@ -350,7 +357,7 @@ impl ReturnCode {
 /// with this export, and the callback will be used if this task doesn't exit
 /// immediately with its result.
 #[doc(hidden)]
-pub fn start_task(task: impl Future<Output = ()> + 'static) -> u32 {
+pub fn start_task(task: impl Future<Output = ()> + 'static) -> i32 {
     // Allocate a new `FutureState` which will track all state necessary for
     // our exported task.
     let state = Box::into_raw(Box::new(FutureState::new(Box::pin(task))));
@@ -364,7 +371,7 @@ pub fn start_task(task: impl Future<Output = ()> + 'static) -> u32 {
     unsafe {
         assert!(context_get().is_null());
         context_set(state.cast());
-        callback(EVENT_NONE, 0, 0)
+        callback(EVENT_NONE, 0, 0) as i32
     }
 }
 

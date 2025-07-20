@@ -1,4 +1,4 @@
-#include <test.h>
+#include <test_cpp.h>
 
-void exports_a_b_the_test_x() {
+void exports::a::b::the_test::X() {
 }

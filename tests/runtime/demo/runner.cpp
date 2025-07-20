@@ -1,5 +1,5 @@
-#include <runner.h>
+#include <runner_cpp.h>
 
 int main() {
-  a_b_the_test_x();
+  a::b::the_test::X();
 }

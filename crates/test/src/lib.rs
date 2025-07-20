@@ -14,6 +14,7 @@ use wit_component::{ComponentEncoder, StringEncoding};
 
 mod c;
 mod config;
+mod cpp;
 mod csharp;
 mod custom;
 mod moonbit;
@@ -496,12 +497,6 @@ impl Runner<'_> {
                 }
             }
             for language in languages.iter() {
-                // Right now C++'s generator is the same as C's, so don't
-                // duplicate everything there.
-                if *language == Language::Cpp {
-                    continue;
-                }
-
                 // If the CLI arguments filter out this language, then discard
                 // the test case.
                 if !self.include_language(&language) {
@@ -1128,6 +1123,16 @@ trait LanguageMethods {
     /// downloading or caching dependencies.
     fn prepare(&self, runner: &mut Runner<'_>) -> Result<()>;
 
+    /// Add some files to the generated directory _before_ calling bindgen
+    fn generate_bindings_prepare(
+        &self,
+        _runner: &Runner<'_>,
+        _bindgen: &Bindgen,
+        _dir: &Path,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Generates bindings for `component` into `dir`.
     ///
     /// Runs `wit-bindgen` in aa subprocess to catch failures such as panics.
@@ -1136,6 +1141,7 @@ trait LanguageMethods {
             Some(name) => name,
             None => return Ok(()),
         };
+        self.generate_bindings_prepare(runner, bindgen, dir)?;
         let mut cmd = Command::new(runner.wit_bindgen);
         cmd.arg(name)
             .arg(&bindgen.wit_path)
@@ -1210,7 +1216,7 @@ impl Language {
         match self {
             Language::Rust => &rust::Rust,
             Language::C => &c::C,
-            Language::Cpp => &c::Cpp,
+            Language::Cpp => &cpp::Cpp,
             Language::Wat => &wat::Wat,
             Language::Csharp => &csharp::Csharp,
             Language::MoonBit => &moonbit::MoonBit,

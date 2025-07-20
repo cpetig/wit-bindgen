@@ -48,7 +48,7 @@
 //!
 //! * A `write` hasn't even started yet.
 //! * A `write` was started and then cancelled.
-//! * A `write` was started and then the other end closed the channel.
+//! * A `write` was started and then the other end dropped the channel.
 //! * A `write` was started and then the other end received the value.
 //!
 //! In all of these situations regardless of the structure of `T` we can't leak
@@ -86,6 +86,30 @@
 //! represented the same in Rust as it is in the canonical ABI. That means that
 //! sending `list<T>` into a future might require copying the entire list and
 //! changing its layout. Currently this is par-for-the-course with bindings.
+//!
+//! ## Linear (exactly once) Writes
+//!
+//! The component model requires that a writable end of a future must be written
+//! to before closing, otherwise the drop operation traps. Ideally usage of
+//! this API shouldn't result in traps so this is modeled in the Rust-level API
+//! to prevent this trap from occurring. Rust does not support linear types
+//! (types that must be used exactly once), instead it only has affine types
+//! (types which must be used at most once), meaning that this requires some
+//! runtime support.
+//!
+//! Specifically the `FutureWriter` structure stores two auxiliary Rust-specific
+//! pieces of information:
+//!
+//! * A `should_write_default_value` boolean - if `true` on destruction then a
+//!   value has not yet been written and something must be written.
+//! * A `default: fn() -> T` constructor to lazily create the default value to
+//!   be sent in this situation.
+//!
+//! This `default` field is provided by the user when the future is initially
+//! created. Additionally during `Drop` a new Rust-level task will be spawned to
+//! perform the write in the background. That'll keep the component-level task
+//! alive until that write completes but otherwise shouldn't hinder anything
+//! else.
 
 use {
     super::waitable::{WaitableOp, WaitableOperation},
@@ -146,10 +170,10 @@ pub struct FutureVtable<T> {
     pub cancel_write: unsafe extern "C" fn(future: u32) -> u32,
     /// The raw `future.cancel-read` intrinsic.
     pub cancel_read: unsafe extern "C" fn(future: u32) -> u32,
-    /// The raw `future.close-writable` intrinsic.
-    pub close_writable: unsafe extern "C" fn(future: u32),
-    /// The raw `future.close-readable` intrinsic.
-    pub close_readable: unsafe extern "C" fn(future: u32),
+    /// The raw `future.drop-writable` intrinsic.
+    pub drop_writable: unsafe extern "C" fn(future: u32),
+    /// The raw `future.drop-readable` intrinsic.
+    pub drop_readable: unsafe extern "C" fn(future: u32),
     /// The raw `future.new` intrinsic.
     pub new: unsafe extern "C" fn() -> u64,
 }
@@ -162,6 +186,7 @@ pub struct FutureVtable<T> {
 /// This function is unsafe as it requires the functions within `vtable` to
 /// correctly uphold the contracts of the component model.
 pub unsafe fn future_new<T>(
+    default: fn() -> T,
     vtable: &'static FutureVtable<T>,
 ) -> (FutureWriter<T>, FutureReader<T>) {
     unsafe {
@@ -170,7 +195,7 @@ pub unsafe fn future_new<T>(
         let writer = (handles >> 32) as u32;
         rtdebug!("future.new() = [{writer}, {reader}]");
         (
-            FutureWriter::new(writer, vtable),
+            FutureWriter::new(writer, default, vtable),
             FutureReader::new(reader, vtable),
         )
     }
@@ -183,6 +208,19 @@ pub unsafe fn future_new<T>(
 pub struct FutureWriter<T: 'static> {
     handle: u32,
     vtable: &'static FutureVtable<T>,
+
+    /// Whether or not a value should be written during `drop`.
+    ///
+    /// This is set to `false` when a value is successfully written or when a
+    /// value is written but the future is witnessed as being dropped.
+    ///
+    /// Note that this is set to `true` on construction to ensure that only
+    /// location which actually witness a completed write set it to `false`.
+    should_write_default_value: bool,
+
+    /// Constructor for the default value to write during `drop`, should one
+    /// need to be written.
+    default: fn() -> T,
 }
 
 impl<T> FutureWriter<T> {
@@ -193,8 +231,13 @@ impl<T> FutureWriter<T> {
     /// This function is unsafe as it requires the functions within `vtable` to
     /// correctly uphold the contracts of the component model.
     #[doc(hidden)]
-    pub unsafe fn new(handle: u32, vtable: &'static FutureVtable<T>) -> Self {
-        Self { handle, vtable }
+    pub unsafe fn new(handle: u32, default: fn() -> T, vtable: &'static FutureVtable<T>) -> Self {
+        Self {
+            handle,
+            default,
+            should_write_default_value: true,
+            vtable,
+        }
     }
 
     /// Write the specified `value` to this `future`.
@@ -212,9 +255,9 @@ impl<T> FutureWriter<T> {
     /// * `Ok(())` - the `value` was sent and received. The `self` value was
     ///   consumed along the way and will no longer be accessible.
     /// * `Err(FutureWriteError { value })` - an attempt was made to send
-    ///   `value` but the other half of this [`FutureWriter`] was closed before
+    ///   `value` but the other half of this [`FutureWriter`] was dropped before
     ///   the value was received. This consumes `self` because the channel is
-    ///   now closed, but `value` is returned in case the caller wants to reuse
+    ///   now dropped, but `value` is returned in case the caller wants to reuse
     ///   it.
     ///
     /// # Cancellation
@@ -241,9 +284,33 @@ impl<T> fmt::Debug for FutureWriter<T> {
 
 impl<T> Drop for FutureWriter<T> {
     fn drop(&mut self) {
-        unsafe {
-            rtdebug!("future.close-writable({})", self.handle);
-            (self.vtable.close_writable)(self.handle);
+        // If a value has not yet been written into this writer than that must
+        // be done so now. Perform a "clone" of `self` by moving our data into a
+        // subtask, but ensure that `should_write_default_value` is set to
+        // `false` to avoid infinite loops by accident. Once the task is spawned
+        // we're done and the subtask's destructor of the closed-over
+        // `FutureWriter` will be responsible for performing the
+        // `drop-writable` call below.
+        //
+        // Note, though, that if `should_write_default_value` is `false` then a
+        // write has already happened and we can go ahead and just synchronously
+        // drop this writer as we would any other handle.
+        if self.should_write_default_value {
+            let clone = FutureWriter {
+                handle: self.handle,
+                default: self.default,
+                should_write_default_value: false,
+                vtable: self.vtable,
+            };
+            crate::async_support::spawn(async move {
+                let value = (clone.default)();
+                let _ = clone.write(value).await;
+            });
+        } else {
+            unsafe {
+                rtdebug!("future.drop-writable({})", self.handle);
+                (self.vtable.drop_writable)(self.handle);
+            }
         }
     }
 }
@@ -259,7 +326,7 @@ struct FutureWriteOp<T>(marker::PhantomData<T>);
 
 enum WriteComplete<T> {
     Written,
-    Closed(T),
+    Dropped(T),
     Cancelled(T),
 }
 
@@ -299,29 +366,34 @@ where
     }
 
     fn in_progress_update(
-        (writer, cleanup): Self::InProgress,
+        (mut writer, cleanup): Self::InProgress,
         code: u32,
     ) -> Result<Self::Result, Self::InProgress> {
         let ptr = cleanup
             .as_ref()
             .map(|c| c.ptr.as_ptr())
             .unwrap_or(ptr::null_mut());
-        match ReturnCode::decode(code) {
-            ReturnCode::Blocked => Err((writer, cleanup)),
+        match code {
+            super::BLOCKED => Err((writer, cleanup)),
 
-            // The other end has closed its end.
+            // The other end has dropped its end.
             //
             // The value was not received by the other end so `ptr` still has
             // all of its resources intact. Use `lift` to construct a new
             // instance of `T` which takes ownership of pointers and resources
             // and such. The allocation of `ptr` is then cleaned up naturally
             // when `cleanup` goes out of scope.
-            c @ ReturnCode::Closed(0) | c @ ReturnCode::Cancelled(0) => {
+            super::DROPPED | super::CANCELLED => {
                 // SAFETY: we're the ones managing `ptr` so we know it's safe to
                 // pass here.
                 let value = unsafe { (writer.vtable.lift)(ptr) };
-                let status = if c == ReturnCode::Closed(0) {
-                    WriteComplete::Closed(value)
+                let status = if code == super::DROPPED {
+                    // This writer has been witnessed to be dropped, meaning that
+                    // `writer` is going to get destroyed soon as this return
+                    // value propagates up the stack. There's no need to write
+                    // the default value, so set this to `false`.
+                    writer.should_write_default_value = false;
+                    WriteComplete::Dropped(value)
                 } else {
                     WriteComplete::Cancelled(value)
                 };
@@ -337,7 +409,10 @@ where
             //
             // Afterwards the `cleanup` itself is naturally dropped and cleaned
             // up.
-            ReturnCode::Completed(1) | ReturnCode::Closed(1) | ReturnCode::Cancelled(1) => {
+            super::COMPLETED => {
+                // A value was written, so no need to write the default value.
+                writer.should_write_default_value = false;
+
                 // SAFETY: we're the ones managing `ptr` so we know it's safe to
                 // pass here.
                 unsafe {
@@ -371,7 +446,7 @@ where
             // The value was not sent because the other end either hung up or we
             // successfully cancelled. In both cases return back the value here
             // with the writer.
-            WriteComplete::Closed(val) => FutureWriteCancel::Closed(val),
+            WriteComplete::Dropped(val) => FutureWriteCancel::Dropped(val),
             WriteComplete::Cancelled(val) => FutureWriteCancel::Cancelled(val, writer),
         }
     }
@@ -385,7 +460,7 @@ impl<T: 'static> Future for FutureWrite<T> {
             .poll_complete(cx)
             .map(|(result, _writer)| match result {
                 WriteComplete::Written => Ok(()),
-                WriteComplete::Closed(value) | WriteComplete::Cancelled(value) => {
+                WriteComplete::Dropped(value) | WriteComplete::Cancelled(value) => {
                     Err(FutureWriteError { value })
                 }
             })
@@ -403,7 +478,7 @@ impl<T: 'static> FutureWrite<T> {
     ///
     /// This method can be used to cancel a write-in-progress and re-acquire
     /// the writer and the value being sent. Note that the write operation may
-    /// succeed racily or the other end may also close racily, and these
+    /// succeed racily or the other end may also drop racily, and these
     /// outcomes are reflected in the returned value here.
     ///
     /// # Panics
@@ -430,7 +505,7 @@ impl<T> fmt::Debug for FutureWriteError<T> {
 
 impl<T> fmt::Display for FutureWriteError<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        "read end closed".fmt(f)
+        "read end dropped".fmt(f)
     }
 }
 
@@ -444,11 +519,11 @@ pub enum FutureWriteCancel<T: 'static> {
     /// available here as both are gone.
     AlreadySent,
 
-    /// The other end was closed before cancellation happened.
+    /// The other end was dropped before cancellation happened.
     ///
     /// In this case the original value is returned back to the caller but the
     /// writer itself is not longer accessible as it's no longer usable.
-    Closed(T),
+    Dropped(T),
 
     /// The pending write was successfully cancelled and the value being written
     /// is returned along with the writer to resume again in the future if
@@ -456,7 +531,7 @@ pub enum FutureWriteCancel<T: 'static> {
     Cancelled(T, FutureWriter<T>),
 }
 
-/// Represents the readable end of a Component Model `future`.
+/// Represents the readable end of a Component Model `future<T>`.
 pub struct FutureReader<T: 'static> {
     handle: AtomicU32,
     vtable: &'static FutureVtable<T>,
@@ -499,12 +574,11 @@ impl<T> FutureReader<T> {
 }
 
 impl<T> IntoFuture for FutureReader<T> {
-    type Output = Option<T>;
+    type Output = T;
     type IntoFuture = FutureRead<T>;
 
     /// Convert this object into a `Future` which will resolve when a value is
-    /// written to the writable end of this `future` (yielding a `Some` result)
-    /// or when the writable end is dropped (yielding a `None` result).
+    /// written to the writable end of this `future`.
     fn into_future(self) -> Self::IntoFuture {
         FutureRead {
             op: WaitableOperation::new(self),
@@ -518,8 +592,8 @@ impl<T> Drop for FutureReader<T> {
             return;
         };
         unsafe {
-            rtdebug!("future.close-readable({handle})");
-            (self.vtable.close_readable)(handle);
+            rtdebug!("future.drop-readable({handle})");
+            (self.vtable.drop_readable)(handle);
         }
     }
 }
@@ -536,7 +610,6 @@ struct FutureReadOp<T>(marker::PhantomData<T>);
 
 enum ReadComplete<T> {
     Value(T),
-    Closed,
     Cancelled,
 }
 
@@ -547,7 +620,7 @@ where
     type Start = FutureReader<T>;
     type InProgress = (FutureReader<T>, Option<Cleanup>);
     type Result = (ReadComplete<T>, FutureReader<T>);
-    type Cancel = Result<Option<T>, FutureReader<T>>;
+    type Cancel = Result<T, FutureReader<T>>;
 
     fn start(reader: Self::Start) -> (u32, Self::InProgress) {
         let (ptr, cleanup) = Cleanup::new(reader.vtable.layout);
@@ -570,19 +643,15 @@ where
         match ReturnCode::decode(code) {
             ReturnCode::Blocked => Err((reader, cleanup)),
 
-            // The read didn't complete, so `cleanup` is still uninitialized, so
-            // let it fall out of scope.
-            ReturnCode::Closed(0) => Ok((ReadComplete::Closed, reader)),
-
-            // Like `in_progress_closed` the read operation has finished but
-            // without a value, so let `cleanup` fall out of scope to clean up
-            // its allocation.
+            // Let `cleanup` fall out of scope to clean up its allocation here,
+            // and otherwise tahe reader is plumbed through to possibly restart
+            // the read in the future.
             ReturnCode::Cancelled(0) => Ok((ReadComplete::Cancelled, reader)),
 
             // The read has completed, so lift the value from the stored memory and
             // `cleanup` naturally falls out of scope after transferring ownership of
             // everything to the returned `value`.
-            ReturnCode::Completed(1) | ReturnCode::Closed(1) | ReturnCode::Cancelled(1) => {
+            ReturnCode::Completed(0) => {
                 let ptr = cleanup
                     .as_ref()
                     .map(|c| c.ptr.as_ptr())
@@ -613,28 +682,27 @@ where
     fn result_into_cancel((value, reader): Self::Result) -> Self::Cancel {
         match value {
             // The value was actually read, so thread that through here.
-            ReadComplete::Value(value) => Ok(Some(value)),
+            ReadComplete::Value(value) => Ok(value),
 
             // The read was successfully cancelled, so thread through the
             // `reader` to possibly restart later on.
             ReadComplete::Cancelled => Err(reader),
-
-            // The other end was closed, so this can't possibly ever complete
-            // again, so thread that through.
-            ReadComplete::Closed => Ok(None),
         }
     }
 }
 
 impl<T: 'static> Future for FutureRead<T> {
-    type Output = Option<T>;
+    type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.pin_project()
             .poll_complete(cx)
             .map(|(result, _reader)| match result {
-                ReadComplete::Value(val) => Some(val),
-                ReadComplete::Cancelled | ReadComplete::Closed => None,
+                ReadComplete::Value(val) => val,
+                // This is only possible if, after calling `FutureRead::cancel`,
+                // the future is polled again. The `cancel` method is documented
+                // as "don't do that" so this is left to panic.
+                ReadComplete::Cancelled => panic!("cannot poll after cancelling"),
             })
     }
 }
@@ -650,21 +718,17 @@ impl<T> FutureRead<T> {
     ///
     /// Return values include:
     ///
-    /// * `Ok(Some(value))` - future completed before this cancellation request
+    /// * `Ok(value)` - future completed before this cancellation request
     ///   was received.
-    /// * `Ok(None)` - future closed before this cancellation request was
-    ///   received.
     /// * `Err(reader)` - read operation was cancelled and it can be retried in
     ///   the future if desired.
-    ///
-    /// Note that if this method is called after the write was already cancelled
-    /// then `Ok(None)` will be returned.
     ///
     /// # Panics
     ///
     /// Panics if the operation has already been completed via `Future::poll`,
-    /// or if this method is called twice.
-    pub fn cancel(self: Pin<&mut Self>) -> Result<Option<T>, FutureReader<T>> {
+    /// or if this method is called twice. Additionally if this method completes
+    /// then calling `poll` again on `self` will panic.
+    pub fn cancel(self: Pin<&mut Self>) -> Result<T, FutureReader<T>> {
         self.pin_project().cancel()
     }
 }

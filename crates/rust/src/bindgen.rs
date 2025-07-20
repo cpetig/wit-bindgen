@@ -777,7 +777,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(len);
             }
 
-            Instruction::FixedSizeListLowerBlock {
+            Instruction::FixedSizeListLowerMemory {
                 element,
                 size: _,
                 id: _,

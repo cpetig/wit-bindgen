@@ -805,7 +805,11 @@ impl WorldGenerator for Cpp {
             uwriteln!(c_str.src, "#include <assert.h>");
         }
         if self.dependencies.needs_span {
-            uwriteln!(c_str.src, "#include <span>");
+            if self.opts.autosar {
+                uwriteln!(c_str.src, "#include <ara/core/span.h>");
+            } else {
+                uwriteln!(c_str.src, "#include <span>");
+            }
         }
 
         h_str.change_namespace(&Vec::default());
@@ -2199,7 +2203,11 @@ impl CppInterfaceGenerator<'_> {
                     match flavor {
                         Flavor::BorrowedArgument => {
                             self.gen.dependencies.needs_span = true;
-                            format!("std::span<{inner} const>")
+                            if self.r#gen.opts.autosar {
+                                format!("::ara::core::Span<{inner} const>")
+                            } else {
+                                format!("std::span<{inner} const>")
+                            }
                         }
                         Flavor::Argument(var)
                             if matches!(var, AbiVariant::GuestImport)
@@ -2212,7 +2220,11 @@ impl CppInterfaceGenerator<'_> {
                             } else {
                                 " const"
                             };
-                            format!("std::span<{inner}{constness}>")
+                            if self.r#gen.opts.autosar {
+                                format!("::ara::core::Span<{inner}{constness}>")
+                            } else {
+                                format!("std::span<{inner}{constness}>")
+                            }
                         }
                         Flavor::Argument(AbiVariant::GuestExport) if !self.gen.opts.host => {
                             self.gen.dependencies.needs_wit = true;

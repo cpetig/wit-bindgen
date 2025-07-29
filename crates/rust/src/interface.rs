@@ -818,10 +818,10 @@ pub mod vtable{ordinal} {{
         }
         self.src.push_str("unsafe {\n");
 
-        if async_ {
+        if async_ && !self.r#gen.opts.symmetric {
             self.generate_guest_import_body_async(&self.wasm_import_module, func, params);
         } else {
-            self.generate_guest_import_body_sync(&self.wasm_import_module, func, params);
+            self.generate_guest_import_body_sync(&self.wasm_import_module, func, params, async_);
         }
 
         self.src.push_str("}\n");
@@ -882,11 +882,16 @@ pub mod vtable{ordinal} {{
         module: &str,
         func: &Function,
         params: Vec<String>,
+        async_: bool,
     ) {
         let mut f = FunctionBindgen::new(self, params, module, false);
         abi::call(
             f.r#gen.resolve,
-            AbiVariant::GuestImport,
+            if async_ {
+                AbiVariant::GuestImportAsync
+            } else {
+                AbiVariant::GuestImport
+            },
             if f.gen.gen.opts.symmetric {
                 LiftLower::Symmetric
             } else {
@@ -894,7 +899,7 @@ pub mod vtable{ordinal} {{
             },
             func,
             &mut f,
-            false,
+            async_,
         );
         let FunctionBindgen {
             needs_cleanup_list,

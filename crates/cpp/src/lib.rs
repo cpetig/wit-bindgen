@@ -3188,22 +3188,27 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let result = if self.gen.gen.opts.host {
                     uwriteln!(self.src, "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", operands[0]);
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
-                } else if self.gen.gen.opts.api_style == APIStyle::Symmetric
-                    && matches!(self.variant, AbiVariant::GuestExport)
-                {
-                    if self.gen.gen.opts.symmetric {
-                        format!(
+                } else {
+                    match (self.variant, self.gen.gen.opts.api_style, self.gen.gen.opts.symmetric) {
+                        (AbiVariant::GuestExport, APIStyle::Symmetric, true) => format!(
                             "wit::span<{inner} const>(({inner}*)({}), {len})",
                             operands[0]
-                        )
-                    } else {
-                        format!(
+                        ),
+                        (AbiVariant::GuestExport, APIStyle::Symmetric, false) => format!(
                             "wit::vector<{inner} const>(({inner}*)({}), {len}).get_view()",
                             operands[0]
-                        )
+                        ),
+                        (AbiVariant::GuestExport, APIStyle::Asymmetric, true) => format!(
+                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(({inner} const *)({}), {len}))",
+                            operands[0]
+                        ),
+                        (AbiVariant::GuestImport, _, _) |
+                        (AbiVariant::GuestExport, APIStyle::Asymmetric, false) => format!(
+                            "wit::vector<{inner}>(({inner}*)({}), {len})",
+                            operands[0]
+                        ),
+                        (_, _, _) => todo!()
                     }
-                } else {
-                    format!("wit::vector<{inner}>(({inner}*)({}), {len})", operands[0])
                 };
                 results.push(result);
             }

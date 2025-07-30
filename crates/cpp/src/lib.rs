@@ -1402,60 +1402,6 @@ impl CppInterfaceGenerator<'_> {
         import: bool,
     ) -> Vec<String> {
         let is_special = is_special_method(func);
-        let from_namespace = self.gen.h_src.namespace.clone();
-        let cpp_sig = self.high_level_signature(func, variant, &from_namespace);
-        if cpp_sig.static_member {
-            self.gen.h_src.src.push_str("static ");
-        }
-        self.gen.h_src.src.push_str(&cpp_sig.result);
-        if !cpp_sig.result.is_empty() {
-            self.gen.h_src.src.push_str(" ");
-        }
-        self.gen.h_src.src.push_str(&cpp_sig.name);
-        self.gen.h_src.src.push_str("(");
-        for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
-            if num > 0 {
-                self.gen.h_src.src.push_str(", ");
-            }
-            self.gen.h_src.src.push_str(typ);
-            self.gen.h_src.src.push_str(" ");
-            self.gen.h_src.src.push_str(arg);
-        }
-        self.gen.h_src.src.push_str(")");
-        if cpp_sig.const_member {
-            self.gen.h_src.src.push_str(" const");
-        }
-        match (&is_special, false, &variant) {
-            (SpecialMethod::Allocate, _, _) => {
-                uwriteln!(
-                    self.gen.h_src.src,
-                    "{{\
-                        return {OWNED_CLASS_NAME}(new {}({}));\
-                    }}",
-                    cpp_sig.namespace.last().unwrap(), //join("::"),
-                    cpp_sig
-                        .arguments
-                        .iter()
-                        .map(|(arg, _)| format!("std::move({})", arg))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                // body is inside the header
-                return Vec::default();
-            }
-            (SpecialMethod::Dtor, _, _ /*AbiVariant::GuestImport*/)
-            | (SpecialMethod::ResourceDrop, true, _) => {
-                uwriteln!(
-                    self.gen.h_src.src,
-                    "{{\
-                        delete {};\
-                    }}",
-                    cpp_sig.arguments.first().unwrap().0
-                );
-            }
-            _ => self.gen.h_src.src.push_str(";\n"),
-        }
-
         // we want to separate the lowered signature (wasm) and the high level signature
         if !(import == true
             && self.gen.opts.host_side()

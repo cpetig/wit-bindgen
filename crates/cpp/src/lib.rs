@@ -3367,12 +3367,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.push_str(&format!("for (unsigned i = 0; i<{vec}.size(); ++i) {{\n",));
                 self.push_str(&format!(
                     "{ptr_type} base = {target} + i * {size_str};
-                     {typename}& iter_elem = {vec}[i];\n"
+                     {typename}& IterElem = {vec}[i];\n"
                 ));
                 self.push_str(&body.0);
                 self.push_str("\n}\n}\n");
             }
-            abi::Instruction::IterElem { .. } => results.push("iter_elem".to_string()),
+            abi::Instruction::IterElem { .. } => results.push("IterElem".to_string()),
             abi::Instruction::IterBasePointer => results.push("base".to_string()),
             abi::Instruction::RecordLower { record, .. } => {
                 let op = &operands[0];

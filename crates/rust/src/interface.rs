@@ -202,12 +202,12 @@ impl<'i> InterfaceGenerator<'i> {
             let resource_name = self.resolve.types[resource].name.as_ref().unwrap();
             if self.gen.opts.symmetric {
                 let resource_type = resource_name.to_pascal_case();
-                let resource_lowercase = resource_name.to_lower_camel_case();
+                let resource_snake = resource_name.to_snake_case();
                 uwriteln!(
                     self.src,
                     r#"#[doc(hidden)]
             #[allow(non_snake_case)]
-            pub unsafe fn _export_drop_{resource_lowercase}_cabi<T: {trait_name}>(arg0: usize) {{
+            pub unsafe fn _export_drop_{resource_snake}_cabi<T: {trait_name}>(arg0: usize) {{
                 #[cfg(target_arch = "wasm32")]
                 _rt::run_ctors_once();
                 {resource_type}::dtor::<T>(arg0 as *mut u8);
@@ -364,19 +364,19 @@ macro_rules! {macro_name} {{
                 }
             };
             let camel = name.to_upper_camel_case();
+            let snake = name.to_snake_case();
             if self.gen.opts.symmetric {
                 let dtor_symbol = make_external_symbol(
                     &module,
                     &(String::from("[resource-drop]") + &name),
                     AbiVariant::GuestImport,
                 );
-                let resource_lowercase = name.to_lower_camel_case();
                 uwriteln!(
                     self.src,
                     r#"    #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
     #[allow(non_snake_case)]
     unsafe extern "C" fn {dtor_symbol}(arg0: usize) {{
-      $($path_to_types)*::_export_drop_{resource_lowercase}_cabi::<<$ty as $($path_to_types)*::Guest>::{camel}>(arg0)
+      $($path_to_types)*::_export_drop_{snake}_cabi::<<$ty as $($path_to_types)*::Guest>::{camel}>(arg0)
     }}
 "#
                 );

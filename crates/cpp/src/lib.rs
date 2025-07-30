@@ -1319,8 +1319,7 @@ impl CppInterfaceGenerator<'_> {
         {
             if matches!(is_drop, SpecialMethod::Allocate) {
                 res.result.push_str("Owned");
-            }
-            if let Some(ty) = &func.result {
+            } else if let Some(ty) = &func.result {
                 res.result.push_str(
                     &(self.type_name(ty, outer_namespace, Flavor::Result(abi_variant))
                         + if matches!(is_drop, SpecialMethod::ResourceRep) {

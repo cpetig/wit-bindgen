@@ -1319,8 +1319,7 @@ impl CppInterfaceGenerator<'_> {
         {
             if matches!(is_drop, SpecialMethod::Allocate) {
                 res.result.push_str("Owned");
-            }
-            if let Some(ty) = &func.result {
+            } else if let Some(ty) = &func.result {
                 res.result.push_str(
                     &(self.type_name(ty, outer_namespace, Flavor::Result(abi_variant))
                         + if matches!(is_drop, SpecialMethod::ResourceRep) {
@@ -1403,60 +1402,6 @@ impl CppInterfaceGenerator<'_> {
         import: bool,
     ) -> Vec<String> {
         let is_special = is_special_method(func);
-        let from_namespace = self.gen.h_src.namespace.clone();
-        let cpp_sig = self.high_level_signature(func, variant, &from_namespace);
-        if cpp_sig.static_member {
-            self.gen.h_src.src.push_str("static ");
-        }
-        self.gen.h_src.src.push_str(&cpp_sig.result);
-        if !cpp_sig.result.is_empty() {
-            self.gen.h_src.src.push_str(" ");
-        }
-        self.gen.h_src.src.push_str(&cpp_sig.name);
-        self.gen.h_src.src.push_str("(");
-        for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
-            if num > 0 {
-                self.gen.h_src.src.push_str(", ");
-            }
-            self.gen.h_src.src.push_str(typ);
-            self.gen.h_src.src.push_str(" ");
-            self.gen.h_src.src.push_str(arg);
-        }
-        self.gen.h_src.src.push_str(")");
-        if cpp_sig.const_member {
-            self.gen.h_src.src.push_str(" const");
-        }
-        match (&is_special, false, &variant) {
-            (SpecialMethod::Allocate, _, _) => {
-                uwriteln!(
-                    self.gen.h_src.src,
-                    "{{\
-                        return {OWNED_CLASS_NAME}(new {}({}));\
-                    }}",
-                    cpp_sig.namespace.last().unwrap(), //join("::"),
-                    cpp_sig
-                        .arguments
-                        .iter()
-                        .map(|(arg, _)| format!("std::move({})", arg))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                // body is inside the header
-                return Vec::default();
-            }
-            (SpecialMethod::Dtor, _, _ /*AbiVariant::GuestImport*/)
-            | (SpecialMethod::ResourceDrop, true, _) => {
-                uwriteln!(
-                    self.gen.h_src.src,
-                    "{{\
-                        delete {};\
-                    }}",
-                    cpp_sig.arguments.first().unwrap().0
-                );
-            }
-            _ => self.gen.h_src.src.push_str(";\n"),
-        }
-
         // we want to separate the lowered signature (wasm) and the high level signature
         if !(import == true
             && self.gen.opts.host_side()
@@ -3243,22 +3188,27 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let result = if self.gen.gen.opts.host {
                     uwriteln!(self.src, "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", operands[0]);
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
-                } else if self.gen.gen.opts.api_style == APIStyle::Symmetric
-                    && matches!(self.variant, AbiVariant::GuestExport)
-                {
-                    if self.gen.gen.opts.symmetric {
-                        format!(
+                } else {
+                    match (self.variant, self.gen.gen.opts.api_style, self.gen.gen.opts.symmetric) {
+                        (AbiVariant::GuestExport, APIStyle::Symmetric, true) => format!(
                             "wit::span<{inner} const>(({inner}*)({}), {len})",
                             operands[0]
-                        )
-                    } else {
-                        format!(
+                        ),
+                        (AbiVariant::GuestExport, APIStyle::Symmetric, false) => format!(
                             "wit::vector<{inner} const>(({inner}*)({}), {len}).get_view()",
                             operands[0]
-                        )
+                        ),
+                        (AbiVariant::GuestExport, APIStyle::Asymmetric, true) => format!(
+                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(({inner} const *)({}), {len}))",
+                            operands[0]
+                        ),
+                        (AbiVariant::GuestImport, _, _) |
+                        (AbiVariant::GuestExport, APIStyle::Asymmetric, false) => format!(
+                            "wit::vector<{inner}>(({inner}*)({}), {len})",
+                            operands[0]
+                        ),
+                        (_, _, _) => todo!()
                     }
-                } else {
-                    format!("wit::vector<{inner}>(({inner}*)({}), {len})", operands[0])
                 };
                 results.push(result);
             }
@@ -3422,12 +3372,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.push_str(&format!("for (unsigned i = 0; i<{vec}.size(); ++i) {{\n",));
                 self.push_str(&format!(
                     "{ptr_type} base = {target} + i * {size_str};
-                     {typename}& iter_elem = {vec}[i];\n"
+                     {typename}& IterElem = {vec}[i];\n"
                 ));
                 self.push_str(&body.0);
                 self.push_str("\n}\n}\n");
             }
-            abi::Instruction::IterElem { .. } => results.push("iter_elem".to_string()),
+            abi::Instruction::IterElem { .. } => results.push("IterElem".to_string()),
             abi::Instruction::IterBasePointer => results.push("base".to_string()),
             abi::Instruction::RecordLower { record, .. } => {
                 let op = &operands[0];

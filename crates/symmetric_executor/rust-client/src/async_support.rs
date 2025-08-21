@@ -138,11 +138,13 @@ pub fn first_poll_sub(future: BoxFuture) -> *mut () {
 /// This will return a non-null pointer representing the task if it hasn't
 /// completed immediately; otherwise it returns null.
 #[doc(hidden)]
-pub fn first_poll<T: 'static>(
-    future: impl Future<Output = T> + 'static,
-    fun: impl FnOnce(T) + 'static,
-) -> *mut () {
-    first_poll_sub(Box::pin(future.map(fun)))
+pub fn first_poll(future: impl Future<Output = ()> + 'static) -> *mut () {
+    first_poll_sub(Box::pin(future))
+}
+
+#[doc(hidden)]
+pub fn start_task(future: impl Future<Output = ()> + 'static) -> *mut u8 {
+    first_poll(future).cast()
 }
 
 /// Await the completion of a call to an async-lowered import.
@@ -156,7 +158,7 @@ pub async unsafe fn await_result(function: impl Fn() -> *mut u8) {
 }
 
 pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
-    let wait_for = first_poll(future, |()| ());
+    let wait_for = first_poll(future);
     let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
     drop(wait_for);
 }
@@ -187,15 +189,10 @@ pub struct TaskCancelOnDrop;
 
 impl TaskCancelOnDrop {
     pub fn new() -> Self {
-        todo!();
-        // Self
+        // todo!();
+        Self
     }
     pub fn forget(self) {}
-}
-
-pub fn start_task(future: impl Future<Output = ()>) -> i32 {
-    unsafe { spawn_unchecked(future) };
-    todo!()
 }
 
 pub unsafe fn callback(_event0: u32, _event1: u32, _event2: u32) -> u32 {

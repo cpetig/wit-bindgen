@@ -630,7 +630,7 @@ macro_rules! {macro_name} {{
         } else {
             (
                 ArchitectureSize {
-                    bytes: 0,
+                    bytes: if self.gen.opts.symmetric { 1 } else { 0 },
                     pointers: 0,
                 },
                 Alignment::default(),

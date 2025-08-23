@@ -58,26 +58,37 @@ pub fn new_waker(waiting_for_ptr: *mut Option<EventSubscription>) -> Waker {
 unsafe fn poll(state: *mut FutureState) -> Poll<()> {
     let mut pinned = std::pin::pin!(&mut (*state).future);
     let waker = new_waker(&mut (&mut *state).waiting_for as *mut Option<EventSubscription>);
+    let mut context = Context::from_waker(&waker);
+    #[cfg(feature = "trace")]
+    println!(" Poll wait cx {:x?} state {:x?}", &context as * const _ as usize, state);
     pinned
         .as_mut()
-        .poll(&mut Context::from_waker(&waker))
+        .poll(&mut context)
         .map(|()| {
             let state_owned = Box::from_raw(state);
             if let Some(waker) = &state_owned.completion_event {
                 waker.activate();
             }
+            #[cfg(feature = "trace")]
+            println!(" state {:x?} dropped", state);
             drop(state_owned);
         })
 }
 
 pub fn context_set_wait(cx: &Context, wait_for: &EventSubscription) {
     // remember this eventsubscription in the context
+    #[cfg(feature = "trace")]
+    println!("Set wait cx {:x?} sub {:x?}", cx as * const _ as usize, wait_for.handle());
     let data = cx.waker().data();
     let mut copy = Some(wait_for.dup());
     std::mem::swap(
         unsafe { &mut *(data.cast::<Option<EventSubscription>>().cast_mut()) },
         &mut copy,
     );
+    #[cfg(feature = "trace")]
+    if let Some(v) = copy {
+        println!(" previous wait on {:x?}", v.handle());
+    }
 }
 
 pub async fn wait_on(wait_for: EventSubscription) {
@@ -93,6 +104,8 @@ pub async fn wait_on(wait_for: EventSubscription) {
 }
 
 extern "C" fn symmetric_callback(obj: *mut ()) -> CallbackState {
+    #[cfg(feature = "trace")]
+    println!("# Callback on {:?}", obj);
     match unsafe { poll(obj.cast()) } {
         Poll::Ready(_) => CallbackState::Ready,
         Poll::Pending => {
@@ -108,6 +121,7 @@ extern "C" fn symmetric_callback(obj: *mut ()) -> CallbackState {
 }
 
 pub fn first_poll_sub(future: BoxFuture) -> *mut () {
+    // we can likely fuse the boxes by making FutureState generic over the future
     let state = Box::into_raw(Box::new(FutureState {
         future,
         completion_event: None,

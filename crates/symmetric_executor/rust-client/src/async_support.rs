@@ -1,4 +1,4 @@
-use futures::{task::Waker, FutureExt, future::FusedFuture};
+use futures::{future::FusedFuture, task::Waker, FutureExt};
 use std::{
     future::Future,
     mem::MaybeUninit,
@@ -12,7 +12,7 @@ use crate::module::symmetric::runtime::symmetric_executor::{
     self, CallbackState, EventGenerator, EventSubscription,
 };
 
-pub use future_support::{future_new, FutureReader, FutureVtable, FutureWriter};
+pub use future_support::{future_new, FutureReader, FutureVtable, FutureWriteCancel, FutureWriter};
 pub use stream_support::{
     results, stream_new, Stream, StreamReader, StreamResult, StreamVtable, StreamWriter,
 };

@@ -60,12 +60,16 @@ impl<T: Unpin + Send> Future for FutureWrite<T> {
                     let subsc = handle.write_ready_subscribe();
                     wait_on(subsc).await;
                 }
-                let buffer = handle.start_writing();
-                let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T> as *mut u8;
-                unsafe { (lower)(data, addr) };
-                buffer.set_size(1);
-                handle.finish_writing(Some(buffer));
-                Ok(())
+                if handle.is_read_closed() {
+                    Err(())
+                } else {
+                    let buffer = handle.start_writing();
+                    let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T> as *mut u8;
+                    unsafe { (lower)(data, addr) };
+                    buffer.set_size(1);
+                    handle.finish_writing(Some(buffer));
+                    Ok(())
+                }
             })
                 as Pin<Box<dyn Future<Output = Self::Output> + Send>>);
         }
@@ -82,6 +86,7 @@ pub struct FutureRead<T: 'static> {
 pub struct FutureReader<T: 'static> {
     handle: Stream,
     vtable: &'static FutureVtable<T>,
+    has_completed: bool,
 }
 
 impl<T> FutureReader<T> {
@@ -89,6 +94,7 @@ impl<T> FutureReader<T> {
         Self {
             handle: unsafe { Stream::from_handle(handle as usize) },
             vtable,
+            has_completed: false,
         }
     }
 
@@ -110,7 +116,9 @@ impl<T> FutureReader<T> {
 
 impl<T> Drop for FutureReader<T> {
     fn drop(&mut self) {
-        let _ = self.handle.close_read();
+        if !self.has_completed && self.handle.handle() != 0 {
+            let _ = self.handle.close_read();
+        }
     }
 }
 
@@ -151,6 +159,7 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
         match me.future.as_mut().unwrap().as_mut().poll(cx) {
             Poll::Ready(v) => {
                 me.future = None;
+                me.reader.has_completed = true;
                 Poll::Ready(v)
             }
             Poll::Pending => Poll::Pending,

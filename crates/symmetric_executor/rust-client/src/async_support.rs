@@ -1,4 +1,4 @@
-use futures::task::Waker;
+use futures::{task::Waker, FutureExt, future::FusedFuture};
 use std::{
     future::Future,
     mem::MaybeUninit,
@@ -23,7 +23,7 @@ pub mod rust_buffer;
 pub mod stream_support;
 mod subtask;
 
-struct FutureState<F: Future<Output = ()>> {
+struct FutureState<F: FusedFuture<Output = ()>> {
     future: F,
     // signal to activate once the current async future has finished
     completion_event: Option<EventGenerator>,
@@ -49,15 +49,19 @@ pub fn new_waker(waiting_for_ptr: *mut Vec<EventSubscription>) -> Waker {
     unsafe { Waker::from_raw(RawWaker::new(waiting_for_ptr.cast(), &VTABLE)) }
 }
 
-unsafe fn poll<F: Future<Output = ()>>(state: Pin<&mut FutureState<F>>) -> Poll<()> {
+unsafe fn poll<F: FusedFuture<Output = ()>>(state: Pin<&mut FutureState<F>>) -> Poll<()> {
     let state_ref = unsafe { Pin::into_inner_unchecked(state) };
-    // pin projection
-    let mut pinned = unsafe { Pin::new_unchecked(&mut state_ref.future) };
-    let waker = new_waker(&mut state_ref.waiting_for as *mut Vec<EventSubscription>);
-    let mut context = Context::from_waker(&waker);
-    #[cfg(feature = "trace")]
-    println!(" Poll wait cx {:x?}", &context as *const _ as usize,);
-    pinned.as_mut().poll(&mut context)
+    if state_ref.future.is_terminated() {
+        Poll::Ready(())
+    } else {
+        // pin projection
+        let mut pinned = unsafe { Pin::new_unchecked(&mut state_ref.future) };
+        let waker = new_waker(&mut state_ref.waiting_for as *mut Vec<EventSubscription>);
+        let mut context = Context::from_waker(&waker);
+        #[cfg(feature = "trace")]
+        println!(" Poll wait cx {:x?}", &context as *const _ as usize,);
+        pinned.as_mut().poll(&mut context)
+    }
 }
 
 pub fn context_set_wait(cx: &Context, wait_for: EventSubscription) {
@@ -89,7 +93,7 @@ pub async fn wait_on(wait_for: EventSubscription) {
 }
 
 // return new completion event on Pending
-fn symmetric_callback_sub<F: Future<Output = ()>>(obj: *mut ()) -> *mut () {
+fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () {
     #[cfg(feature = "trace")]
     println!("# Callback on {:?}", obj);
     let state = obj.cast::<StateContainer<F>>();
@@ -113,7 +117,7 @@ fn symmetric_callback_sub<F: Future<Output = ()>>(obj: *mut ()) -> *mut () {
             core::ptr::null_mut()
         }
         Poll::Pending => {
-            assert!(!state_inner.waiting_for.is_empty());
+            assert!(!state_inner.waiting_for.is_empty() || state_inner.instances > 0);
             let wait_chain = if state_inner.completion_event.is_none() {
                 state_inner
                     .completion_event
@@ -137,14 +141,14 @@ fn symmetric_callback_sub<F: Future<Output = ()>>(obj: *mut ()) -> *mut () {
     }
 }
 
-extern "C" fn symmetric_callback<F: Future<Output = ()>>(obj: *mut ()) -> CallbackState {
+extern "C" fn symmetric_callback<F: FusedFuture<Output = ()>>(obj: *mut ()) -> CallbackState {
     let _ = symmetric_callback_sub::<F>(obj);
     // obj already re-registered on new eventby _sub, stop calling
     // from the old event
     CallbackState::Ready
 }
 
-pub fn first_poll_sub<F: Future<Output = ()>>(future: F) -> *mut () {
+pub fn first_poll_sub<F: FusedFuture<Output = ()>>(future: F) -> *mut () {
     // Pin on the Box is assumed here
     let state = Box::into_raw(Box::new(Mutex::new(FutureState {
         future,
@@ -165,7 +169,7 @@ pub fn first_poll_sub<F: Future<Output = ()>>(future: F) -> *mut () {
 /// completed immediately; otherwise it returns null.
 #[doc(hidden)]
 pub fn first_poll(future: impl Future<Output = ()> + 'static) -> *mut () {
-    first_poll_sub(future)
+    first_poll_sub(future.fuse())
 }
 
 #[doc(hidden)]
@@ -190,7 +194,7 @@ pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
 }
 
 pub unsafe fn spawn_unchecked(future: impl Future<Output = ()>) {
-    let wait_for = first_poll_sub(future);
+    let wait_for = first_poll_sub(future.fuse());
     if !wait_for.is_null() {
         let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
         drop(wait_for);

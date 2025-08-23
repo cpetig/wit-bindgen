@@ -212,20 +212,18 @@ impl GuestStreamObj for StreamObj {
     }
 
     fn close_read(&self) -> Vec<symmetric_stream::Buffer> {
-        let res = Vec::new();
+        let mut res = Vec::new();
         let size = self.0.read_size.swap(0, Ordering::Acquire);
         let addr = self
             .0
             .read_addr
             .swap(core::ptr::null_mut(), Ordering::Relaxed);
         #[cfg(feature = "trace")]
-        println!(
-            "Stream::close_read {addr:x?} {size}",
-        );
+        println!("Stream::close_read {addr:x?} {size}",);
         self.0.read_closed.store(true, Ordering::Release);
         self.write_ready_activate();
-        if size>0 {
-            let buffer  = symmetric_stream::Buffer::new(Buffer {
+        if size > 0 {
+            let buffer = symmetric_stream::Buffer::new(Buffer {
                 addr,
                 capacity: size,
                 size: AtomicUsize::new(0),
@@ -233,6 +231,10 @@ impl GuestStreamObj for StreamObj {
             res.push(buffer);
         }
         res
+    }
+
+    fn is_read_closed(&self) -> bool {
+        self.0.read_closed.load(Ordering::Relaxed)
     }
 }
 

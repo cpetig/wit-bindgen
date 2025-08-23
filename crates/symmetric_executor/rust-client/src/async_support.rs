@@ -1,4 +1,4 @@
-use futures::{task::Waker, FutureExt};
+use futures::task::Waker;
 use std::{
     future::Future,
     mem::MaybeUninit,
@@ -31,10 +31,10 @@ mod subtask;
 // pub unsafe auto trait MaybeSend : Send {}
 // unsafe impl<T> MaybeSend for T where T: Send {}
 
-type BoxFuture = Pin<Box<dyn Future<Output = ()> + 'static>>;
+//type BoxFuture = Pin<Box<dyn Future<Output = ()> + 'static>>;
 
-struct FutureState {
-    future: BoxFuture,
+struct FutureState<F: Future<Output = ()>> {
+    future: F,
     // signal to activate once the current async future has finished
     completion_event: Option<EventGenerator>,
     // the event this future should wake on
@@ -55,30 +55,35 @@ pub fn new_waker(waiting_for_ptr: *mut Option<EventSubscription>) -> Waker {
     unsafe { Waker::from_raw(RawWaker::new(waiting_for_ptr.cast(), &VTABLE)) }
 }
 
-unsafe fn poll(state: *mut FutureState) -> Poll<()> {
-    let mut pinned = std::pin::pin!(&mut (*state).future);
+unsafe fn poll<F: Future<Output = ()>>(state: *mut FutureState<F>) -> Poll<()> {
+    let mut pinned = unsafe { Pin::new_unchecked(&mut (*state).future) };
+    //    std::pin::pin!(&mut (*state).future);
     let waker = new_waker(&mut (&mut *state).waiting_for as *mut Option<EventSubscription>);
     let mut context = Context::from_waker(&waker);
     #[cfg(feature = "trace")]
-    println!(" Poll wait cx {:x?} state {:x?}", &context as * const _ as usize, state);
-    pinned
-        .as_mut()
-        .poll(&mut context)
-        .map(|()| {
-            let state_owned = Box::from_raw(state);
-            if let Some(waker) = &state_owned.completion_event {
-                waker.activate();
-            }
-            #[cfg(feature = "trace")]
-            println!(" state {:x?} dropped", state);
-            drop(state_owned);
-        })
+    println!(
+        " Poll wait cx {:x?} state {:x?}",
+        &context as *const _ as usize, state
+    );
+    pinned.as_mut().poll(&mut context).map(|()| {
+        let state_owned = Box::from_raw(state);
+        if let Some(waker) = &state_owned.completion_event {
+            waker.activate();
+        }
+        #[cfg(feature = "trace")]
+        println!(" state {:x?} dropped", state);
+        drop(state_owned);
+    })
 }
 
 pub fn context_set_wait(cx: &Context, wait_for: &EventSubscription) {
     // remember this eventsubscription in the context
     #[cfg(feature = "trace")]
-    println!("Set wait cx {:x?} sub {:x?}", cx as * const _ as usize, wait_for.handle());
+    println!(
+        "Set wait cx {:x?} sub {:x?}",
+        cx as *const _ as usize,
+        wait_for.handle()
+    );
     let data = cx.waker().data();
     let mut copy = Some(wait_for.dup());
     std::mem::swap(
@@ -103,15 +108,15 @@ pub async fn wait_on(wait_for: EventSubscription) {
     .await
 }
 
-extern "C" fn symmetric_callback(obj: *mut ()) -> CallbackState {
+extern "C" fn symmetric_callback<F: Future<Output = ()>>(obj: *mut ()) -> CallbackState {
     #[cfg(feature = "trace")]
     println!("# Callback on {:?}", obj);
-    match unsafe { poll(obj.cast()) } {
+    match unsafe { poll::<F>(obj.cast()) } {
         Poll::Ready(_) => CallbackState::Ready,
         Poll::Pending => {
-            let state = obj.cast::<FutureState>();
+            let state = obj.cast::<FutureState<F>>();
             if let Some(waiting_for) = unsafe { &mut *state }.waiting_for.take() {
-                super::register(waiting_for, symmetric_callback, obj);
+                super::register(waiting_for, symmetric_callback::<F>, obj);
             }
             // as we registered this callback on a new event stop calling
             // from the old event
@@ -120,8 +125,8 @@ extern "C" fn symmetric_callback(obj: *mut ()) -> CallbackState {
     }
 }
 
-pub fn first_poll_sub(future: BoxFuture) -> *mut () {
-    // we can likely fuse the boxes by making FutureState generic over the future
+pub fn first_poll_sub<F: Future<Output = ()>>(future: F) -> *mut () {
+    // Pin on the Box is assumed here
     let state = Box::into_raw(Box::new(FutureState {
         future,
         completion_event: None,
@@ -136,7 +141,7 @@ pub fn first_poll_sub(future: BoxFuture) -> *mut () {
                 unsafe { &mut *state }
                     .completion_event
                     .replace(completion_event);
-                super::register(waiting_for, symmetric_callback, state.cast());
+                super::register(waiting_for, symmetric_callback::<F>, state.cast());
                 wait_chain
             } else {
                 core::ptr::null_mut()
@@ -153,7 +158,7 @@ pub fn first_poll_sub(future: BoxFuture) -> *mut () {
 /// completed immediately; otherwise it returns null.
 #[doc(hidden)]
 pub fn first_poll(future: impl Future<Output = ()> + 'static) -> *mut () {
-    first_poll_sub(Box::pin(future))
+    first_poll_sub(future)
 }
 
 #[doc(hidden)]
@@ -178,8 +183,8 @@ pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
 }
 
 pub unsafe fn spawn_unchecked(future: impl Future<Output = ()>) {
-    let future1: Pin<Box<dyn Future<Output = ()>>> = Box::pin(future);
-    let wait_for = first_poll_sub(unsafe { std::mem::transmute(future1) });
+    // let future1: Pin<Box<dyn Future<Output = ()>>> = Box::pin(future);
+    let wait_for = first_poll_sub(future); // unsafe { std::mem::transmute(future) });
     if !wait_for.is_null() {
         let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
         drop(wait_for);

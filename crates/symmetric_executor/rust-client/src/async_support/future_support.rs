@@ -108,6 +108,12 @@ impl<T> FutureReader<T> {
     }
 }
 
+impl<T> Drop for FutureReader<T> {
+    fn drop(&mut self) {
+        let _ = self.handle.close_read();
+    }
+}
+
 impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
     type Output = T;
 

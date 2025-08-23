@@ -123,13 +123,15 @@ fn symmetric_callback_sub<F: Future<Output = ()>>(obj: *mut ()) -> *mut () {
             } else {
                 core::ptr::null_mut()
             };
-            let mut new_instances = 0;
-            for waiting_for in state_inner.waiting_for.drain(..) {
-                super::register(waiting_for, symmetric_callback::<F>, obj);
-                new_instances += 1;
-            }
-            state_inner.instances += new_instances;
+            // we want to register without holding the lock to enable direct recursion on ready
+            let mut events_to_register_to = Vec::new();
+            std::mem::swap(&mut state_inner.waiting_for, &mut events_to_register_to);
+            state_inner.instances += events_to_register_to.len() as u32;
             drop(state_inner);
+            // now the mutex is unlocked
+            for waiting_for in events_to_register_to.drain(..) {
+                super::register(waiting_for, symmetric_callback::<F>, obj);
+            }
             wait_chain
         }
     }

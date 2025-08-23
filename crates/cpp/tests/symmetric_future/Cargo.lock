@@ -331,9 +331,8 @@ dependencies = [
 name = "symmetric_stream"
 version = "0.1.0"
 dependencies = [
- "dummy-rt",
+ "mini-bindgen",
  "symmetric_executor",
- "wit-bindgen-symmetric-rt",
 ]
 
 [[package]]

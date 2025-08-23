@@ -41,12 +41,16 @@ impl<T> FutureWriter<T> {
 /// Represents a write operation which may be canceled prior to completion.
 pub struct FutureWrite<T: 'static> {
     writer: FutureWriter<T>,
-    future: Option<Pin<Box<dyn Future<Output = Result<(), ()>> + 'static + Send>>>,
+    future: Option<Pin<Box<dyn Future<Output = Result<(), FutureWriteError<T>>> + 'static + Send>>>,
     data: Option<T>,
 }
 
+pub struct FutureWriteError<T> {
+    pub value: T,
+}
+
 impl<T: Unpin + Send> Future for FutureWrite<T> {
-    type Output = Result<(), ()>;
+    type Output = Result<(), FutureWriteError<T>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let me = self.get_mut();
@@ -60,17 +64,42 @@ impl<T: Unpin + Send> Future for FutureWrite<T> {
                     let subsc = handle.write_ready_subscribe();
                     wait_on(subsc).await;
                 }
-                let buffer = handle.start_writing();
-                let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T> as *mut u8;
-                unsafe { (lower)(data, addr) };
-                buffer.set_size(1);
-                handle.finish_writing(Some(buffer));
-                Ok(())
+                if handle.is_read_closed() {
+                    Err(FutureWriteError { value: data })
+                } else {
+                    let buffer = handle.start_writing();
+                    let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T> as *mut u8;
+                    unsafe { (lower)(data, addr) };
+                    buffer.set_size(1);
+                    handle.finish_writing(Some(buffer));
+                    Ok(())
+                }
             })
                 as Pin<Box<dyn Future<Output = Self::Output> + Send>>);
         }
         me.future.as_mut().unwrap().poll_unpin(cx)
     }
+}
+
+impl<T> std::fmt::Debug for FutureWriter<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FutureWriter")
+            .field("handle", &self.handle.handle())
+            .finish()
+    }
+}
+
+impl<T: 'static> FutureWrite<T> {
+    pub fn cancel(self: Pin<&mut Self>) -> FutureWriteCancel<T> {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub enum FutureWriteCancel<T: 'static> {
+    Cancelled(T, FutureWriter<T>),
+    Dropped(T),
+    AlreadySent,
 }
 
 /// Represents a read operation which may be canceled prior to completion.
@@ -82,6 +111,7 @@ pub struct FutureRead<T: 'static> {
 pub struct FutureReader<T: 'static> {
     handle: Stream,
     vtable: &'static FutureVtable<T>,
+    has_completed: bool,
 }
 
 impl<T> FutureReader<T> {
@@ -89,6 +119,7 @@ impl<T> FutureReader<T> {
         Self {
             handle: unsafe { Stream::from_handle(handle as usize) },
             vtable,
+            has_completed: false,
         }
     }
 
@@ -105,6 +136,22 @@ impl<T> FutureReader<T> {
 
     pub fn take_handle(&self) -> *mut () {
         self.handle.take_handle() as *mut ()
+    }
+}
+
+impl<T> Drop for FutureReader<T> {
+    fn drop(&mut self) {
+        if !self.has_completed && self.handle.handle() != 0 {
+            let _ = self.handle.close_read();
+        }
+    }
+}
+
+impl<T> std::fmt::Debug for FutureReader<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FutureReader")
+            .field("handle", &self.handle.handle())
+            .finish()
     }
 }
 
@@ -145,6 +192,7 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
         match me.future.as_mut().unwrap().as_mut().poll(cx) {
             Poll::Ready(v) => {
                 me.future = None;
+                me.reader.has_completed = true;
                 Poll::Ready(v)
             }
             Poll::Pending => Poll::Pending,
@@ -153,13 +201,13 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
 }
 
 impl<T> FutureRead<T> {
-    pub fn cancel(mut self) -> FutureReader<T> {
-        self.cancel_mut()
-    }
-
-    fn cancel_mut(&mut self) -> FutureReader<T> {
+    pub fn cancel(self: Pin<&mut Self>) -> Result<T, FutureReader<T>> {
         todo!()
     }
+
+    // fn cancel_mut(&mut self) -> Result<T, FutureReader<T>> {
+    //     todo!()
+    // }
 }
 
 impl<T: Send + Unpin + Sized> IntoFuture for FutureReader<T> {

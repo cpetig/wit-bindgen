@@ -13,7 +13,8 @@ pub use original::{generate, rt};
 
 #[cfg(feature = "async")]
 pub use rt::async_support::{
-    block_on, spawn, FutureReader, FutureWriter, StreamReader, StreamResult, StreamWriter,
+    block_on, spawn, FutureReader, FutureWriteCancel, FutureWriter, StreamReader, StreamResult,
+    StreamWriter,
 };
 
 #[cfg(feature = "symmetric")]

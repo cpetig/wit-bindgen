@@ -89,9 +89,12 @@ interface symmetric-stream {
         start-reading: func(buffer: buffer);
         write-ready-activate: func();
         read-ready-subscribe: func() -> event-subscription;
+        // close the reading side, returning any in-flight buffer(s)
+        close-read: func() -> list<buffer>;
         /// none is EOF when read-ready, no data when polled
         read-result: func() -> option<buffer>;
         // writing
+        is-read-closed: func() -> bool;
         is-ready-to-write: func() -> bool;
         write-ready-subscribe: func() -> event-subscription;
         start-writing: func() -> buffer;

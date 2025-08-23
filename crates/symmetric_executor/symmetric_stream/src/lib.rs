@@ -67,6 +67,8 @@ struct StreamInner {
     ready_capacity: AtomicUsize,
     // if the writer closes before the reader has consumed the last data
     write_closed: AtomicBool,
+    // reader closed
+    read_closed: AtomicBool,
 }
 
 struct StreamObj(Arc<StreamInner>);
@@ -82,6 +84,7 @@ impl GuestStreamObj for StreamObj {
             ready_size: AtomicIsize::new(results::BLOCKED),
             ready_capacity: AtomicUsize::new(0),
             write_closed: AtomicBool::new(false),
+            read_closed: AtomicBool::new(false),
         };
         #[cfg(feature = "trace")]
         println!("Stream::new {:x}", inner.read_ready_event_send.handle());
@@ -206,6 +209,32 @@ impl GuestStreamObj for StreamObj {
 
     fn read_ready_activate(&self) {
         self.0.read_ready_event_send.activate();
+    }
+
+    fn close_read(&self) -> Vec<symmetric_stream::Buffer> {
+        let mut res = Vec::new();
+        let size = self.0.read_size.swap(0, Ordering::Acquire);
+        let addr = self
+            .0
+            .read_addr
+            .swap(core::ptr::null_mut(), Ordering::Relaxed);
+        #[cfg(feature = "trace")]
+        println!("Stream::close_read {addr:x?} {size}",);
+        self.0.read_closed.store(true, Ordering::Release);
+        self.write_ready_activate();
+        if size > 0 {
+            let buffer = symmetric_stream::Buffer::new(Buffer {
+                addr,
+                capacity: size,
+                size: AtomicUsize::new(0),
+            });
+            res.push(buffer);
+        }
+        res
+    }
+
+    fn is_read_closed(&self) -> bool {
+        self.0.read_closed.load(Ordering::Relaxed)
     }
 }
 

@@ -953,14 +953,24 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     self.declare_import(module_prefix.as_ref(), name, &sig.params, &sig.results);
 
                 // ... then call the function with all our operands
-                if !sig.results.is_empty() {
+                let async_ = name.starts_with("[async]")
+                    && !sig.results.is_empty()
+                    && self.gen.gen.opts.symmetric;
+                if async_ {
+                    self.push_str("wit_bindgen::rt::async_support::await_result(move || unsafe {");
+                    results.push(String::new());
+                } else if !sig.results.is_empty() {
                     self.push_str("let ret = ");
                     results.push("ret".to_string());
                 }
                 self.push_str(&func);
                 self.push_str("(");
                 self.push_str(&operands.join(", "));
-                self.push_str(");\n");
+                if async_ {
+                    self.push_str(")}).await;\n");
+                } else {
+                    self.push_str(");\n");
+                }
                 if self.r#gen.needs_deallocate {
                     self.push_str(&format!("for (ptr,layout) in _deallocate.drain(..) {{ _rt::alloc::dealloc(ptr, layout); }}\n"));
                     self.r#gen.needs_deallocate = false;

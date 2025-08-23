@@ -22,9 +22,12 @@ pub mod test {
                         #[cfg_attr(target_arch = "wasm32", link_name = "[async]sleep")]
                         fn testX3AtestX2FwaitX00X5BasyncX5Dsleep(_: i64) -> *mut u8;
                     }
-                    let ret = wit_bindgen::rt::async_support::await_result(move || unsafe {testX3AtestX2FwaitX00X5BasyncX5Dsleep(
-                        _rt::as_i64(nanoseconds),
-                    )}).await;
+                    wit_bindgen::rt::async_support::await_result(move || unsafe {
+                            testX3AtestX2FwaitX00X5BasyncX5Dsleep(
+                                _rt::as_i64(nanoseconds),
+                            )
+                        })
+                        .await;
                 }
             }
         }

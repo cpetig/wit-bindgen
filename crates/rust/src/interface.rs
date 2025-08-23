@@ -818,10 +818,10 @@ pub mod vtable{ordinal} {{
         }
         self.src.push_str("unsafe {\n");
 
-        if async_ {
+        if async_ && !self.r#gen.opts.symmetric {
             self.generate_guest_import_body_async(&self.wasm_import_module, func, params);
         } else {
-            self.generate_guest_import_body_sync(&self.wasm_import_module, func, params);
+            self.generate_guest_import_body_sync(&self.wasm_import_module, func, params, async_);
         }
 
         self.src.push_str("}\n");
@@ -882,11 +882,16 @@ pub mod vtable{ordinal} {{
         module: &str,
         func: &Function,
         params: Vec<String>,
+        async_: bool,
     ) {
         let mut f = FunctionBindgen::new(self, params, module, false);
         abi::call(
             f.r#gen.resolve,
-            AbiVariant::GuestImport,
+            if async_ {
+                AbiVariant::GuestImportAsync
+            } else {
+                AbiVariant::GuestImport
+            },
             if f.gen.gen.opts.symmetric {
                 LiftLower::Symmetric
             } else {
@@ -894,7 +899,7 @@ pub mod vtable{ordinal} {{
             },
             func,
             &mut f,
-            false,
+            async_,
         );
         let FunctionBindgen {
             needs_cleanup_list,
@@ -1187,7 +1192,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         abi::call(
             f.r#gen.resolve,
             variant,
-            if f.gen.gen.opts.symmetric {
+            if f.r#gen.r#gen.opts.symmetric {
                 LiftLower::Symmetric
             } else {
                 LiftLower::LiftArgsLowerResults
@@ -1226,7 +1231,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         }
         self.src.push_str("} }\n");
 
-        if async_ {
+        if async_ && !self.gen.opts.symmetric {
             let async_support = self.r#gen.async_support_path();
             uwrite!(
                 self.src,
@@ -1329,7 +1334,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         self.push_str("}\n");
 
         let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
-        if async_ {
+        if async_ && !self.gen.opts.symmetric {
             uwrite!(
                 self.src,
                 "\
@@ -1375,8 +1380,9 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         } else {
             AbiVariant::GuestExport
         };
-        let sig =
-            abi::wasm_signature_symmetric(self.resolve, variant, func, self.gen.opts.symmetric);
+        let sig = self
+            .resolve
+            .wasm_signature_symmetric(variant, func, self.gen.opts.symmetric);
         let mut params = Vec::new();
         for (i, param) in sig.params.iter().enumerate() {
             let name = format!("arg{}", i);

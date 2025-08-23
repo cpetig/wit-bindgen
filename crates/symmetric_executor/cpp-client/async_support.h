@@ -3,6 +3,7 @@
 #include "module_cpp.h"
 #include "stream_support.h"
 
+// internal calback used by lift_event
 static inline symmetric::runtime::symmetric_executor::CallbackState fulfil_promise_void(void* data) {
     std::unique_ptr<std::promise<void>> ptr((std::promise<void>*)data);
     ptr->set_value();
@@ -24,15 +25,12 @@ static inline std::future<void> lift_event(void* event) {
     return result1;
 }
 
+// internal callback for lower_async
 static inline symmetric::runtime::symmetric_executor::CallbackState wait_on_future(std::future<void>* fut) {
     fut->get();
     delete fut;
     return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
-
-// static void run_in_background() {
-
-// }
 
 template <class T>
 void* lower_async(std::future<T> &&result1, std::function<void(T&&)> &&lower_result) {
@@ -56,19 +54,7 @@ void* lower_async(std::future<T> &&result1, std::function<void(T&&)> &&lower_res
     }    
 }
 
-template <class T>
-union MaybeUninit {
-    T value;
-    char dummy;
-    MaybeUninit()
-    : dummy()
-    { }
-    ~MaybeUninit()
-    { }
-    MaybeUninit(const MaybeUninit &) = delete;
-    // assume that value isn't valid yet
-    MaybeUninit(MaybeUninit &&b) : dummy() { }
-};
+// internal data structure used by lift_future
 template <class T, class LIFT>
 struct fulfil_promise_data {
     symmetric::runtime::symmetric_stream::StreamObj stream;
@@ -76,6 +62,7 @@ struct fulfil_promise_data {
     uint8_t value[LIFT::SIZE];
 };
 
+// internal callback used by lift_future
 template <class T, class LIFT>
 static symmetric::runtime::symmetric_executor::CallbackState fulfil_promise(void* data) {
     std::unique_ptr<fulfil_promise_data<T, LIFT>> ptr((fulfil_promise_data<T, LIFT>*)data);
@@ -126,32 +113,45 @@ std::pair<future_writer<T>, future_reader<T>> create_wasi_future() {
 template <class T> struct stream_writer {
     symmetric::runtime::symmetric_stream::StreamObj handle;
 
+    // non blocking write, returns remaining data
+    std::vector<T> write_nb(std::vector<T> data) {
+        auto buffer = handle.StartWriting();
+        auto capacity = buffer.Capacity();
+        uint8_t* dest = (uint8_t*)buffer.GetAddress().into_handle();
+        auto elements = data.size();
+        if (elements<capacity) elements=capacity;
+        for (uint32_t i = 0; i<elements; ++i) {
+            wit::StreamProperties<T>::lower(std::move(data[i]), dest+(i*wit::StreamProperties<T>::lowered_size));
+        }
+        buffer.SetSize(elements);
+        handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>(std::move(buffer)));
+
+        if (capacity>data.size()) capacity = data.size();
+        data.erase(data.begin(), data.begin() + capacity);
+        return data;
+    }
+
     void write(std::vector<T>&& data) {
         while (!data.empty()) {
-            if (!handle.IsReadyToWrite()) {
-                abort();
-                // symmetric::runtime::symmetric_executor::BlockOn(handle.WriteReadySubscribe());
+            if (!IsReadyToWrite()) {
+                symmetric::runtime::symmetric_executor::BlockOn(handle.WriteReadySubscribe());
             }
-            auto buffer = handle.StartWriting();
-            auto capacity = buffer.Capacity();
-            uint8_t* dest = (uint8_t*)buffer.GetAddress().into_handle();
-            auto elements = data.size();
-            if (elements<capacity) elements=capacity;
-            for (uint32_t i = 0; i<elements; ++i) {
-                wit::StreamProperties<T>::lower(std::move(data[i]), dest+(i*wit::StreamProperties<T>::lowered_size));
-            }
-            buffer.SetSize(elements);
-            handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>(std::move(buffer)));
-
-            if (capacity>data.size()) capacity = data.size();
-            data.erase(data.begin(), data.begin() + capacity);
-        }        
+            data = write_nb(std::move(data));
+        }
     }
+    bool IsReadyToWrite() const {
+        return handle.IsReadyToWrite();
+    }
+    symmetric::runtime::symmetric_executor::EventSubscription WriteReadySubscribe() const {
+        return handle.WriteReadySubscribe();
+    }
+
     ~stream_writer() {
         if (handle.get_handle()!=wit::ResourceImportBase::invalid) {
             handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>());
         }
     }
+    stream_writer(symmetric::runtime::symmetric_stream::StreamObj &&h) : handle(std::move(h)) {}
     stream_writer(const stream_writer&) = delete;
     stream_writer& operator=(const stream_writer&) = delete;
     stream_writer(stream_writer&&) = default;
@@ -166,12 +166,14 @@ std::pair<stream_writer<T>, wit::stream<T>> create_wasi_stream() {
         stream_writer<T>{std::move(stream)}, wit::stream<T>{std::move(stream2)});
 }
 
+// internal struct used by lower_future
 template <class T>
 struct write_to_future_data {
     future_writer<T> wr;
     std::future<T> fut;
 };
 
+// internal function used by lower_future
 template <class T, class LOWER>
 static symmetric::runtime::symmetric_executor::CallbackState write_to_future(void* data) {
     std::unique_ptr<write_to_future_data<T>> ptr((write_to_future_data<T>*)data);

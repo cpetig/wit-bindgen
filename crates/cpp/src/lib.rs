@@ -396,17 +396,17 @@ impl Cpp {
                 format!("std::bit_cast<int64_t, double>({})", op)
             }
             Bitcast::I32ToI64 | Bitcast::LToI64 | Bitcast::PToP64 => {
-                format!("(int64_t) {}", op)
+                format!("static_cast<int64_t>({})", op)
             }
             Bitcast::I64ToI32 | Bitcast::PToI32 | Bitcast::LToI32 => {
-                format!("(int32_t) {}", op)
+                format!("static_cast<int32_t>({})", op)
             }
             Bitcast::P64ToI64 | Bitcast::None | Bitcast::I64ToP64 => op.to_string(),
             Bitcast::P64ToP | Bitcast::I32ToP | Bitcast::LToP => {
-                format!("(uint8_t*) {}", op)
+                format!("static_cast<uint8_t*>({})", op)
             }
             Bitcast::PToL | Bitcast::I32ToL | Bitcast::I64ToL => {
-                format!("(size_t) {}", op)
+                format!("static_cast<size_t>({})", op)
             }
             Bitcast::Sequence(sequence) => {
                 let [first, second] = &**sequence;
@@ -560,9 +560,11 @@ impl WorldGenerator for Cpp {
             __attribute__((__weak__{export_name}))
             void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {{
                 (void) old_size;
-                if (new_size == 0) return (void*) align;
-                void *ret = realloc(ptr, new_size);
-                if (!ret) abort();
+                void *ret = reinterpret_cast<void*>(align);
+                if (new_size != 0) {{
+                    ret = realloc(ptr, new_size);
+                    if (!ret) {{ abort(); }}
+                }}
                 return ret;
             }}
 
@@ -1122,22 +1124,8 @@ impl CppInterfaceGenerator<'_> {
 
     // local patching of borrows function needs more complex solution
     fn patched_wasm_signature(&self, variant: AbiVariant, func: &Function) -> WasmSignature {
-        abi::wasm_signature_symmetric(self.resolve, variant, func, self.gen.opts.symmetric)
-        // if matches!(res.params.get(0), Some(WasmType::I32))
-        //     && matches!(func.kind, FunctionKind::Freestanding)
-        // {
-        //     if let Some((_, ty)) = func.params.get(0) {
-        //         if let Type::Id(id) = ty {
-        //             if let Some(td) = self.resolve.types.get(*id) {
-        //                 if let TypeDefKind::Handle(Handle::Borrow(id2)) = &td.kind {
-        //                     if let Some(ty2) = self.resolve.types.get(*id2) {
-        //                         dbg!((&self.gen.imported_interfaces, id2, ty2, &func));
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
+        self.resolve
+            .wasm_signature_symmetric(variant, func, self.gen.opts.symmetric)
     }
 
     // print the signature of the guest export (lowered (wasm) function calling into highlevel)
@@ -1708,8 +1696,15 @@ impl CppInterfaceGenerator<'_> {
                                 self.gen.opts.ptr_type()
                             );
                         } else {
-                            uwriteln!(self.gen.c_src.src, "(({classname}*)arg0)->handle=-1;");
-                            uwriteln!(self.gen.c_src.src, "{0}::Dtor(({0}*)arg0);", classname);
+                            uwriteln!(
+                                self.gen.c_src.src,
+                                "static_cast<{classname}*>(arg0)->handle=-1;"
+                            );
+                            uwriteln!(
+                                self.gen.c_src.src,
+                                "{0}::Dtor(static_cast<{0}*>(arg0));",
+                                classname
+                            );
                         }
                     }
                 }
@@ -1717,7 +1712,7 @@ impl CppInterfaceGenerator<'_> {
                     if self.gen.opts.symmetric {
                         uwriteln!(
                             self.gen.c_src.src,
-                            "return ({}){};",
+                            "return static_cast<{}>({});",
                             self.gen.opts.ptr_type(),
                             func.params.get(0).unwrap().0
                         );
@@ -1748,7 +1743,7 @@ impl CppInterfaceGenerator<'_> {
                         let classname = class_namespace(self, func, variant).join("::");
                         uwriteln!(
                             self.gen.c_src.src,
-                            "return ({}*){};",
+                            "return static_cast<{}*>({});",
                             classname,
                             func.params.get(0).unwrap().0
                         );
@@ -2768,8 +2763,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             results.push(format!("*(({}*) wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {})))", ty, operands[0], offset.format(POINTER_SIZE_EXPRESSION)));
         } else {
             results.push(format!(
-                "*(({}*) ({} + {}))",
-                ty,
+                "*static_cast<{ty}*>({} + {})",
                 operands[0],
                 offset.format(POINTER_SIZE_EXPRESSION)
             ));
@@ -2785,15 +2779,14 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     ) {
         self.load(ty, offset, operands, results);
         let result = results.pop().unwrap();
-        results.push(format!("(int32_t) ({})", result));
+        results.push(format!("static_cast<int32_t>({})", result));
     }
 
     fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
         if self.gen.gen.opts.host {
             uwriteln!(
                 self.src,
-                "*(({}*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {}))) = {};",
-                ty,
+                "*(({ty}*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {}))) = {};",
                 operands[1],
                 offset.format(POINTER_SIZE_EXPRESSION),
                 operands[0]
@@ -2801,54 +2794,11 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             uwriteln!(
                 self.src,
-                "*(({}*)({} + {})) = {};",
-                ty,
+                "*static_cast<{ty}*>({} + {}) = {};",
                 operands[1],
                 offset.format(POINTER_SIZE_EXPRESSION),
                 operands[0]
             );
-        }
-    }
-
-    fn has_resources2(&self, ty: &Type) -> bool {
-        match ty {
-            Type::Bool
-            | Type::U8
-            | Type::U16
-            | Type::U32
-            | Type::U64
-            | Type::S8
-            | Type::S16
-            | Type::S32
-            | Type::S64
-            | Type::F32
-            | Type::F64
-            | Type::Char => false,
-            Type::String => false,
-            Type::Id(id) => self.has_resources(id),
-            Type::ErrorContext => todo!(),
-        }
-    }
-    fn has_resources(&self, id: &TypeId) -> bool {
-        match &self.gen.resolve.types[*id].kind {
-            TypeDefKind::Record(_) => todo!(),
-            TypeDefKind::Resource => true,
-            TypeDefKind::Handle(_) => true,
-            TypeDefKind::Flags(_) => false,
-            TypeDefKind::Tuple(t) => t.types.iter().any(|ty| self.has_resources2(ty)),
-            TypeDefKind::Variant(_) => todo!(),
-            TypeDefKind::Enum(_) => false,
-            TypeDefKind::Option(_) => todo!(),
-            TypeDefKind::Result(_) => todo!(),
-            TypeDefKind::List(_) => todo!(),
-            TypeDefKind::Future(_) => todo!(),
-            TypeDefKind::Stream(_) => todo!(),
-            TypeDefKind::Type(ty) => match ty {
-                Type::Id(id) => self.has_resources(id),
-                _ => false,
-            },
-            TypeDefKind::FixedSizeList(_, _) => todo!(),
-            TypeDefKind::Unknown => todo!(),
         }
     }
 
@@ -2980,7 +2930,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         results: &mut Vec<Self::Operand>,
     ) {
         let mut top_as = |cvt: &str| {
-            results.push(format!("({cvt}({}))", operands.pop().unwrap()));
+            results.push(format!("static_cast<{cvt}>({})", operands.pop().unwrap()));
         };
 
         match inst {
@@ -2995,7 +2945,9 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results.push(self.params[*nth].clone());
                 }
             }
-            abi::Instruction::I32Const { val } => results.push(format!("(int32_t({}))", val)),
+            abi::Instruction::I32Const { val } => {
+                results.push(format!("static_cast<int32_t>({val})"))
+            }
             abi::Instruction::Bitcasts { casts } => {
                 for (cast, op) in casts.iter().zip(operands) {
                     // let op = op;
@@ -3005,13 +2957,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::ConstZero { tys } => {
                 for ty in tys.iter() {
                     match ty {
-                        WasmType::I32 => results.push("int32_t(0)".to_string()),
-                        WasmType::I64 => results.push("int64_t(0)".to_string()),
+                        WasmType::I32 => results.push("static_cast<int32_t>(0)".to_string()),
+                        WasmType::I64 => results.push("static_cast<int64_t>(0)".to_string()),
                         WasmType::F32 => results.push("0.0f".to_string()),
                         WasmType::F64 => results.push("0.0".to_string()),
-                        WasmType::Length => results.push("size_t(0)".to_string()),
+                        WasmType::Length => results.push("static_cast<size_t>(0)".to_string()),
                         WasmType::Pointer => results.push("nullptr".to_string()),
-                        WasmType::PointerOrI64 => results.push("int64_t(0)".to_string()),
+                        WasmType::PointerOrI64 => {
+                            results.push("static_cast<int64_t>(0)".to_string())
+                        }
                     }
                 }
             }
@@ -3019,7 +2973,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 uwriteln!(
                     self.src,
-                    "int32_t l{tmp} = *((int32_t const*)({} + {offset}));",
+                    "int32_t l{tmp} = *static_cast<int32_t const*>({} + {offset});",
                     operands[0],
                     offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
@@ -3083,12 +3037,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = ({})({}.data());\n",
-                        ptr,
+                        "auto {ptr} = static_cast<{}>({val}.data());\n",
                         self.gen.gen.opts.ptr_type(),
-                        val
                     ));
-                    self.push_str(&format!("auto {} = (size_t)({}.size());\n", len, val));
+                    self.push_str(&format!(
+                        "auto {} = static_cast<size_t>({}.size());\n",
+                        len, val
+                    ));
                 }
                 if realloc.is_none() {
                     results.push(ptr);
@@ -3115,12 +3070,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = ({})({}.data());\n",
+                        "auto {} = static_cast<{}>({}.data());\n",
                         ptr,
                         self.gen.gen.opts.ptr_type(),
                         val
                     ));
-                    self.push_str(&format!("auto {} = (size_t)({}.size());\n", len, val));
+                    self.push_str(&format!(
+                        "auto {} = static_cast<size_t>({}.size());\n",
+                        len, val
+                    ));
                 }
                 if realloc.is_none() {
                     results.push(ptr);
@@ -3148,12 +3106,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = ({})({}.data());\n",
+                        "auto {} = static_cast<{}>({}.data());\n",
                         ptr,
                         self.gen.gen.opts.ptr_type(),
                         val
                     ));
-                    self.push_str(&format!("auto {} = (size_t)({}.size());\n", len, val));
+                    self.push_str(&format!(
+                        "auto {} = static_cast<size_t>({}.size());\n",
+                        len, val
+                    ));
                 }
 
                 let size = self.gen.sizes.size(element);
@@ -3162,7 +3123,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     "auto base = {ptr} + i * {size};\n",
                     size = size.format(POINTER_SIZE_EXPRESSION)
                 ));
-                self.push_str(&format!("auto&& IterElem = {val}[i];\n"));
+                self.push_str(&format!("auto&& iter_elem = {val}[i];\n"));
                 self.push_str(&format!("{}\n", body.0));
                 self.push_str("}\n");
                 if realloc.is_none() {
@@ -3191,15 +3152,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     match (self.variant, self.gen.gen.opts.api_style, self.gen.gen.opts.symmetric) {
                         (AbiVariant::GuestExport, APIStyle::Symmetric, true) => format!(
-                            "wit::span<{inner} const>(({inner}*)({}), {len})",
+                            "wit::span<{inner} const>(static_cast<{inner}*>({}), {len})",
                             operands[0]
                         ),
                         (AbiVariant::GuestExport, APIStyle::Symmetric, false) => format!(
-                            "wit::vector<{inner} const>(({inner}*)({}), {len}).get_view()",
+                            "wit::vector<{inner} const>(static_cast<{inner}*>({}), {len}).get_view()",
                             operands[0]
                         ),
                         (AbiVariant::GuestExport, APIStyle::Asymmetric, true) => format!(
-                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(({inner} const *)({}), {len}))",
+                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(static_cast<{inner} const *>({}), {len}))",
                             operands[0]
                         ),
                         (AbiVariant::GuestImport, _, _) |
@@ -3228,8 +3189,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view((char const *)({}), {len}));\n", operands[0]);
                     format!("std::move(string{tmp})")
                 } else if self.gen.gen.opts.host {
-                    uwriteln!(self.src, "char const* ptr{} = (char const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", tmp, operands[0]);
-                    format!("{string_view}(ptr{}, {len})", tmp)
+                    uwriteln!(self.src, "char const* ptr{} = static_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n", tmp, operands[0]);
+                    format!("{string_view}(ptr{tmp}, {len})")
                 } else if self.gen.gen.opts.short_cut
                     || (self.gen.gen.opts.api_style == APIStyle::Symmetric
                         && matches!(self.variant, AbiVariant::GuestExport))
@@ -3245,9 +3206,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             operands[0]
                         );
                     }
-                    format!("std::string_view((char const*)({}), {len})", operands[0])
+                    format!(
+                        "std::string_view(static_cast<char const*>({}), {len})",
+                        operands[0]
+                    )
                 } else {
-                    format!("wit::string((char const*)({}), {len})", operands[0])
+                    format!(
+                        "wit::string(static_cast<char const*>({}), {len})",
+                        operands[0]
+                    )
                 };
                 results.push(result);
             }
@@ -3320,7 +3287,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             && matches!(self.variant, AbiVariant::GuestExport))
                     {
                         self.leak_on_insertion.replace(format!(
-                            "if ({len}>0) _deallocate.push_back((void*){result}.leak());\n"
+                            "if ({len}>0) _deallocate.push_back(static_cast<void*>({result}.leak()));\n"
                         ));
                     }
                 } else {
@@ -3536,7 +3503,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::FlagsLower { flags, ty, .. } => {
                 match wit_bindgen_c::flags_repr(flags) {
                     Int::U8 | Int::U16 | Int::U32 => {
-                        results.push(format!("((int32_t){})", operands.pop().unwrap()));
+                        results.push(format!("static_cast<int32_t>({})", operands.pop().unwrap()));
                     }
                     Int::U64 => {
                         let name =
@@ -3545,9 +3512,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         let tmp = self.tmp();
                         let tempname = self.tempname("flags", tmp);
                         uwriteln!(self.src, "{name} {tempname} = {};", operands[0]);
-                        results.push(format!("(int32_t)(((uint64_t){tempname}) & 0xffffffff)"));
                         results.push(format!(
-                            "(int32_t)((((uint64_t){tempname}) >> 32) & 0xffffffff)"
+                            "static_cast<int32_t>(static_cast<uint64_t>({tempname}) & 0xffffffff)"
+                        ));
+                        results.push(format!(
+                            "static_cast<int32_t>((static_cast<uint64_t>({tempname}) >> 32) & 0xffffffff)"
                         ));
                     }
                 }
@@ -3564,7 +3533,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         let op0 = &operands[0];
                         let op1 = &operands[1];
                         results.push(format!(
-                            "(({typename})(({op0}) | (((uint64_t)({op1})) << 32)))"
+                            "(static_cast<{typename}>(({op0}) | (static_cast<uint64_t>({op1}) << 32)))"
                         ));
                     }
                 }
@@ -3606,7 +3575,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.gen
                         .type_name(&Type::Id(*var_ty), &self.namespace, Flavor::InStruct);
 
-                uwriteln!(self.src, "switch ((int32_t) {}) {{", expr_to_match);
+                uwriteln!(
+                    self.src,
+                    "switch (static_cast<int32_t>({})) {{",
+                    expr_to_match
+                );
                 for (i, ((case, (block, block_results)), payload)) in
                     variant.cases.iter().zip(blocks).zip(payloads).enumerate()
                 {
@@ -3665,12 +3638,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
 
                 results.push(result);
             }
-            abi::Instruction::EnumLower { .. } => results.push(format!("int32_t({})", operands[0])),
+            abi::Instruction::EnumLower { .. } => {
+                results.push(format!("static_cast<int32_t>({})", operands[0]))
+            }
             abi::Instruction::EnumLift { ty, .. } => {
                 let typename =
                     self.gen
                         .type_name(&Type::Id(*ty), &self.namespace, Flavor::InStruct);
-                results.push(format!("({typename}){}", &operands[0]));
+                results.push(format!("static_cast<{typename}>({})", &operands[0]));
             }
             abi::Instruction::OptionLower {
                 payload,
@@ -4129,13 +4104,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::Malloc { .. } => todo!(),
             abi::Instruction::GuestDeallocate { .. } => {
-                uwriteln!(self.src, "free((void*) ({}));", operands[0]);
+                uwriteln!(self.src, "free(static_cast<void*>({}));", operands[0]);
             }
             abi::Instruction::GuestDeallocateString => {
                 uwriteln!(self.src, "if (({}) > 0) {{", operands[1]);
                 uwriteln!(
                     self.src,
-                    "wit::string::drop_raw((void*) ({}));",
+                    "wit::string::drop_raw(static_cast<void*>({}));",
                     operands[0]
                 );
                 uwriteln!(self.src, "}}");
@@ -4160,7 +4135,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 uwrite!(self.src, "{body}");
                 uwriteln!(self.src, "}}");
                 uwriteln!(self.src, "if ({len} > 0) {{");
-                uwriteln!(self.src, "free((void*) ({ptr}));");
+                uwriteln!(self.src, "free(static_cast<void*>({ptr}));");
                 uwriteln!(self.src, "}}");
             }
             abi::Instruction::GuestDeallocateVariant { blocks } => {
@@ -4169,7 +4144,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .drain(self.blocks.len() - blocks..)
                     .collect::<Vec<_>>();
 
-                uwriteln!(self.src, "switch ((int32_t) {}) {{", operands[0]);
+                uwriteln!(
+                    self.src,
+                    "switch (static_cast<int32_t>({})) {{",
+                    operands[0]
+                );
                 for (i, (block, results)) in blocks.into_iter().enumerate() {
                     assert!(results.is_empty());
                     uwriteln!(self.src, "case {}: {{", i);
@@ -4277,7 +4256,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         );
         uwriteln!(
             self.src,
-            "{} ptr{tmp} = ({0})(&ret_area);",
+            "{} ptr{tmp} = static_cast<{0}>(&ret_area);",
             self.gen.gen.opts.ptr_type(),
         );
 

@@ -45,6 +45,7 @@ pub struct FutureWrite<T: 'static> {
     data: Option<T>,
 }
 
+#[derive(Debug)]
 pub struct FutureWriteError<T> {
     pub value: T,
 }
@@ -202,7 +203,26 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
 
 impl<T> FutureRead<T> {
     pub fn cancel(self: Pin<&mut Self>) -> Result<T, FutureReader<T>> {
-        todo!()
+        let me = self.get_mut();
+        let mut local_me = FutureRead { reader: FutureReader { handle: Stream::new(), vtable: me.reader.vtable, has_completed: false }, future: None };
+        std::mem::swap(me, &mut local_me);
+        let FutureRead{ reader, future } = local_me;
+
+        let buffer2 = reader.handle.read_result();
+        let res = if let Some(buffer2) = buffer2 {
+            let count = buffer2.get_size();
+            if count > 0 {
+                Ok(unsafe { (reader.vtable.lift)(buffer2.get_address().take_handle() as *mut u8) })
+            } else {
+                Err(reader)
+            }
+        } else {
+            Err(reader)
+        };
+        if future.is_some() {
+            // deregister future callback
+        }
+        res
     }
 
     // fn cancel_mut(&mut self) -> Result<T, FutureReader<T>> {

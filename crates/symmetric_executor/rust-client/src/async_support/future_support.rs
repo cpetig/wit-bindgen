@@ -50,6 +50,10 @@ pub struct FutureWriteError<T> {
     pub value: T,
 }
 
+struct SendPtr<T>(*mut T);
+
+unsafe impl<T> Send for SendPtr<T> {}
+
 impl<T: Unpin + Send> Future for FutureWrite<T> {
     type Output = Result<(), FutureWriteError<T>>;
 
@@ -58,13 +62,17 @@ impl<T: Unpin + Send> Future for FutureWrite<T> {
 
         if me.future.is_none() {
             let handle = me.writer.handle.clone();
-            let data = me.data.take().unwrap();
+            let data = SendPtr(&mut me.data as *mut Option<T>);
             let lower = me.writer.vtable.lower;
             me.future = Some(Box::pin(async move {
+                // make sure the pointer is not unpacked by the move
+                let data: SendPtr<Option<T>> = data;
                 if !handle.is_ready_to_write() {
                     let subsc = handle.write_ready_subscribe();
                     wait_on(subsc).await;
                 }
+                // we can't move data more early because of cancellation logic
+                let data = unsafe { &mut *data.0 }.take().unwrap();
                 if handle.is_read_closed() {
                     Err(FutureWriteError { value: data })
                 } else {
@@ -90,9 +98,32 @@ impl<T> std::fmt::Debug for FutureWriter<T> {
     }
 }
 
-impl<T: 'static> FutureWrite<T> {
+impl<T: 'static + std::marker::Unpin> FutureWrite<T> {
     pub fn cancel(self: Pin<&mut Self>) -> FutureWriteCancel<T> {
-        todo!()
+        let me = self.get_mut();
+        let mut local_me = FutureWrite {
+            writer: FutureWriter {
+                handle: Stream::new(),
+                vtable: me.writer.vtable,
+            },
+            future: None,
+            data: None,
+        };
+        std::mem::swap(me, &mut local_me);
+        let FutureWrite {
+            writer,
+            future: _,
+            data,
+        } = local_me;
+        if let Some(data) = data {
+            if writer.handle.is_read_closed() {
+                FutureWriteCancel::Dropped(data)
+            } else {
+                FutureWriteCancel::Cancelled(data, writer)
+            }
+        } else {
+            FutureWriteCancel::AlreadySent
+        }
     }
 }
 
@@ -204,9 +235,16 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
 impl<T> FutureRead<T> {
     pub fn cancel(self: Pin<&mut Self>) -> Result<T, FutureReader<T>> {
         let me = self.get_mut();
-        let mut local_me = FutureRead { reader: FutureReader { handle: Stream::new(), vtable: me.reader.vtable, has_completed: false }, future: None };
+        let mut local_me = FutureRead {
+            reader: FutureReader {
+                handle: Stream::new(),
+                vtable: me.reader.vtable,
+                has_completed: false,
+            },
+            future: None,
+        };
         std::mem::swap(me, &mut local_me);
-        let FutureRead{ reader, future } = local_me;
+        let FutureRead { reader, future } = local_me;
 
         let buffer2 = reader.handle.read_result();
         let res = if let Some(buffer2) = buffer2 {
@@ -224,10 +262,6 @@ impl<T> FutureRead<T> {
         }
         res
     }
-
-    // fn cancel_mut(&mut self) -> Result<T, FutureReader<T>> {
-    //     todo!()
-    // }
 }
 
 impl<T: Send + Unpin + Sized> IntoFuture for FutureReader<T> {

@@ -69,7 +69,9 @@ impl Parse for Config {
         let mut debug = false;
 
         #[cfg(feature = "symmetric")]
-        opts.symmetric = true;
+        {
+            opts.symmetric = true;
+        }
 
         if input.peek(token::Brace) {
             let content;

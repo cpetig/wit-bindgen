@@ -103,7 +103,7 @@ impl LanguageMethods for Rust {
 
         let mut symmetric_runtime = String::new();
         let wit_bindgen_dep = if runner.is_symmetric() {
-            let bindgen_path = cwd.join("crates/symmetric_executor/dummy-bindgen");
+            let bindgen_path = cwd.join("crates/symmetric_executor/bindgen");
             let executor_path = cwd.join("crates/symmetric_executor");
             symmetric_runtime.push_str(&format!(
                 "symmetric_executor = {{ path = {executor_path:?}, features = [\"trace\"] }}\n"

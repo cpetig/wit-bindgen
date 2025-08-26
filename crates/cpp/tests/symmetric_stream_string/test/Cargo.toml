@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 #wit-bindgen-symmetric-rt = { path = "../../../../symmetric_executor/rust-client" }
-wit-bindgen = { path = "../../../../symmetric_executor/dummy-bindgen", package = "mini-bindgen" }
+wit-bindgen = { path = "../../../../symmetric_executor/bindgen", package = "mini-bindgen" }
 symmetric_executor = { path = "../../../../symmetric_executor", features = ["trace"]}
 symmetric_stream = { path = "../../../../symmetric_executor/symmetric_stream", features = ["trace"] }
 

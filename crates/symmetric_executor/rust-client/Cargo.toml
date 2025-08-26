@@ -14,7 +14,7 @@ path = "../dummy-rt"
 [features]
 # always off feature
 never = []
-default = ["symmetric", "trace"]
+default = ["symmetric"]
 symmetric = []
 bitflags = []
 trace = []

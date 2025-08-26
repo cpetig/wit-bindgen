@@ -77,7 +77,11 @@ pub fn context_set_wait(cx: &Context, wait_for: EventSubscription) {
         .data()
         .cast_mut()
         .cast::<Vec<EventSubscription>>();
-    unsafe { &mut *data }.push(wait_for);
+    if !data.is_null() {
+        unsafe { &mut *data }.push(wait_for);
+    } else {
+        println!("await in wrong context");
+    }
 }
 
 pub async fn wait_on(wait_for: EventSubscription) {

@@ -26,3 +26,4 @@ prettyplease = { workspace = true }
 
 [features]
 async = []
+symmetric = []

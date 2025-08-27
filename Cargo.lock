@@ -1606,7 +1606,9 @@ dependencies = [
  "anyhow",
  "clap",
  "heck 0.5.0",
+ "indexmap",
  "serde",
+ "wit-component",
  "wit-parser",
 ]
 

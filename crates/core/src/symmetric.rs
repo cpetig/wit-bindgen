@@ -1,6 +1,7 @@
 // helper functions for symmetric ABI
 
-use wit_parser::{Resolve, Type, TypeDefKind};
+use wit_component::DecodedWasm;
+use wit_parser::{Package, PackageName, Resolve, Type, TypeDefKind, WorldItem, WorldKey};
 
 // figure out whether deallocation is needed in the caller
 fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
@@ -182,4 +183,49 @@ fn has_non_canonical_list_rust2(resolve: &Resolve, ty: &Type) -> bool {
 pub fn has_non_canonical_list_rust(resolve: &Resolve, args: &[(String, Type)]) -> bool {
     args.iter()
         .any(|(_, ty)| has_non_canonical_list_rust2(resolve, ty))
+}
+
+pub fn hash(resolve: &Resolve, func: &wit_parser::Function) {
+    let mut resolve2 = resolve.clone();
+    let mut world = wit_parser::World {
+        name: "world".into(),
+        imports: indexmap::IndexMap::new(),
+        exports: indexmap::IndexMap::new(),
+        package: None,
+        docs: wit_parser::Docs::default(),
+        stability: wit_parser::Stability::default(),
+        includes: Vec::default(),
+        include_names: Vec::default(),
+    };
+    world.exports.insert(
+        WorldKey::Name(func.name.clone()),
+        WorldItem::Function(func.clone()),
+    );
+    world.package = Some(resolve2.packages.alloc(Package {
+        name: PackageName {
+            namespace: "root".into(),
+            name: "root".into(),
+            version: None,
+        },
+        docs: Default::default(),
+        interfaces: Default::default(),
+        worlds: Default::default(),
+    }));
+    let world_id = resolve2.worlds.alloc(world);
+
+    let component_type = wit_component::metadata::encode(
+        &resolve2,
+        world_id,
+        wit_component::StringEncoding::UTF8,
+        None,
+    )
+    .unwrap();
+    let parsed = wit_parser::decoding::decode(&component_type);
+    if let Ok(DecodedWasm::WitPackage(resolve3, pkg_id)) = parsed {
+        let mut wit_printer = wit_component::WitPrinter::default();
+        wit_printer.print(&resolve3, pkg_id, &[]).unwrap();
+        dbg!(wit_printer.output.to_string());
+    }
+    //    wit_parser::pretty_print(path);
+    //    dbg!(parsed.unwrap());
 }

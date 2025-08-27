@@ -441,6 +441,7 @@ macro_rules! {macro_name} {{
         interface: Option<&WorldKey>,
     ) {
         for func in funcs {
+            wit_bindgen_core::symmetric::hash(self.resolve, func);
             self.generate_guest_import(func, interface);
         }
     }

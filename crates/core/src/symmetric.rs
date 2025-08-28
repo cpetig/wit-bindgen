@@ -3,7 +3,7 @@
 use rustc_stable_hash::ExtendedHasher;
 use wit_component::DecodedWasm;
 use wit_parser::{
-    Interface, Package, PackageName, Resolve, Type, TypeDefKind, WorldItem, WorldKey,
+    Interface, Package, PackageName, Resolve, Type, TypeDef, TypeDefKind, WorldItem, WorldKey,
 };
 
 // figure out whether deallocation is needed in the caller
@@ -204,7 +204,7 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         WorldKey::Name(func.name.clone()),
         WorldItem::Function(func.clone()),
     );
-    let interface = Interface {
+    let mut interface = Interface {
         name: None,
         types: Default::default(),
         functions: Default::default(),
@@ -212,6 +212,34 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         stability: Default::default(),
         package: Default::default(),
     };
+    for (name, tp) in func.params.iter() {
+        match tp {
+            Type::Id(id) => {
+                let old = &resolve.types[*id];
+                let id = resolve2.types.alloc(old.clone());
+                    //TypeDef:: old.kind());
+                //     TypeDef {
+                //     name: None,
+                //     kind: TypeDefKind::Type(tp.clone()),
+                //     owner: wit_parser::TypeOwner::None,
+                //     docs: Default::default(),
+                //     stability: Default::default(),
+                // });        
+                interface.types.insert(name.clone(), id);
+            }
+            _ => (),
+        }
+    }
+    if let Some(tp) = &func.result {
+        let id = resolve2.types.alloc(TypeDef {
+            name: None,
+            kind: TypeDefKind::Type(tp.clone()),
+            owner: wit_parser::TypeOwner::None,
+            docs: Default::default(),
+            stability: Default::default(),
+        });
+        interface.types.insert("result".into(), id);
+    }
     let iface_id = resolve2.interfaces.alloc(interface);
     world.imports.insert(
         WorldKey::Name("dependencies".into()),

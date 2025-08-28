@@ -2,7 +2,9 @@
 
 use rustc_stable_hash::ExtendedHasher;
 use wit_component::DecodedWasm;
-use wit_parser::{Package, PackageName, Resolve, Type, TypeDefKind, WorldItem, WorldKey};
+use wit_parser::{
+    Interface, Package, PackageName, Resolve, Type, TypeDefKind, WorldItem, WorldKey,
+};
 
 // figure out whether deallocation is needed in the caller
 fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
@@ -190,17 +192,33 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
     let mut resolve2 = resolve.clone();
     let mut world = wit_parser::World {
         name: "world".into(),
-        imports: indexmap::IndexMap::new(),
-        exports: indexmap::IndexMap::new(),
+        imports: Default::default(),
+        exports: Default::default(),
         package: None,
-        docs: wit_parser::Docs::default(),
-        stability: wit_parser::Stability::default(),
+        docs: Default::default(),
+        stability: Default::default(),
         includes: Vec::default(),
         include_names: Vec::default(),
     };
     world.imports.insert(
         WorldKey::Name(func.name.clone()),
         WorldItem::Function(func.clone()),
+    );
+    let interface = Interface {
+        name: None,
+        types: Default::default(),
+        functions: Default::default(),
+        docs: Default::default(),
+        stability: Default::default(),
+        package: Default::default(),
+    };
+    let iface_id = resolve2.interfaces.alloc(interface);
+    world.imports.insert(
+        WorldKey::Name("dependencies".into()),
+        WorldItem::Interface {
+            id: iface_id,
+            stability: Default::default(),
+        },
     );
     world.package = Some(resolve2.packages.alloc(Package {
         name: PackageName {

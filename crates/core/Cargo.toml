@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 heck = { workspace = true }
 serde = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
+rustc-stable-hash = "0.1.2"
 
 [features]
 serde = ['dep:serde']

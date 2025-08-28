@@ -1,5 +1,6 @@
 // helper functions for symmetric ABI
 
+use rustc_stable_hash::ExtendedHasher;
 use wit_component::DecodedWasm;
 use wit_parser::{Package, PackageName, Resolve, Type, TypeDefKind, WorldItem, WorldKey};
 
@@ -185,7 +186,7 @@ pub fn has_non_canonical_list_rust(resolve: &Resolve, args: &[(String, Type)]) -
         .any(|(_, ty)| has_non_canonical_list_rust2(resolve, ty))
 }
 
-pub fn hash(resolve: &Resolve, func: &wit_parser::Function) {
+pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
     let mut resolve2 = resolve.clone();
     let mut world = wit_parser::World {
         name: "world".into(),
@@ -197,7 +198,7 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) {
         includes: Vec::default(),
         include_names: Vec::default(),
     };
-    world.exports.insert(
+    world.imports.insert(
         WorldKey::Name(func.name.clone()),
         WorldItem::Function(func.clone()),
     );
@@ -226,6 +227,8 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) {
         wit_printer.print(&resolve3, pkg_id, &[]).unwrap();
         dbg!(wit_printer.output.to_string());
     }
-    //    wit_parser::pretty_print(path);
-    //    dbg!(parsed.unwrap());
+    let mut hasher = rustc_stable_hash::hashers::SipHasher128::new_with_keys(0, 1);
+    use std::hash::Hasher;
+    hasher.write(&component_type);
+    dbg!(hasher.finish().0[0])
 }

@@ -221,24 +221,29 @@ fn add_type(
     } else {
         None
     };
-    let iface =
-        if let Some(new_iface) = iface_map.get(&old_owner) {
-            *new_iface
-        } else {
-            let old_interface: &Interface = &resolve.interfaces[old_owner.unwrap()];
-            let name = old_interface.name.clone();
-            let iface = Interface {
-                name: name.clone(),
-                types: Default::default(),
-                functions: Default::default(),
-                docs: Default::default(),
+    let iface = if let Some(new_iface) = iface_map.get(&old_owner) {
+        *new_iface
+    } else {
+        let old_interface: &Interface = &resolve.interfaces[old_owner.unwrap()];
+        let name = old_interface.name.clone();
+        let iface = Interface {
+            name: name.clone(),
+            types: Default::default(),
+            functions: Default::default(),
+            docs: Default::default(),
+            stability: Default::default(),
+            package: old_interface.package,
+        };
+        let new_id = resolve.interfaces.alloc(iface);
+        iface_map.insert(old_owner, new_id);
+        world.imports.insert(
+            WorldKey::Name(name.unwrap()),
+            WorldItem::Interface {
+                id: new_id,
                 stability: Default::default(),
-                package: old_interface.package,
-            };
-            let new_id = resolve.interfaces.alloc(iface);
-            iface_map.insert(old_owner, new_id);
-            world.imports.insert(WorldKey::Name(name.unwrap()), WorldItem::Interface { id: new_id, stability: Default::default() });
-            new_id
+            },
+        );
+        new_id
     };
     let interface = &resolve.interfaces[iface];
     if interface

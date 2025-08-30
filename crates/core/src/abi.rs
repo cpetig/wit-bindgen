@@ -518,6 +518,7 @@ def_instruction! {
             name: &'a str,
             sig: &'a WasmSignature,
             module_prefix: &'a str,
+            func: &'a Function, // needed for hash calculation
         } : [sig.params.len()] => [sig.results.len()],
 
         /// Same as `CallWasm`, except the dual where an interface is being
@@ -1091,6 +1092,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     name: &func.name,
                     sig: &sig,
                     module_prefix: Default::default(),
+                    func,
                 });
 
                 if matches!(lift_lower, LiftLower::Symmetric) && sig.retptr {

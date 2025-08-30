@@ -261,23 +261,53 @@ fn add_type(
                     add_type2(resolve, world, &f.ty, &f.name, iface_map);
                 }
             }
-            TypeDefKind::Resource => todo!(),
-            TypeDefKind::Handle(handle) => todo!(),
+            TypeDefKind::Resource => (),
+            TypeDefKind::Handle(handle) => match handle {
+                wit_parser::Handle::Own(id) => add_type(resolve, world, id, name, iface_map),
+                wit_parser::Handle::Borrow(id) => add_type(resolve, world, id, name, iface_map),
+            },
             TypeDefKind::Flags(_flags) => (),
             TypeDefKind::Tuple(tuple) => {
                 for (n, tp) in tuple.types.iter().enumerate() {
                     add_type2(resolve, world, tp, &format!("{name}-f{n}"), iface_map);
                 }
             }
-            TypeDefKind::Variant(variant) => todo!(),
-            TypeDefKind::Enum(_) => todo!(),
-            TypeDefKind::Option(_) => todo!(),
-            TypeDefKind::Result(result) => todo!(),
-            TypeDefKind::List(_) => todo!(),
-            TypeDefKind::FixedSizeList(_, _) => todo!(),
-            TypeDefKind::Future(_) => todo!(),
-            TypeDefKind::Stream(_) => todo!(),
-            TypeDefKind::Type(_) => todo!(),
+            TypeDefKind::Variant(variant) => {
+                for c in variant.cases.iter() {
+                    if let Some(tp) = &c.ty {
+                        add_type2(
+                            resolve,
+                            world,
+                            &tp,
+                            &format!("{name}-f{}", c.name),
+                            iface_map,
+                        );
+                    }
+                }
+            }
+            TypeDefKind::Enum(_en) => (),
+            TypeDefKind::Option(tp) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::Result(result) => {
+                if let Some(tp) = &result.ok {
+                    add_type2(resolve, world, tp, &(name.to_string() + "-ok"), iface_map);
+                }
+                if let Some(tp) = &result.err {
+                    add_type2(resolve, world, tp, &(name.to_string() + "-err"), iface_map);
+                }
+            }
+            TypeDefKind::List(tp) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::FixedSizeList(tp, _sz) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::Future(tp) => {
+                if let Some(tp) = tp {
+                    add_type2(resolve, world, &tp, name, iface_map);
+                }
+            }
+            TypeDefKind::Stream(tp) => {
+                if let Some(tp) = tp {
+                    add_type2(resolve, world, &tp, name, iface_map);
+                }
+            }
+            TypeDefKind::Type(tp) => add_type2(resolve, world, &tp, name, iface_map),
             TypeDefKind::Unknown => todo!(),
         }
         let interface = &mut resolve.interfaces[iface];

@@ -342,14 +342,15 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         None,
     )
     .unwrap();
+    let mut hasher = rustc_stable_hash::hashers::SipHasher128::new_with_keys(0, 1);
+    use std::hash::Hasher;
+    hasher.write(&component_type);
+    let hash = hasher.finish().0[0];
     let parsed = wit_parser::decoding::decode(&component_type);
     if let Ok(DecodedWasm::WitPackage(resolve3, pkg_id)) = parsed {
         let mut wit_printer = wit_component::WitPrinter::default();
         wit_printer.print(&resolve3, pkg_id, &[]).unwrap();
-        dbg!(wit_printer.output.to_string());
+        print!("{hash:x} {}", wit_printer.output.to_string());
     }
-    let mut hasher = rustc_stable_hash::hashers::SipHasher128::new_with_keys(0, 1);
-    use std::hash::Hasher;
-    hasher.write(&component_type);
-    dbg!(hasher.finish().0[0])
+    hash
 }

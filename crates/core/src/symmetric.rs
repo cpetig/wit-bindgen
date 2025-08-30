@@ -196,10 +196,10 @@ fn add_type2(
     world: &mut World,
     tp: &Type,
     name: &str,
-    iface_id: &mut HashMap<Option<InterfaceId>, InterfaceId>,
+    iface_map: &mut HashMap<Option<InterfaceId>, InterfaceId>,
 ) {
     match tp {
-        Type::Id(id) => add_type(resolve, world, *id, name, iface_id),
+        Type::Id(id) => add_type(resolve, world, *id, name, iface_map),
         _ => (),
     }
 }
@@ -209,7 +209,7 @@ fn add_type(
     world: &mut World,
     id: wit_parser::TypeId,
     name: &str,
-    iface_id: &mut HashMap<Option<InterfaceId>, InterfaceId>,
+    iface_map: &mut HashMap<Option<InterfaceId>, InterfaceId>,
 ) {
     let tp: &TypeDef = &resolve.types[id];
     if tp.name.is_none() {
@@ -221,27 +221,10 @@ fn add_type(
     } else {
         None
     };
-    let iface = //if let TypeOwner::Interface(owner) = &tp.owner {
-        if let Some(new_iface) = iface_id.get(&old_owner) {
+    let iface =
+        if let Some(new_iface) = iface_map.get(&old_owner) {
             *new_iface
         } else {
-
-        // if world
-        //     .exports
-        //     .iter()
-        //     .find(|(_n, it)| {
-        //         if let WorldItem::Interface {
-        //             id: id2,
-        //             stability: _,
-        //         } = it
-        //         {
-        //             id2 == owner
-        //         } else {
-        //             false
-        //         }
-        //     })
-        //     .is_none()
-        // {
             let old_interface: &Interface = &resolve.interfaces[old_owner.unwrap()];
             let name = old_interface.name.clone();
             let iface = Interface {
@@ -253,20 +236,9 @@ fn add_type(
                 package: old_interface.package,
             };
             let new_id = resolve.interfaces.alloc(iface);
-            iface_id.insert(old_owner, new_id);
+            iface_map.insert(old_owner, new_id);
             world.imports.insert(WorldKey::Name(name.unwrap()), WorldItem::Interface { id: new_id, stability: Default::default() });
             new_id
-            // world.exports.insert(
-            //     if let Some(name2) = &interface.name {
-            //         WorldKey::Name(name2.clone())
-            //     } else {
-            //         WorldKey::Name(name.into())
-            //     },
-            //     WorldItem::Interface {
-            //         id: *owner,
-            //         stability: Default::default(),
-            //     },
-            // );
     };
     let interface = &resolve.interfaces[iface];
     if interface
@@ -275,14 +247,13 @@ fn add_type(
         .find(|(_n, id2)| id == **id2)
         .is_none()
     {
-        // let mut to_add = Vec::new();
         let tp = &mut resolve.types[id];
         tp.owner = TypeOwner::Interface(iface);
         let kind = tp.kind.clone();
         match kind {
             TypeDefKind::Record(record) => {
                 for f in record.fields.iter() {
-                    add_type2(resolve, world, &f.ty, &f.name, iface_id);
+                    add_type2(resolve, world, &f.ty, &f.name, iface_map);
                 }
             }
             TypeDefKind::Resource => todo!(),
@@ -290,7 +261,7 @@ fn add_type(
             TypeDefKind::Flags(_flags) => (),
             TypeDefKind::Tuple(tuple) => {
                 for (n, tp) in tuple.types.iter().enumerate() {
-                    add_type2(resolve, world, tp, &format!("{name}-f{n}"), iface_id);
+                    add_type2(resolve, world, tp, &format!("{name}-f{n}"), iface_map);
                 }
             }
             TypeDefKind::Variant(variant) => todo!(),
@@ -306,7 +277,6 @@ fn add_type(
         }
         let interface = &mut resolve.interfaces[iface];
         interface.types.insert(name.into(), id);
-        //WorldKey::Name(name.into()), WorldItem::Type(id));
     }
 }
 

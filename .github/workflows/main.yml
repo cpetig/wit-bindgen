@@ -59,8 +59,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         # moonbit removed from language matrix for now - causing CI failures
-        # csharp removed from language matrix for now - causing CI failures
-        lang: [c, rust, cpp]
+        lang: [c, rust, csharp, cpp]
         exclude:
           # For now csharp doesn't work on macos, so exclude it from testing.
           - os: macos-latest
@@ -137,6 +136,7 @@ jobs:
           --artifacts target/artifacts \
           --rust-wit-bindgen-path ./crates/guest-rust \
           --rust-target wasm32-wasip1 \
+          --c-target wasm32-wasip1 \
           --runner "$WASMTIME -W component-model-async -Sp3"
 
   test_unit:

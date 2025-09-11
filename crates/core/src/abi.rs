@@ -1345,7 +1345,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         false,
                     ) if async_ => {
                         let name = &format!("[task-return]{}", func.name);
-                        let params = results.as_deref().unwrap_or(&[WasmType::I32]);
+                        let params = results.as_deref().unwrap_or_default();
                         self.emit(&Instruction::AsyncTaskReturn { name, params });
                     }
 

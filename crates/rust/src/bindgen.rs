@@ -66,7 +66,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         func: Option<&Function>,
     ) -> String {
         let rust_name = String::from(module_prefix)
-            + &if self.gen.gen.opts.symmetric && func.is_some() {
+            + &if self.gen.gen.opts.symmetric && func.is_some() && self.gen.gen.opts.hash_in_symbol {
                 let func = func.unwrap();
                 let hash = wit_bindgen_core::symmetric::hash(self.gen.resolve, func);
                 make_external_component(

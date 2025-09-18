@@ -1291,21 +1291,35 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
         // let mut library_name = String::new();
         let (export_name, external_name) = if self.r#gen.opts.symmetric {
-            let export_name = func.standard32_core_export_name(wasm_module_export_name.as_deref());
-            let mut external_name = make_external_component(export_name.as_ref());
-            //     &wasm_module_export_name.unwrap_or_default(),
-            //     &func.name,
-            //     AbiVariant::GuestImport,
-            // );
-            if let Some(export_prefix) = self.r#gen.opts.export_prefix.as_ref() {
-                external_name.insert_str(0, export_prefix);
+            if self.gen.opts.hash_in_symbol {
+                let export_name =
+                    func.standard32_core_export_name(wasm_module_export_name.as_deref());
+                let mut external_name = make_external_component(export_name.as_ref());
+                //     &wasm_module_export_name.unwrap_or_default(),
+                //     &func.name,
+                //     AbiVariant::GuestImport,
+                // );
+                if let Some(export_prefix) = self.r#gen.opts.export_prefix.as_ref() {
+                    external_name.insert_str(0, export_prefix);
+                }
+                let hash = symmetric::hash(&self.resolve, func);
+                external_name += &format!("H{hash:016x}");
+                // if let Some(library) = &self.r#gen.opts.link_name {
+                //     library_name = format!("\n#[link(name = \"{}\")]", library);
+                // }
+                (export_name.to_string(), external_name)
+            } else {
+                let export_name = func.name.clone(); // item_name().to_owned();
+                let mut external_name = make_external_symbol(
+                    &wasm_module_export_name.unwrap_or_default(),
+                    &func.name,
+                    AbiVariant::GuestImport,
+                );
+                if let Some(export_prefix) = self.r#gen.opts.export_prefix.as_ref() {
+                    external_name.insert_str(0, export_prefix);
+                }
+                (export_name, external_name)
             }
-            let hash = symmetric::hash(&self.resolve, func);
-            external_name += &format!("H{hash:016x}");
-            // if let Some(library) = &self.r#gen.opts.link_name {
-            //     library_name = format!("\n#[link(name = \"{}\")]", library);
-            // }
-            (export_name.to_string(), external_name)
         } else {
             let export_name = func.legacy_core_export_name(wasm_module_export_name.as_deref());
             let export_name = if async_ {

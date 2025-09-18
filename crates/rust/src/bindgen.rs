@@ -6,7 +6,9 @@ use heck::*;
 use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
-use wit_bindgen_core::{dealias, make_external_symbol, uwrite, uwriteln, wit_parser::*, Source};
+use wit_bindgen_core::{
+    dealias, make_external_component, make_external_symbol, uwrite, uwriteln, wit_parser::*, Source,
+};
 
 pub(super) struct FunctionBindgen<'a, 'b> {
     pub r#gen: &'b mut InterfaceGenerator<'a>,
@@ -61,9 +63,19 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         name: &str,
         params: &[WasmType],
         results: &[WasmType],
+        func: Option<&Function>,
     ) -> String {
         let rust_name = String::from(module_prefix)
-            + &make_external_symbol(self.wasm_import_module, name, AbiVariant::GuestImport);
+            + &if self.gen.gen.opts.symmetric && func.is_some() && self.gen.gen.opts.hash_in_symbol {
+                let func = func.unwrap();
+                let hash = wit_bindgen_core::symmetric::hash(self.gen.resolve, func);
+                make_external_component(
+                    func.standard32_core_export_name(Some(self.wasm_import_module))
+                        .as_ref(),
+                ) + &format!("H{hash:016x}")
+            } else {
+                make_external_symbol(self.wasm_import_module, name, AbiVariant::GuestImport)
+            };
         if let Some(library) = &self.r#gen.r#gen.opts.link_name {
             self.src
                 .push_str(&format!("\n#[link(name = \"{}\")]", library));
@@ -944,6 +956,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 name,
                 sig,
                 module_prefix,
+                func,
                 ..
             } => {
                 let module_prefix = if let Some(prefix) = self.r#gen.r#gen.import_prefix.as_ref() {
@@ -952,8 +965,13 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 } else {
                     std::borrow::Cow::Borrowed(*module_prefix)
                 };
-                let func =
-                    self.declare_import(module_prefix.as_ref(), name, &sig.params, &sig.results);
+                let func = self.declare_import(
+                    module_prefix.as_ref(),
+                    name,
+                    &sig.params,
+                    &sig.results,
+                    Some(func),
+                );
 
                 // ... then call the function with all our operands
                 let async_ = name.starts_with("[async]")
@@ -1075,7 +1093,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::AsyncTaskReturn { name, params } => {
-                let func = self.declare_import("", name, params, &[]);
+                let func = self.declare_import("", name, params, &[], None);
 
                 uwriteln!(self.src, "_task_cancel.forget();");
                 uwriteln!(self.src, "{func}({});", operands.join(", "));

@@ -1,6 +1,13 @@
 // helper functions for symmetric ABI
 
-use wit_parser::{Resolve, Type, TypeDefKind};
+use std::collections::HashMap;
+
+use rustc_stable_hash::ExtendedHasher;
+use wit_component::DecodedWasm;
+use wit_parser::{
+    Interface, InterfaceId, Package, PackageName, Resolve, Type, TypeDef, TypeDefKind, TypeOwner,
+    World, WorldItem, WorldKey,
+};
 
 // figure out whether deallocation is needed in the caller
 fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
@@ -182,4 +189,203 @@ fn has_non_canonical_list_rust2(resolve: &Resolve, ty: &Type) -> bool {
 pub fn has_non_canonical_list_rust(resolve: &Resolve, args: &[(String, Type)]) -> bool {
     args.iter()
         .any(|(_, ty)| has_non_canonical_list_rust2(resolve, ty))
+}
+
+fn add_type2(
+    resolve: &mut Resolve,
+    world: &mut World,
+    tp: &Type,
+    name: &str,
+    iface_map: &mut HashMap<Option<InterfaceId>, InterfaceId>,
+) {
+    match tp {
+        Type::Id(id) => add_type(resolve, world, *id, name, iface_map),
+        _ => (),
+    }
+}
+
+fn add_type(
+    resolve: &mut Resolve,
+    world: &mut World,
+    id: wit_parser::TypeId,
+    name: &str,
+    iface_map: &mut HashMap<Option<InterfaceId>, InterfaceId>,
+) {
+    let tp: &TypeDef = &resolve.types[id];
+    if tp.name.is_none() {
+        return;
+    }
+    // dbg!(id, tp);
+    let old_owner = if let TypeOwner::Interface(owner) = &tp.owner {
+        Some(*owner)
+    } else {
+        None
+    };
+    let iface = if let Some(new_iface) = iface_map.get(&old_owner) {
+        *new_iface
+    } else {
+        let old_interface: &Interface = &resolve.interfaces[old_owner.unwrap()];
+        let name = old_interface.name.clone();
+        let iface = Interface {
+            name: name.clone(),
+            types: Default::default(),
+            functions: Default::default(),
+            docs: Default::default(),
+            stability: Default::default(),
+            package: old_interface.package,
+        };
+        let new_id = resolve.interfaces.alloc(iface);
+        iface_map.insert(old_owner, new_id);
+        world.imports.insert(
+            WorldKey::Name(name.unwrap()),
+            WorldItem::Interface {
+                id: new_id,
+                stability: Default::default(),
+            },
+        );
+        new_id
+    };
+    let interface = &resolve.interfaces[iface];
+    if interface
+        .types
+        .iter()
+        .find(|(_n, id2)| id == **id2)
+        .is_none()
+    {
+        let tp = &mut resolve.types[id];
+        tp.owner = TypeOwner::Interface(iface);
+        let kind = tp.kind.clone();
+        match kind {
+            TypeDefKind::Record(record) => {
+                for f in record.fields.iter() {
+                    add_type2(resolve, world, &f.ty, &f.name, iface_map);
+                }
+            }
+            TypeDefKind::Resource => (),
+            TypeDefKind::Handle(handle) => match handle {
+                wit_parser::Handle::Own(id) => add_type(resolve, world, id, name, iface_map),
+                wit_parser::Handle::Borrow(id) => add_type(resolve, world, id, name, iface_map),
+            },
+            TypeDefKind::Flags(_flags) => (),
+            TypeDefKind::Tuple(tuple) => {
+                for (n, tp) in tuple.types.iter().enumerate() {
+                    add_type2(resolve, world, tp, &format!("{name}-f{n}"), iface_map);
+                }
+            }
+            TypeDefKind::Variant(variant) => {
+                for c in variant.cases.iter() {
+                    if let Some(tp) = &c.ty {
+                        add_type2(
+                            resolve,
+                            world,
+                            &tp,
+                            &format!("{name}-f{}", c.name),
+                            iface_map,
+                        );
+                    }
+                }
+            }
+            TypeDefKind::Enum(_en) => (),
+            TypeDefKind::Option(tp) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::Result(result) => {
+                if let Some(tp) = &result.ok {
+                    add_type2(resolve, world, tp, &(name.to_string() + "-ok"), iface_map);
+                }
+                if let Some(tp) = &result.err {
+                    add_type2(resolve, world, tp, &(name.to_string() + "-err"), iface_map);
+                }
+            }
+            TypeDefKind::List(tp) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::FixedSizeList(tp, _sz) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::Future(tp) => {
+                if let Some(tp) = tp {
+                    add_type2(resolve, world, &tp, name, iface_map);
+                }
+            }
+            TypeDefKind::Stream(tp) => {
+                if let Some(tp) = tp {
+                    add_type2(resolve, world, &tp, name, iface_map);
+                }
+            }
+            TypeDefKind::Type(tp) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::Unknown => todo!(),
+        }
+        let interface = &mut resolve.interfaces[iface];
+        interface.types.insert(name.into(), id);
+    }
+}
+
+pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
+    // dbg!(&func);
+    let mut resolve2 = resolve.clone();
+    let mut world = wit_parser::World {
+        name: "world".into(),
+        imports: Default::default(),
+        exports: Default::default(),
+        package: None,
+        docs: Default::default(),
+        stability: Default::default(),
+        includes: Vec::default(),
+        include_names: Vec::default(),
+    };
+    let interface = Interface {
+        name: None,
+        types: Default::default(),
+        functions: Default::default(),
+        docs: Default::default(),
+        stability: Default::default(),
+        package: Default::default(),
+    };
+    let iface_id = resolve2.interfaces.alloc(interface);
+    world.package = Some(resolve2.packages.alloc(Package {
+        name: PackageName {
+            namespace: "root".into(),
+            name: "root".into(),
+            version: None,
+        },
+        docs: Default::default(),
+        interfaces: Default::default(),
+        worlds: Default::default(),
+    }));
+    let mut iface_map: HashMap<Option<InterfaceId>, InterfaceId> = HashMap::new();
+    iface_map.insert(None, iface_id);
+    for (name, tp) in func.params.iter() {
+        add_type2(&mut resolve2, &mut world, tp, name, &mut iface_map);
+    }
+    if let Some(tp) = &func.result {
+        add_type2(&mut resolve2, &mut world, tp, "result", &mut iface_map);
+    }
+    if !resolve2.interfaces.get(iface_id).unwrap().types.is_empty() {
+        world.imports.insert(
+            WorldKey::Name("dependencies".into()),
+            WorldItem::Interface {
+                id: iface_id,
+                stability: Default::default(),
+            },
+        );
+    }
+    world.imports.insert(
+        WorldKey::Name(func.name.clone()),
+        WorldItem::Function(func.clone()),
+    );
+    let world_id = resolve2.worlds.alloc(world);
+
+    let component_type = wit_component::metadata::encode(
+        &resolve2,
+        world_id,
+        wit_component::StringEncoding::UTF8,
+        None,
+    )
+    .unwrap();
+    let mut hasher = rustc_stable_hash::hashers::SipHasher128::new_with_keys(0, 1);
+    use std::hash::Hasher;
+    hasher.write(&component_type);
+    let hash = hasher.finish().0[0];
+    let parsed = wit_parser::decoding::decode(&component_type);
+    if let Ok(DecodedWasm::WitPackage(resolve3, pkg_id)) = parsed {
+        let mut wit_printer = wit_component::WitPrinter::default();
+        wit_printer.print(&resolve3, pkg_id, &[]).unwrap();
+        print!("{hash:x} {}", wit_printer.output.to_string());
+    }
+    hash
 }

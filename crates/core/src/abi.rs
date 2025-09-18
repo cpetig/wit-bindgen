@@ -518,6 +518,7 @@ def_instruction! {
             name: &'a str,
             sig: &'a WasmSignature,
             module_prefix: &'a str,
+            func: &'a Function, // needed for hash calculation
         } : [sig.params.len()] => [sig.results.len()],
 
         /// Same as `CallWasm`, except the dual where an interface is being
@@ -1091,6 +1092,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     name: &func.name,
                     sig: &sig,
                     module_prefix: Default::default(),
+                    func,
                 });
 
                 if matches!(lift_lower, LiftLower::Symmetric) && sig.retptr {
@@ -1343,7 +1345,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         false,
                     ) if async_ => {
                         let name = &format!("[task-return]{}", func.name);
-                        let params = results.as_deref().unwrap_or(&[WasmType::I32]);
+                        let params = results.as_deref().unwrap_or_default();
                         self.emit(&Instruction::AsyncTaskReturn { name, params });
                     }
 

@@ -3870,6 +3870,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 name,
                 sig,
                 module_prefix,
+                func: _,
             } => {
                 let module_name = self
                     .gen

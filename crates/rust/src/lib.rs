@@ -301,6 +301,10 @@ pub struct Opts {
     #[cfg_attr(feature = "clap", clap(flatten))]
     #[cfg_attr(feature = "serde", serde(flatten))]
     pub async_: AsyncFilterSet,
+
+    /// Include function hash in linker symbol (for symmetric)
+    #[cfg_attr(feature = "clap", arg(long))]
+    pub hash_in_symbol: bool,
 }
 
 impl Opts {

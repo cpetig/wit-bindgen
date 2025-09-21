@@ -682,7 +682,7 @@ impl Runner<'_> {
                 let path = self
                     .compile_component(test, component)
                     .with_context(|| format!("failed to compile component {:?}", component.path));
-                self.update_status(&path, false);
+                self.update_status(&path, component.language.obj().should_fail_runtime(&test.name));
                 (test, component, path)
             })
             .collect::<Vec<_>>();
@@ -1288,6 +1288,11 @@ trait LanguageMethods {
     /// Performs a "check" or a verify that the generated bindings described by
     /// `Verify` are indeed valid.
     fn verify(&self, runner: &Runner<'_>, verify: &Verify) -> Result<()>;
+
+    /// Whether a runtime test is expected to fail
+    fn should_fail_runtime(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 impl Language {

@@ -317,7 +317,7 @@ dependencies = [
 name = "symmetric_stream"
 version = "0.1.0"
 dependencies = [
- "mini-bindgen",
+ "dummy-rt",
  "symmetric_executor",
 ]
 

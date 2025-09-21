@@ -682,7 +682,7 @@ impl Runner<'_> {
                 let path = self
                     .compile_component(test, component)
                     .with_context(|| format!("failed to compile component {:?}", component.path));
-                self.update_status(&path, component.language.obj().should_fail_runtime(&test.name));
+                self.update_status(&path, component.language.obj().should_fail_runtime(test, component));
                 (test, component, path)
             })
             .collect::<Vec<_>>();
@@ -698,6 +698,7 @@ impl Runner<'_> {
                         StepResult::new("", Ok(()))
                     }
                     Err(e) => StepResult::new(&test.name, Err(e))
+                        .should_fail(component.language.obj().should_fail_runtime(test, component))
                         .metadata("component", &component.name)
                         .metadata("path", component.path.display()),
                 }),
@@ -1290,7 +1291,7 @@ trait LanguageMethods {
     fn verify(&self, runner: &Runner<'_>, verify: &Verify) -> Result<()>;
 
     /// Whether a runtime test is expected to fail
-    fn should_fail_runtime(&self, _name: &str) -> bool {
+    fn should_fail_runtime(&self, _test: &Test, _component: &Component) -> bool {
         false
     }
 }

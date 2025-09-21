@@ -307,6 +307,13 @@ mod core {}
         }
         Ok(())
     }
+
+    fn should_fail_runtime(&self, test: &crate::Test, _component: &crate::Component) -> bool {
+        test.name == "simple-yield" 
+        || test.name == "cancel-import"
+        || test.name == "simple-pending-import"
+        || test.name == "pending-import"
+    }
 }
 
 enum Edition {

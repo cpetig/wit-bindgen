@@ -308,11 +308,17 @@ mod core {}
         Ok(())
     }
 
-    fn should_fail_runtime(&self, test: &crate::Test, _component: &crate::Component) -> bool {
-        test.name == "simple-yield" 
-        || test.name == "cancel-import"
-        || test.name == "simple-pending-import"
-        || test.name == "pending-import"
+    fn should_fail_runtime(
+        &self,
+        runner: &Runner<'_>,
+        test: &crate::Test,
+        _component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric()
+            && (test.name == "simple-yield"
+                || test.name == "cancel-import"
+                || test.name == "simple-pending-import"
+                || test.name == "pending-import")
     }
 }
 

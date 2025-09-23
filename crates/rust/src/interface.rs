@@ -947,7 +947,7 @@ pub mod vtable{ordinal} {{
             self.src,
             "
 use {async_support}::Subtask as _Subtask;
-struct _MySubtask<'a> {{ _unused: &'a () }}
+struct _MySubtask<'a> {{ _unused: core::marker::PhantomData<&'a ()> }}
 #[allow(unused_parens)]
 unsafe impl<'a> _Subtask for _MySubtask<'a> {{
             "
@@ -997,9 +997,11 @@ unsafe impl<'a> _Subtask for _MySubtask<'a> {{
         uwriteln!(
             self.src,
             r#"
-const ABI_LAYOUT: ::core::alloc::Layout = unsafe {{
-    ::core::alloc::Layout::from_size_align_unchecked({}, {})
-}};
+fn abi_layout(&self) -> ::core::alloc::Layout {{
+    unsafe {{
+        ::core::alloc::Layout::from_size_align_unchecked({}, {})
+    }}
+}}
             "#,
             layout.size.format(POINTER_SIZE_EXPRESSION),
             layout.align.format(POINTER_SIZE_EXPRESSION),
@@ -1013,7 +1015,7 @@ const ABI_LAYOUT: ::core::alloc::Layout = unsafe {{
             }
             None => "0".to_string(),
         };
-        uwriteln!(self.src, "const RESULTS_OFFSET: usize = {offset};");
+        uwriteln!(self.src, "fn results_offset(&self) -> usize {{ {offset} }}");
 
         // Generate `fn call_import`
         let import_name = &func.name;
@@ -1034,7 +1036,7 @@ const ABI_LAYOUT: ::core::alloc::Layout = unsafe {{
         uwriteln!(
             self.src,
             r#"
-unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
+unsafe fn call_import(&self, _params: Self::ParamsLower, _results: *mut u8) -> u32 {{
     {intrinsic}
     unsafe {{ call({args}) as u32 }}
 }}
@@ -1054,7 +1056,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         );
         uwriteln!(
             self.src,
-            "unsafe fn params_dealloc_lists(_params: Self::ParamsLower) {{"
+            "unsafe fn params_dealloc_lists(&self, _params: Self::ParamsLower) {{"
         );
         uwriteln!(self.src, "{dealloc_lists}");
         uwriteln!(self.src, "}}");
@@ -1068,7 +1070,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         );
         uwriteln!(
             self.src,
-            "unsafe fn params_dealloc_lists_and_own(_params: Self::ParamsLower) {{"
+            "unsafe fn params_dealloc_lists_and_own(&self, _params: Self::ParamsLower) {{"
         );
         uwriteln!(self.src, "{dealloc_lists_and_own}");
         uwriteln!(self.src, "}}");
@@ -1118,7 +1120,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         }
         uwriteln!(
             self.src,
-            "unsafe fn params_lower(({}): Self::Params, _ptr: *mut u8) -> Self::ParamsLower {{",
+            "unsafe fn params_lower(&self, ({}): Self::Params, _ptr: *mut u8) -> Self::ParamsLower {{",
             param_lowers.join(" "),
         );
         for lower in lowers.iter() {
@@ -1133,7 +1135,7 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         };
         uwriteln!(
             self.src,
-            "unsafe fn results_lift(_ptr: *mut u8) -> Self::Results {{"
+            "unsafe fn results_lift(&self, _ptr: *mut u8) -> Self::Results {{"
         );
         uwriteln!(self.src, "{lift}");
         uwriteln!(self.src, "}}");
@@ -1143,7 +1145,11 @@ unsafe fn call_import(_params: Self::ParamsLower, _results: *mut u8) -> u32 {{
         for param in params.iter_mut() {
             param.push_str(",");
         }
-        uwriteln!(self.src, "_MySubtask::call(({})).await", params.join(" "));
+        uwriteln!(
+            self.src,
+            "_MySubtask {{ _unused: core::marker::PhantomData }}.call(({})).await",
+            params.join(" ")
+        );
     }
 
     fn generate_guest_export(

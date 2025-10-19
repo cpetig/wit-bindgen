@@ -8,7 +8,11 @@ struct ImportLib {
 
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
-pub struct Opts {}
+pub struct Opts {
+    /// Generate bindings for symmetric linking support (default).
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub symmetric: bool,
+}
 
 impl Opts {
     pub fn build(&self) -> Box<dyn WorldGenerator> {
@@ -33,58 +37,58 @@ impl WorldGenerator for ImportLib {
     fn import_interface(
         &mut self,
         _resolve: &wit_bindgen_core::wit_parser::Resolve,
-        name: &wit_bindgen_core::wit_parser::WorldKey,
-        iface: wit_bindgen_core::wit_parser::InterfaceId,
-        files: &mut wit_bindgen_core::Files,
+        _name: &wit_bindgen_core::wit_parser::WorldKey,
+        _iface: wit_bindgen_core::wit_parser::InterfaceId,
+        _files: &mut wit_bindgen_core::Files,
     ) -> Result<()> {
         todo!()
     }
 
     fn export_interface(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        name: &wit_bindgen_core::wit_parser::WorldKey,
-        iface: wit_bindgen_core::wit_parser::InterfaceId,
-        files: &mut wit_bindgen_core::Files,
+        _resolve: &wit_bindgen_core::wit_parser::Resolve,
+        _name: &wit_bindgen_core::wit_parser::WorldKey,
+        _iface: wit_bindgen_core::wit_parser::InterfaceId,
+        _files: &mut wit_bindgen_core::Files,
     ) -> Result<()> {
         todo!()
     }
 
     fn import_funcs(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        funcs: &[(&str, &wit_bindgen_core::wit_parser::Function)],
-        files: &mut wit_bindgen_core::Files,
+        _resolve: &wit_bindgen_core::wit_parser::Resolve,
+        _world: wit_bindgen_core::wit_parser::WorldId,
+        _funcs: &[(&str, &wit_bindgen_core::wit_parser::Function)],
+        _files: &mut wit_bindgen_core::Files,
     ) {
         todo!()
     }
 
     fn export_funcs(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        funcs: &[(&str, &wit_bindgen_core::wit_parser::Function)],
-        files: &mut wit_bindgen_core::Files,
+        _resolve: &wit_bindgen_core::wit_parser::Resolve,
+        _world: wit_bindgen_core::wit_parser::WorldId,
+        _funcs: &[(&str, &wit_bindgen_core::wit_parser::Function)],
+        _files: &mut wit_bindgen_core::Files,
     ) -> Result<()> {
         todo!()
     }
 
     fn import_types(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        types: &[(&str, wit_bindgen_core::wit_parser::TypeId)],
-        files: &mut wit_bindgen_core::Files,
+        _resolve: &wit_bindgen_core::wit_parser::Resolve,
+        _world: wit_bindgen_core::wit_parser::WorldId,
+        _types: &[(&str, wit_bindgen_core::wit_parser::TypeId)],
+        _files: &mut wit_bindgen_core::Files,
     ) {
         todo!()
     }
 
     fn finish(
         &mut self,
-        resolve: &wit_bindgen_core::wit_parser::Resolve,
-        world: wit_bindgen_core::wit_parser::WorldId,
-        files: &mut wit_bindgen_core::Files,
+        _resolve: &wit_bindgen_core::wit_parser::Resolve,
+        _world: wit_bindgen_core::wit_parser::WorldId,
+        _files: &mut wit_bindgen_core::Files,
     ) -> Result<()> {
         todo!()
     }

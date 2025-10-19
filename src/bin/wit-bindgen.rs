@@ -90,7 +90,9 @@ enum Opt {
     ImportLib {
         #[clap(flatten)]
         opts: wit_bindgen_importlib::Opts,
-    }
+        #[clap(flatten)]
+        args: Common,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -167,7 +169,7 @@ fn main() -> Result<()> {
         #[cfg(feature = "csharp")]
         Opt::Csharp { opts, args } => (opts.build(), args),
         Opt::Test { opts } => return opts.run(std::env::args_os().nth(0).unwrap().as_ref()),
-        Opt::ImportLib { opts } => (opts.build(), args),
+        Opt::ImportLib { opts, args } => (opts.build(), args),
     };
 
     gen_world(generator, &opt, &mut files).map_err(attach_with_context)?;

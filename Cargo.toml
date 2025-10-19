@@ -69,7 +69,7 @@ wit-bindgen-markdown = { workspace = true, features = ['clap'], optional = true 
 wit-bindgen-moonbit = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-csharp = { workspace = true, features = ['clap'], optional = true }
 wit-bindgen-test = { workspace = true }
-wit-bindgen-importlib = { workspace = true }
+wit-bindgen-importlib = { workspace = true, features = ['clap'] }
 wit-component = { workspace = true }
 wasm-encoder = { workspace = true }
 wit-bindgen-bridge = { workspace = true, features = ['clap'], optional = true }

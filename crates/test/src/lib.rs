@@ -444,7 +444,7 @@ impl Runner<'_> {
             match &language {
                 Language::Rust => {
                     bindgen.args.push(String::from("--link-name"));
-                    bindgen.args.push(String::from("test-rust"));
+                    bindgen.args.push(String::from("test"));
                 }
                 _ => {
                     println!("Symmetric: --link_name missing from language {language:?}");
@@ -677,6 +677,7 @@ impl Runner<'_> {
         // In parallel compile all sources to their binary component
         // form.
         let compile_results = components
+            // @@ par_iter
             .iter()
             .map(|(test, component)| {
                 let path = self
@@ -853,6 +854,18 @@ impl Runner<'_> {
             artifacts_dir: &artifacts_dir,
             output: &output,
         };
+        // TODO: Figure this out for complex tests
+        if self.is_symmetric() && matches!(component.kind, Kind::Runner) {
+            let mut cmd = Command::new(self.wit_bindgen);
+            cmd.arg("import-lib")
+                .arg(&component.bindgen.wit_path)
+                .arg("--world")
+                .arg("test")
+                .arg("--out-dir")
+                .arg(&bindings_dir)
+                .arg("--symmetric");
+            self.run_command(&mut cmd)?;
+        }
         component.language.obj().compile(self, &result)?;
 
         if !self.is_symmetric() {

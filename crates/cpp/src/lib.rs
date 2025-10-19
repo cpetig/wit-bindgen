@@ -8,11 +8,10 @@ use std::{
     process::{Command, Stdio},
     str::FromStr,
 };
-use symbol_name::{make_external_component, make_external_symbol};
 use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
-    symmetric, uwrite, uwriteln,
+    make_external_component, make_external_symbol, symmetric, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
@@ -21,7 +20,6 @@ use wit_bindgen_core::{
     Files, InterfaceGenerator, Source, Types, WorldGenerator,
 };
 
-mod symbol_name;
 mod wamr;
 
 pub const RESOURCE_IMPORT_BASE_CLASS_NAME: &str = "ResourceImportBase";

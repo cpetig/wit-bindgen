@@ -147,7 +147,7 @@ version = "4.5.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbfd7eae0b0f1a6e63d4b13c9c478de77c2eb546fba158ad50b4203dc24b9f9c"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "syn",
@@ -163,7 +163,7 @@ checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 name = "codegen-macro"
 version = "0.0.0"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "quote",
 ]
 
@@ -404,12 +404,6 @@ name = "hashbrown"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5419bdc4f6a9207fbeba6d11b604d481addf78ecd10c11ad51e76c2f6482748d"
-
-[[package]]
-name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "heck"
@@ -1298,10 +1292,10 @@ checksum = "8d0fcd636ad2b29a7c0490799a23ad61d1c8dedfafdb970447fddd0549502b60"
 [[package]]
 name = "wasm-compose"
 version = "0.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "anyhow",
- "heck 0.4.1",
+ "heck",
  "im-rc",
  "indexmap",
  "log",
@@ -1328,7 +1322,7 @@ dependencies = [
 [[package]]
 name = "wasm-encoder"
 version = "0.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.240.0",
@@ -1356,7 +1350,7 @@ dependencies = [
 [[package]]
 name = "wasm-metadata"
 version = "0.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -1380,7 +1374,7 @@ dependencies = [
 [[package]]
 name = "wasmparser"
 version = "0.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "bitflags",
  "hashbrown 0.15.5",
@@ -1392,7 +1386,7 @@ dependencies = [
 [[package]]
 name = "wast"
 version = "240.0.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "bumpalo",
  "leb128fmt",
@@ -1404,7 +1398,7 @@ dependencies = [
 [[package]]
 name = "wat"
 version = "1.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "wast",
 ]
@@ -1524,7 +1518,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "wit-bindgen-core",
  "wit-component",
 ]
@@ -1535,7 +1529,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "indexmap",
  "wasm-encoder 0.240.0",
  "wasm-metadata 0.240.0",
@@ -1570,7 +1564,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "indexmap",
  "rustc-stable-hash",
  "serde",
@@ -1584,7 +1578,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "test-helpers",
  "wasm-encoder 0.240.0",
  "wasm-metadata 0.240.0",
@@ -1599,7 +1593,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "indexmap",
  "wasm-metadata 0.240.0",
  "wit-bindgen-core",
@@ -1623,7 +1617,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "pulldown-cmark",
  "wit-bindgen-core",
 ]
@@ -1634,7 +1628,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "wit-bindgen-core",
 ]
 
@@ -1645,7 +1639,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures",
- "heck 0.5.0",
+ "heck",
  "indexmap",
  "prettyplease",
  "serde",
@@ -1677,7 +1671,7 @@ version = "0.46.0"
 dependencies = [
  "anyhow",
  "clap",
- "heck 0.5.0",
+ "heck",
  "indexmap",
  "log",
  "rayon",
@@ -1700,7 +1694,7 @@ dependencies = [
 [[package]]
 name = "wit-component"
 version = "0.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -1719,7 +1713,7 @@ dependencies = [
 [[package]]
 name = "wit-parser"
 version = "0.240.0"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#b108ff7357290f124d2d95c4c1a4ace8b29929f8"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#55e19e7950189ddf3629670f0dfe7812c024ad5b"
 dependencies = [
  "anyhow",
  "id-arena",

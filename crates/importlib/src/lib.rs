@@ -1,11 +1,12 @@
-use anyhow::Result;
-use std::fmt::Write;
+use anyhow::{bail, Context, Result};
+use std::{env::consts::DLL_EXTENSION, fmt::Write, path::PathBuf, process::Command};
 use wit_bindgen_core::{abi, make_external_symbol, uwriteln, wit_parser, Files, WorldGenerator};
 
 #[derive(Default)]
 struct ImportLib {
     opts: Opts,
     src: wit_bindgen_core::Source,
+    out_dir: Option<PathBuf>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -17,9 +18,10 @@ pub struct Opts {
 }
 
 impl Opts {
-    pub fn build(&self) -> Box<dyn WorldGenerator> {
+    pub fn build(&self, out_dir: &Option<PathBuf>) -> Box<dyn WorldGenerator> {
         let mut r = ImportLib::default();
         r.opts = self.clone();
+        r.out_dir = out_dir.clone();
         uwriteln!(r.src, "use std::process::abort;");
         Box::new(r)
     }
@@ -35,8 +37,12 @@ impl ImportLib {
         // todo!()
         // println!("{func:?}");
         let core_module_name = interface_name.map(|s| resolve.name_world_key(s));
-        let export_name = func.legacy_core_export_name(core_module_name.as_deref());
-        let ext_name = make_external_symbol("", &export_name, abi::AbiVariant::GuestExport);
+        //let export_name = func.legacy_core_export_name(core_module_name.as_deref());
+        let ext_name = make_external_symbol(
+            &core_module_name.unwrap_or("$root".into()),
+            &func.name,
+            abi::AbiVariant::GuestImport,
+        );
         uwriteln!(self.src, "#[no_mangle]");
         uwriteln!(
             self.src,
@@ -103,12 +109,42 @@ impl WorldGenerator for ImportLib {
 
     fn finish(
         &mut self,
-        _resolve: &wit_parser::Resolve,
-        _world: wit_parser::WorldId,
+        resolve: &wit_parser::Resolve,
+        world: wit_parser::WorldId,
         _files: &mut Files,
     ) -> Result<()> {
-        println!("{}", self.src.as_str());
-        // rustc --crate-type=cdylib test.rs -O
+        let worldname = resolve
+            .worlds
+            .get(world)
+            .map(|w| w.name.clone())
+            .unwrap_or("world".to_string());
+        let rustname = format!("{worldname}_importlib.rs",);
+        let rustpath = match &self.out_dir {
+            Some(path) => path.join(rustname),
+            None => rustname.into(),
+        };
+        let libname = format!("lib{worldname}.{}", DLL_EXTENSION);
+        let libpath = match &self.out_dir {
+            Some(path) => path.join(libname),
+            None => libname.into(),
+        };
+        eprintln!("Generating {:?}", libpath);
+        std::fs::write(&rustpath, self.src.as_bytes())
+            .with_context(|| format!("failed to write {:?}", rustpath))?;
+
+        let mut cmd = Command::new("rustc");
+        cmd.arg("--crate-type=cdylib");
+        cmd.arg(&rustpath);
+        cmd.arg("-O");
+        cmd.arg("-o");
+        cmd.arg(libpath);
+        cmd.arg("-C");
+        cmd.arg("strip=debuginfo");
+        let output = cmd.output().with_context(|| "failed to run rustc")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("rustc failed:\n{}", stderr);
+        }
         Ok(())
     }
 }

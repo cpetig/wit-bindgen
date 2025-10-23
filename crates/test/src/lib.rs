@@ -677,8 +677,7 @@ impl Runner<'_> {
         // In parallel compile all sources to their binary component
         // form.
         let compile_results = components
-            // @@ par_iter
-            .iter()
+            .par_iter()
             .map(|(test, component)| {
                 let path = self
                     .compile_component(test, component)
@@ -862,7 +861,7 @@ impl Runner<'_> {
                 .arg("--world")
                 .arg("test")
                 .arg("--out-dir")
-                .arg(&bindings_dir)
+                .arg(&artifacts_dir)
                 .arg("--symmetric");
             self.run_command(&mut cmd)?;
         }
@@ -934,8 +933,15 @@ impl Runner<'_> {
             new_file.push(&(runner_wasm.file_name().unwrap()));
             symlink(runner_wasm, new_file)?;
             for (_c, p) in test_components.iter() {
+                // remove the language extension from the filename
                 let mut new_file = composed_wasm.clone();
-                new_file.push(&(p.file_name().unwrap()));
+                let oldname = p.file_name().unwrap().to_str().unwrap();
+                let langext = oldname.rfind('-').unwrap();
+                let (pre, post) = oldname.split_at(langext);
+                let langextend = post.find('.').unwrap();
+                let (_, post) = post.split_at(langextend);
+                let newname = format!("{}{}", pre, post);
+                new_file.push(&newname);
                 symlink(p, new_file)?;
             }
             let cwd = runner_wasm.parent().unwrap().parent().unwrap();

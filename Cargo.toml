@@ -53,7 +53,7 @@ wit-bindgen = { path = 'crates/guest-rust', version = '0.47.0', default-features
 wit-bindgen-test = { path = 'crates/test', version = '0.47.0' }
 
 wit-bindgen-bridge = { path = 'crates/bridge', version = '0.1.0' }
-wit-bindgen-importlib = { path = 'crates/importlib', version = '0.46.0' }
+wit-bindgen-importlib = { path = 'crates/importlib', version = '0.47.0' }
 
 [[bin]]
 name = "wit-bindgen"

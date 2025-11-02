@@ -450,6 +450,7 @@ pub mod symmetric {
             impl EventGenerator {
                 #[allow(unused_unsafe, clippy::all)]
                 /// Get the receiving side (to pass to other parts of the program)
+                /// Make sure to reset if you only need future events
                 #[allow(async_fn_in_trait)]
                 pub fn subscribe(&self) -> EventSubscription {
                     unsafe {

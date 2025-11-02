@@ -312,11 +312,19 @@ impl GuestStreamObj for StreamObj {
         })
     }
 
-    fn clone(&self) -> symmetric_stream::StreamObj {
-        self.0.empty_buffer.add_writer();
+    fn clone(&self, writing: bool) -> symmetric_stream::StreamObj {
+        if !writing {
+            self.0.empty_buffer.add_writer();
+        } else {
+            self.0.full_buffer.add_writer();
+        }
         symmetric_stream::StreamObj::new(StreamObj(
             Arc::clone(&self.0),
-            AtomicDecreaseOnDrop::new(DecreaseOnDrop::Reader as u8),
+            AtomicDecreaseOnDrop::new(if writing {
+                DecreaseOnDrop::Writer
+            } else {
+                DecreaseOnDrop::Reader
+            } as u8),
         ))
     }
 

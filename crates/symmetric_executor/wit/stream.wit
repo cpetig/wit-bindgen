@@ -21,26 +21,21 @@ interface symmetric-stream {
         constructor();
         // create a new instance e.g. for reading or tasks
         // (Assumption: This is never used to duplicate the writing side)
-        clone: func() -> stream-obj;
+        clone: func(writing: bool) -> stream-obj;
+
         // reading (in roughly chronological order)
         /// indicates EOF
         is-write-closed: func() -> bool;
         start-reading: func(buffer: buffer) -> result<_, buffer>;
-        //write-ready-activate: func();
         read-ready-subscribe: func() -> event-subscription;
         // close the reading side, returning any in-flight buffer(s)
         close-read: func() -> list<buffer>;
-        /// none is EOF when read-ready, no data when polled
         read-result: func() -> result<buffer, stream-state>;
+
         // writing
         is-read-closed: func() -> bool;
-        // this is prone to TOCTOU races
-        //is-ready-to-write: func() -> bool;
-        /// none means EOF or wait and retry
         start-writing: func() -> result<buffer, stream-state>;
         write-ready-subscribe: func() -> event-subscription;
-        /// none is EOF (doesn't require start)
         finish-writing: func(buffer: buffer) -> result<_, buffer>;
-        //read-ready-activate: func();
     }
 }

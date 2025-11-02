@@ -37,6 +37,7 @@ interface symmetric-executor {
     resource event-generator {
         constructor();
         /// Get the receiving side (to pass to other parts of the program)
+        /// Make sure to reset if you only need future events
         subscribe: func() -> event-subscription;
         /// Trigger all subscribers
         activate: func();

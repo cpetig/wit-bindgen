@@ -1011,6 +1011,7 @@ pub mod exports {
                     #[allow(async_fn_in_trait)]
                     fn new() -> Self;
                     /// Get the receiving side (to pass to other parts of the program)
+                    /// Make sure to reset if you only need future events
                     #[allow(async_fn_in_trait)]
                     fn subscribe(&self) -> EventSubscription;
                     /// Trigger all subscribers

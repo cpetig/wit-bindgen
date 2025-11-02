@@ -1,10 +1,12 @@
 use core::ptr::{self, NonNull};
-use executor_import::symmetric::runtime::symmetric_executor::{self, CallbackData, CallbackFunction};
+use executor_import::symmetric::runtime::symmetric_executor::{
+    self, CallbackData, CallbackFunction,
+};
 pub use executor_import::symmetric::runtime::symmetric_executor::{
     run, CallbackState, EventGenerator, EventSubscription,
 };
-pub use stream_import::symmetric::runtime::symmetric_stream;
 use std::alloc::{self, Layout};
+pub use stream_import::symmetric::runtime::symmetric_stream;
 
 pub mod async_support;
 mod executor_import;

@@ -1,7 +1,9 @@
 use std::{
+    cell::UnsafeCell,
+    num::NonZero,
     ptr::null_mut,
     sync::{
-        atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicIsize, AtomicPtr, AtomicU8, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -53,49 +55,158 @@ impl GuestBuffer for Buffer {
     }
 }
 
-mod results {
-    pub const BLOCKED: isize = -1;
+// mod results {
+//     pub const BLOCKED: isize = -1;
+// }
+
+// TODO: (all internal)
+// - replace close with number of writers/readers
+// - separate variables into two generic single direction channels
+// - remove BLOCKED
+
+type ChannelSync = AtomicUsize;
+const MULTI_HEAD: bool = false;
+const BUSY: usize = usize::MAX;
+
+struct SingleDirectionChannel<PAYLOAD> {
+    ready_event: EventGenerator,
+    size: ChannelSync,
+    payload: UnsafeCell<PAYLOAD>,
+    number_of_writers: AtomicUsize,
+}
+
+impl<P: Default> Default for SingleDirectionChannel<P> {
+    fn default() -> Self {
+        Self {
+            ready_event: EventGenerator::new(),
+            size: Default::default(),
+            payload: Default::default(),
+            number_of_writers: Default::default(),
+        }
+    }
+}
+
+impl<P> SingleDirectionChannel<P> {
+    // this assumes that you already acquired or reset the other-directional signal
+    fn write(&self, size: NonZero<usize>, payload: P) -> Result<(), (NonZero<usize>, P)> {
+        let busy = if MULTI_HEAD {
+            self.size
+                .compare_exchange(0, BUSY, Ordering::Acquire, Ordering::Relaxed)
+                .is_err()
+        } else {
+            self.size.load(Ordering::Acquire) != 0
+        };
+        if busy {
+            Err((size, payload))
+        } else {
+            // Safety: The payload is protected by size
+            unsafe { *self.payload.get() = payload };
+            self.size.store(size.get(), Ordering::Release);
+            self.ready_event.activate();
+            Ok(())
+        }
+    }
+
+    // this assumes that you already acquired or reset the other-directional signal
+    fn read(&self) -> Result<(NonZero<usize>, P), ()> {
+        let size = self.size.load(Ordering::Acquire);
+        if size == 0 || (MULTI_HEAD && size == BUSY) {
+            Err(())
+        } else {
+            if MULTI_HEAD
+                && self
+                    .size
+                    .compare_exchange(size, BUSY, Ordering::Acquire, Ordering::Relaxed)
+                    != Ok(size)
+            {
+                Err(())
+            } else {
+                // Safety: The payload is protected by size
+                let payload = unsafe { self.payload.get().read() };
+                self.size.store(0, Ordering::Release);
+                let nonzero_size = unsafe { NonZero::new_unchecked(size) };
+                Ok((nonzero_size, payload))
+            }
+        }
+    }
+
+    fn add_writer(&self) {
+        self.number_of_writers.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn drop_writer(&self) {
+        let prev = self.number_of_writers.fetch_sub(1, Ordering::Relaxed);
+        assert!(prev != 0);
+    }
+
+    fn has_writers(&self) -> bool {
+        self.number_of_writers.load(Ordering::Acquire) > 0
+    }
 }
 
 struct StreamInner {
-    read_ready_event_send: EventGenerator,
-    write_ready_event_send: EventGenerator,
-    read_addr: AtomicPtr<()>,
-    read_size: AtomicUsize,
-    ready_addr: AtomicPtr<()>,
-    ready_size: AtomicIsize,
-    ready_capacity: AtomicUsize,
-    // if the writer closes before the reader has consumed the last data
-    write_closed: AtomicBool,
-    // reader closed
-    read_closed: AtomicBool,
+    // reader to writer (address)
+    empty_buffer: SingleDirectionChannel<*mut ()>,
+    // writer to reader (address+capacity)
+    full_buffer: SingleDirectionChannel<(*mut (), usize)>,
+    // read_ready_event_send: EventGenerator,
+    // write_ready_event_send: EventGenerator,
+    // read_addr: AtomicPtr<()>,
+    // read_size: AtomicUsize,
+    // ready_addr: AtomicPtr<()>,
+    // ready_size: AtomicIsize,
+    // ready_capacity: AtomicUsize,
+    // // if the writer closes before the reader has consumed the last data
+    // write_closed: AtomicBool,
+    // // reader closed
+    // read_closed: AtomicBool,
 }
 
-struct StreamObj(Arc<StreamInner>);
+#[repr(u8)]
+enum DecreaseOnDrop {
+    None,
+    Reader,
+    Writer,
+}
+
+type AtomicDecreaseOnDrop = AtomicU8;
+
+// bool = is_writer
+struct StreamObj(Arc<StreamInner>, AtomicDecreaseOnDrop);
+
+impl Drop for StreamObj {
+    fn drop(&mut self) {
+        match self.1.load(Ordering::Relaxed) {
+            val if val == DecreaseOnDrop::None as u8 => (),
+            val if val == DecreaseOnDrop::Reader as u8 => self.0.empty_buffer.drop_writer(),
+            val if val == DecreaseOnDrop::Writer as u8 => self.0.full_buffer.drop_writer(),
+            _ => unimplemented!("Invalid drop type"),
+        }
+    }
+}
 
 impl GuestStreamObj for StreamObj {
     fn new() -> Self {
         let inner = StreamInner {
-            read_ready_event_send: EventGenerator::new(),
-            write_ready_event_send: EventGenerator::new(),
-            read_addr: AtomicPtr::new(core::ptr::null_mut()),
-            read_size: AtomicUsize::new(0),
-            ready_addr: AtomicPtr::new(core::ptr::null_mut()),
-            ready_size: AtomicIsize::new(results::BLOCKED),
-            ready_capacity: AtomicUsize::new(0),
-            write_closed: AtomicBool::new(false),
-            read_closed: AtomicBool::new(false),
+            empty_buffer: Default::default(),
+            full_buffer: Default::default(),
         };
+        inner.full_buffer.add_writer();
         #[cfg(feature = "trace")]
         println!("Stream::new {:x}", inner.read_ready_event_send.handle());
-        Self(Arc::new(inner))
+        Self(
+            Arc::new(inner),
+            AtomicDecreaseOnDrop::new(DecreaseOnDrop::Writer as u8),
+        )
     }
 
     fn is_write_closed(&self) -> bool {
-        self.0.ready_addr.load(Ordering::Acquire) as usize == EOF_MARKER
-            || self.0.write_closed.load(Ordering::Acquire)
+        !self.0.full_buffer.has_writers()
+        // self.0.ready_addr.load(Ordering::Acquire) as usize == EOF_MARKER
+        //     || self.0.write_closed.load(Ordering::Acquire)
     }
 
+    // pass buffer to reading side
     fn start_reading(&self, buffer: symmetric_stream::Buffer) {
         let buf = buffer.get::<Buffer>().get_address().take_handle() as *mut ();
         let size = buffer.get::<Buffer>().capacity();
@@ -104,6 +215,8 @@ impl GuestStreamObj for StreamObj {
             "Stream::start_read {:x} {buf:x?} {size} =>",
             self.0.read_ready_event_send.handle()
         );
+        let res = self.0.empty_buffer.write(size, buf);
+
         let old_readya = self.0.ready_addr.load(Ordering::Acquire);
         let old_ready = self.0.ready_size.load(Ordering::Acquire);
         if old_readya as usize == EOF_MARKER {
@@ -137,11 +250,11 @@ impl GuestStreamObj for StreamObj {
         }
     }
 
-    fn is_ready_to_write(&self) -> bool {
-        !self.0.read_addr.load(Ordering::Acquire).is_null()
-    }
+    // fn is_ready_to_write(&self) -> bool {
+    //     !self.0.read_addr.load(Ordering::Acquire).is_null()
+    // }
 
-    fn start_writing(&self) -> symmetric_stream::Buffer {
+    fn start_writing(&self) -> Result<symmetric_stream::Buffer, symmetric_stream::StreamState> {
         let size = self.0.read_size.swap(0, Ordering::Acquire);
         let addr = self
             .0
@@ -192,7 +305,11 @@ impl GuestStreamObj for StreamObj {
     }
 
     fn clone(&self) -> symmetric_stream::StreamObj {
-        symmetric_stream::StreamObj::new(StreamObj(Arc::clone(&self.0)))
+        self.0.empty_buffer.add_writer();
+        symmetric_stream::StreamObj::new(StreamObj(
+            Arc::clone(&self.0),
+            AtomicDecreaseOnDrop::new(DecreaseOnDrop::Reader as u8),
+        ))
     }
 
     fn write_ready_activate(&self) {
@@ -211,6 +328,7 @@ impl GuestStreamObj for StreamObj {
         self.0.read_ready_event_send.activate();
     }
 
+    // TODO: Also add unread full buffers?
     fn close_read(&self) -> Vec<symmetric_stream::Buffer> {
         let mut res = Vec::new();
         let size = self.0.read_size.swap(0, Ordering::Acquire);
@@ -230,6 +348,8 @@ impl GuestStreamObj for StreamObj {
             });
             res.push(buffer);
         }
+        assert!(self.1.load(Ordering::Acquire) == DecreaseOnDrop::Reader as u8);
+        self.1.store(DecreaseOnDrop::None as u8, Ordering::Release);
         res
     }
 

@@ -1,4 +1,9 @@
-package symmetric:runtime@0.2.2;
+// Version history
+// 0.2.0: streams added
+// 0.2.1: callback-state added
+// 0.2.2: block-on, close-read, is-read-closed added
+// 0.3.0: start-writing/reading can fail, remove is-ready-to-write, remove read/write_ready_activate
+package symmetric:runtime@0.3.0;
 
 world executor {
     export symmetric-executor;
@@ -6,6 +11,14 @@ world executor {
 
 world stream-impl {
     export symmetric-stream;
+}
+
+world executor-import {
+    import symmetric-executor;
+}
+
+world stream-import {
+    import symmetric-stream;
 }
 
 world module {

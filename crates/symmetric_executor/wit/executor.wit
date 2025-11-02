@@ -79,15 +79,21 @@ interface symmetric-stream {
         capacity: func() -> u64;
     }
 
+    enum stream-state {
+        eof,
+        pending,
+    }
+
     resource stream-obj {
         constructor();
         // create a new instance e.g. for reading or tasks
+        // (Assumption: This is never used to duplicate the writing side)
         clone: func() -> stream-obj;
         // reading (in roughly chronological order)
         /// indicates EOF
         is-write-closed: func() -> bool;
-        start-reading: func(buffer: buffer);
-        write-ready-activate: func();
+        start-reading: func(buffer: buffer) -> result<_, buffer>;
+        //write-ready-activate: func();
         read-ready-subscribe: func() -> event-subscription;
         // close the reading side, returning any in-flight buffer(s)
         close-read: func() -> list<buffer>;
@@ -95,11 +101,13 @@ interface symmetric-stream {
         read-result: func() -> option<buffer>;
         // writing
         is-read-closed: func() -> bool;
-        is-ready-to-write: func() -> bool;
+        // this is prone to TOCTOU races
+        //is-ready-to-write: func() -> bool;
+        /// none means EOF or wait and retry
+        start-writing: func() -> result<buffer, stream-state>;
         write-ready-subscribe: func() -> event-subscription;
-        start-writing: func() -> buffer;
-        /// none is EOF
+        /// none is EOF (doesn't require start)
         finish-writing: func(buffer: option<buffer>);
-        read-ready-activate: func();
+        //read-ready-activate: func();
     }
 }

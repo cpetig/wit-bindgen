@@ -331,13 +331,13 @@ impl<T: Send + Unpin + 'static> StreamReader<T> {
 //     }
 // }
 
-impl<T> Drop for StreamReader<T> {
-    fn drop(&mut self) {
-        if self.handle.handle() != 0 {
-            self.handle.write_ready_activate();
-        }
-    }
-}
+// impl<T> Drop for StreamReader<T> {
+//     fn drop(&mut self) {
+//         if self.handle.handle() != 0 {
+//             self.handle.write_ready_activate();
+//         }
+//     }
+// }
 
 pub struct StreamRead<'a, T: 'static> {
     buf: Vec<T>,

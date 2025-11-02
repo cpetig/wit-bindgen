@@ -8,7 +8,7 @@ use std::{
     task::{Context, Poll, RawWaker, RawWakerVTable},
 };
 
-use crate::module::symmetric::runtime::symmetric_executor::{
+use crate::executor_import::symmetric::runtime::symmetric_executor::{
     self, CallbackState, EventGenerator, EventSubscription,
 };
 

@@ -444,7 +444,7 @@ impl Runner<'_> {
             match &language {
                 Language::Rust => {
                     bindgen.args.push(String::from("--link-name"));
-                    bindgen.args.push(String::from("test-rust"));
+                    bindgen.args.push(String::from("test"));
                 }
                 _ => {
                     println!("Symmetric: --link_name missing from language {language:?}");
@@ -677,7 +677,7 @@ impl Runner<'_> {
         // In parallel compile all sources to their binary component
         // form.
         let compile_results = components
-            .iter()
+            .par_iter()
             .map(|(test, component)| {
                 let path = self
                     .compile_component(test, component)
@@ -728,7 +728,8 @@ impl Runner<'_> {
         let mut to_run = Vec::new();
         for (test, components) in compiled_components.iter() {
             for a in components.iter().filter(|(c, _)| c.kind == Kind::Runner) {
-                self.push_tests(&tests[test.as_str()], components, a, &mut to_run)?;
+                self.push_tests(&tests[test.as_str()], components, a, &mut to_run)
+                    .with_context(|| format!("failed to make test for `{test}`"))?;
             }
         }
 
@@ -852,6 +853,18 @@ impl Runner<'_> {
             artifacts_dir: &artifacts_dir,
             output: &output,
         };
+        // TODO: Figure this out for complex tests
+        if self.is_symmetric() && matches!(component.kind, Kind::Runner) {
+            let mut cmd = Command::new(self.wit_bindgen);
+            cmd.arg("import-lib")
+                .arg(&component.bindgen.wit_path)
+                .arg("--world")
+                .arg("test")
+                .arg("--out-dir")
+                .arg(&artifacts_dir)
+                .arg("--symmetric");
+            self.run_command(&mut cmd)?;
+        }
         component.language.obj().compile(self, &result)?;
 
         if !self.is_symmetric() {
@@ -920,8 +933,15 @@ impl Runner<'_> {
             new_file.push(&(runner_wasm.file_name().unwrap()));
             symlink(runner_wasm, new_file)?;
             for (_c, p) in test_components.iter() {
+                // remove the language extension from the filename
                 let mut new_file = composed_wasm.clone();
-                new_file.push(&(p.file_name().unwrap()));
+                let oldname = p.file_name().unwrap().to_str().unwrap();
+                let langext = oldname.rfind('-').unwrap();
+                let (pre, post) = oldname.split_at(langext);
+                let langextend = post.find('.').unwrap();
+                let (_, post) = post.split_at(langextend);
+                let newname = format!("{}{}", pre, post);
+                new_file.push(&newname);
                 symlink(p, new_file)?;
             }
             let cwd = runner_wasm.parent().unwrap().parent().unwrap();

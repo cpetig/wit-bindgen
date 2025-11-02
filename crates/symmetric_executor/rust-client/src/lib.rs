@@ -1,13 +1,16 @@
 use core::ptr::{self, NonNull};
-use module::symmetric::runtime::symmetric_executor::{self, CallbackData, CallbackFunction};
-pub use module::symmetric::runtime::symmetric_executor::{
+use executor_import::symmetric::runtime::symmetric_executor::{
+    self, CallbackData, CallbackFunction,
+};
+pub use executor_import::symmetric::runtime::symmetric_executor::{
     run, CallbackState, EventGenerator, EventSubscription,
 };
-pub use module::symmetric::runtime::symmetric_stream;
 use std::alloc::{self, Layout};
+pub use stream_import::symmetric::runtime::symmetric_stream;
 
 pub mod async_support;
-mod module;
+mod executor_import;
+mod stream_import;
 
 // Re-export `bitflags` so that we can reference it from macros.
 #[cfg(feature = "bitflags")]

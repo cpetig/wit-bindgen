@@ -178,10 +178,10 @@ fn tests(
         opts.symmetric = true;
         if let Some(path) = path.file_name().and_then(|s| s.to_str()) {
             if path.contains(".new.") {
-                opts.new_api = true;
+                // opts.new_api = true;
             }
         }
-        let mut cpp = opts.build();
+        let mut cpp = opts.build(None);
         cpp.apply_resolve_options(&mut resolve, &mut world);
         cpp.generate(&resolve, world, &mut files).unwrap();
 
@@ -252,7 +252,7 @@ fn tests(
 fn resolve_wit_dir(dir: &PathBuf) -> (Resolve, WorldId) {
     let mut resolve = Resolve::new();
     let (pkg, _files) = resolve.push_path(dir).unwrap();
-    let world = resolve.select_world(pkg, None).unwrap();
+    let world = resolve.select_world(&[pkg], None).unwrap();
     (resolve, world)
 }
 

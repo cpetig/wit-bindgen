@@ -178,6 +178,12 @@ impl Parse for Config {
                         }
                         opts.async_ = val;
                     }
+                    Opt::LinkName(name) => {
+                        if opts.link_name.is_some() {
+                            return Err(Error::new(name.span(), "cannot specify second link_name"));
+                        }
+                        opts.link_name = Some(name.value());
+                    }
                 }
             }
         } else {
@@ -338,6 +344,7 @@ mod kw {
     syn::custom_keyword!(invert_direction);
     syn::custom_keyword!(imports);
     syn::custom_keyword!(debug);
+    syn::custom_keyword!(link_name);
 }
 
 #[derive(Clone)]
@@ -397,6 +404,7 @@ enum Opt {
     InvertDirection(syn::LitBool),
     Async(AsyncFilterSet, Span),
     Debug(syn::LitBool),
+    LinkName(syn::LitStr),
 }
 
 impl Parse for Opt {
@@ -581,6 +589,10 @@ impl Parse for Opt {
                 }
                 Ok(Opt::Async(set, span))
             }
+        } else if l.peek(kw::link_name) {
+            input.parse::<kw::link_name>()?;
+            input.parse::<Token![:]>()?;
+            Ok(Opt::LinkName(input.parse()?))
         } else {
             Err(l.error())
         }

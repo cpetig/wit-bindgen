@@ -1,7 +1,7 @@
-pub use crate::module::symmetric::runtime::symmetric_stream::StreamObj as Stream;
+pub use crate::stream_import::symmetric::runtime::symmetric_stream::StreamObj as Stream;
 use crate::{
     async_support::{rust_buffer::RustBuffer, wait_on},
-    symmetric_stream::{Address, Buffer},
+    symmetric_stream::{Address, Buffer, StreamState},
 };
 use {
     futures::sink::Sink,
@@ -61,11 +61,26 @@ impl<T: Unpin + Send + 'static> StreamWrite<'_, T> {
         let size = if self.values.remaining() == 0 {
             // delayed flush
             // I assume EOF
-            self.writer.handle.finish_writing(None);
+            // self.writer.handle.finish_writing(None);
+            // hopefully the calling instance drops the stream for EOF signalling
             0
         } else {
             // send data
-            let buffer = self.writer.handle.start_writing();
+            if self.writer.ready_buffer.is_none() {
+                match self.writer.handle.start_writing() {
+                    Ok(buffer) => {
+                        self.writer.ready_buffer.replace(buffer);
+                    }
+                    Err(_) => todo!(),
+                }
+            }
+            // let buffer = self.writer.handle.start_writing();
+            // match buffer {
+            //     Ok(buffer) => todo!(),
+            //     Err(StreamState::Eof) => todo!(),
+            //     Err(StreamState::Pending) => todo!(),
+            // }
+            let buffer = self.writer.ready_buffer.take().unwrap();
             let addr = buffer.get_address().take_handle() as *mut u8;
             let size = (buffer.capacity() as usize).min(self.values.remaining());
             let mut dest = addr;
@@ -84,7 +99,7 @@ impl<T: Unpin + Send + 'static> StreamWrite<'_, T> {
                     });
             }
             buffer.set_size(size as u64);
-            self.writer.handle.finish_writing(Some(buffer));
+            self.writer.handle.finish_writing(buffer).expect("write ok");
             std::mem::swap(&mut self.values, &mut values);
             size
         };
@@ -108,6 +123,7 @@ pub struct StreamWriter<T: 'static> {
     handle: Stream,
     /*?*/ future: Option<Pin<Box<dyn Future<Output = ()> + 'static + Send>>>,
     _vtable: &'static StreamVtable<T>,
+    ready_buffer: Option<Buffer>,
 }
 
 impl<T> StreamWriter<T> {
@@ -117,6 +133,7 @@ impl<T> StreamWriter<T> {
             handle,
             future: None,
             _vtable: vtable,
+            ready_buffer: None,
         }
     }
 
@@ -172,22 +189,36 @@ impl<T> fmt::Debug for StreamWriter<T> {
 }
 
 impl<T: Unpin + Send> Sink<Vec<T>> for StreamWriter<T> {
-    type Error = Infallible;
+    type Error = (); // Eof
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         let me = self.get_mut();
 
-        let ready = me.handle.is_ready_to_write();
+        if me.ready_buffer.is_some() {
+            println!("Strange repeated ready");
+            return Poll::Ready(Ok(()));
+        }
 
-        // see also StreamReader::poll_next
-        if !ready && me.future.is_none() {
-            let handle = me.handle.clone();
-            me.future = Some(Box::pin(async move {
-                let handle_local = handle;
-                let subscr = handle_local.write_ready_subscribe();
-                subscr.reset();
-                wait_on(subscr).await;
-            }) as Pin<Box<dyn Future<Output = _> + Send>>);
+        if me.future.is_none() {
+            let subscr = me.handle.write_ready_subscribe();
+            subscr.reset();
+            let ready = me.handle.start_writing();
+
+            match ready {
+                Ok(buffer) => {
+                    me.ready_buffer.replace(buffer);
+                    return Poll::Ready(Ok(()));
+                }
+                Err(StreamState::Eof) => return Poll::Ready(Err(())),
+                Err(StreamState::Pending) => {
+                    me.future = Some(Box::pin(async move {
+                        wait_on(subscr).await;
+                        // repeat start_writing?
+                    })
+                        as Pin<Box<dyn Future<Output = _> + Send>>);
+                    return Poll::Pending;
+                }
+            }
         }
 
         if let Some(future) = &mut me.future {
@@ -199,8 +230,17 @@ impl<T: Unpin + Send> Sink<Vec<T>> for StreamWriter<T> {
                 Poll::Pending => Poll::Pending,
             }
         } else {
-            Poll::Ready(Ok(()))
+            todo!("shouldn't get here");
+            // Poll::Ready(Ok(()))
         }
+
+        // // see also StreamReader::poll_next
+        // if !ready && me.future.is_none() {
+        // }
+
+        // if let Some(future) = &mut me.future {
+
+        // }
     }
 
     fn start_send(self: Pin<&mut Self>, item: Vec<T>) -> Result<(), Self::Error> {
@@ -220,13 +260,13 @@ impl<T: Unpin + Send> Sink<Vec<T>> for StreamWriter<T> {
     }
 }
 
-impl<T> Drop for StreamWriter<T> {
-    fn drop(&mut self) {
-        if !self.handle.is_write_closed() {
-            self.handle.finish_writing(None);
-        }
-    }
-}
+// impl<T> Drop for StreamWriter<T> {
+//     fn drop(&mut self) {
+//         if !self.handle.is_write_closed() {
+//             self.handle.finish_writing(None);
+//         }
+//     }
+// }
 
 /// Represents the readable end of a Component Model `stream`.
 pub struct StreamReader<T: 'static> {
@@ -331,13 +371,13 @@ impl<T: Send + Unpin + 'static> StreamReader<T> {
 //     }
 // }
 
-impl<T> Drop for StreamReader<T> {
-    fn drop(&mut self) {
-        if self.handle.handle() != 0 {
-            self.handle.write_ready_activate();
-        }
-    }
-}
+// impl<T> Drop for StreamReader<T> {
+//     fn drop(&mut self) {
+//         if self.handle.handle() != 0 {
+//             self.handle.write_ready_activate();
+//         }
+//     }
+// }
 
 pub struct StreamRead<'a, T: 'static> {
     buf: Vec<T>,
@@ -357,7 +397,7 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
             }
             let mut buffer2 = Vec::new();
             std::mem::swap(&mut buffer2, &mut me2.buf);
-            let handle = me.handle.clone();
+            let handle = me.handle.clone(true);
             let vtable = me._vtable;
             me.future = Some(Box::pin(async move {
                 let mut buffer0: Vec<MaybeUninit<u8>> = iter::repeat_with(MaybeUninit::uninit)
@@ -370,7 +410,7 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                 subsc.reset();
                 wait_on(subsc).await;
                 let buffer3 = handle.read_result();
-                if let Some(buffer3) = buffer3 {
+                if let Ok(buffer3) = buffer3 {
                     let count = buffer3.get_size();
                     buffer2.reserve(count as usize);
                     let mut srcptr = buffer3.get_address().take_handle() as *mut u8;
@@ -407,7 +447,7 @@ pub fn new_stream<T: 'static>(
     vtable: &'static StreamVtable<T>,
 ) -> (StreamWriter<T>, StreamReader<T>) {
     let handle = Stream::new();
-    let handle2 = handle.clone();
+    let handle2 = handle.clone(true);
     (StreamWriter::new(handle, vtable), unsafe {
         StreamReader::new(handle2.take_handle() as *mut u8, vtable)
     })

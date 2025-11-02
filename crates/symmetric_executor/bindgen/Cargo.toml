@@ -13,5 +13,6 @@ wit-bindgen-rust-macro = { path = "../../guest-rust/macro", optional = true }
 # no default gives you the original wit-bindgen crate with rt
 default = [ "symmetric", "async" ]
 symmetric = [ "dep:dummy-rt", "dep:wit-bindgen-symmetric-rt", "wit-bindgen-rust-macro/symmetric", "wit-bindgen-symmetric-rt/bitflags" ]
-canonical = [ "dep:original" ]
+canonical = [ "original/async-spawn" ]
 async = []
+async-spawn = []

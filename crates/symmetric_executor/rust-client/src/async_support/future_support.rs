@@ -8,7 +8,7 @@ use std::{
 
 use futures::FutureExt;
 
-use crate::symmetric_stream::{Address, Buffer};
+use crate::symmetric_stream::{Address, Buffer, StreamState};
 
 use super::{super::Cleanup, wait_on, Stream};
 
@@ -61,27 +61,54 @@ impl<T: Unpin + Send> Future for FutureWrite<T> {
         let me = self.get_mut();
 
         if me.future.is_none() {
-            let handle = me.writer.handle.clone();
+            let handle = me.writer.handle.clone(true);
             let data = SendPtr(&mut me.data as *mut Option<T>);
             let lower = me.writer.vtable.lower;
             me.future = Some(Box::pin(async move {
                 // make sure the pointer is not unpacked by the move
                 let data: SendPtr<Option<T>> = data;
-                if !handle.is_ready_to_write() {
+                loop {
                     let subsc = handle.write_ready_subscribe();
-                    wait_on(subsc).await;
-                }
-                // we can't move data more early because of cancellation logic
-                let data = unsafe { &mut *data.0 }.take().unwrap();
-                if handle.is_read_closed() {
-                    Err(FutureWriteError { value: data })
-                } else {
-                    let buffer = handle.start_writing();
-                    let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T> as *mut u8;
-                    unsafe { (lower)(data, addr) };
-                    buffer.set_size(1);
-                    handle.finish_writing(Some(buffer));
-                    Ok(())
+                    subsc.reset();
+                    let res = handle.start_writing();
+                    match res {
+                        Ok(mut buffer) => {
+                            let addr = buffer.get_address().take_handle() as *mut MaybeUninit<T>
+                                as *mut u8;
+                            // we can't move data more early because of cancellation logic
+                            let data = unsafe { &mut *data.0 }.take().unwrap();
+                            unsafe { (lower)(data, addr) };
+                            buffer.set_size(1);
+                            //loop {
+                            //let subsc = handle.write_ready_subscribe();
+                            let ok = handle.finish_writing(buffer);
+                            /*buffer = */
+                            match ok {
+                                Ok(()) => break Ok(()), // unsafe { Buffer::from_handle(std::ptr::null()) },
+                                Err(buffer2) => {
+                                    if handle.is_read_closed() {
+                                        todo!("lift and return the data in Err");
+                                    } else {
+                                        // let subsc = handle.write_ready_subscribe();
+                                        //wait_on(subsc).await;
+                                        //buffer2
+                                        todo!("which subscription to wait on?");
+                                    }
+                                }
+                            }
+                            //}
+                            // break Ok(());
+                        }
+                        Err(StreamState::Eof) => {
+                            break Err(FutureWriteError {
+                                value: unsafe { &mut *data.0 }.take().unwrap(),
+                            })
+                        }
+                        Err(StreamState::Pending) => {
+                            wait_on(subsc).await;
+                            // continue;
+                        }
+                    }
                 }
             })
                 as Pin<Box<dyn Future<Output = Self::Output> + Send>>);
@@ -194,30 +221,44 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
         let me = self.get_mut();
 
         if me.future.is_none() {
-            let handle = me.reader.handle.clone();
+            let handle = me.reader.handle.clone(false);
             let vtable = me.reader.vtable;
             me.future = Some(Box::pin(async move {
                 // sadly there is no easy way to embed this in the future as the size is not accessible at compile time
                 let (buffer0, cleanup) = Cleanup::new(vtable.layout);
                 let address = unsafe { Address::from_handle(buffer0 as usize) };
                 let buffer = Buffer::new(address, 1);
-                handle.start_reading(buffer);
+                let res = handle.start_reading(buffer);
+                match res {
+                    Ok(()) => (),
+                    Err(buffer) => {
+                        todo!("wait for previous write to finish")
+                    }
+                }
                 let subsc = handle.read_ready_subscribe();
                 subsc.reset();
-                wait_on(subsc).await;
-                let buffer2 = handle.read_result();
-                if let Some(buffer2) = buffer2 {
-                    let count = buffer2.get_size();
-                    if count > 0 {
-                        unsafe { (vtable.lift)(buffer2.get_address().take_handle() as *mut u8) }
-                    } else {
-                        // make sure it lives long enough
-                        drop(cleanup);
-                        todo!()
+                let res2 = handle.read_result();
+                match res2 {
+                    Ok(buffer2) => {
+                        let count = buffer2.get_size();
+                        if count > 0 {
+                            unsafe { (vtable.lift)(buffer2.get_address().take_handle() as *mut u8) }
+                        } else {
+                            // make sure it lives long enough
+                            drop(cleanup);
+                            todo!()
+                        }
                     }
-                } else {
-                    todo!()
+                    Err(StreamState::Eof) => todo!(),
+                    Err(StreamState::Pending) => todo!(),
                 }
+                //wait_on(subsc).await;
+                // let buffer2 = handle.read_result();
+                // if let Some(buffer2) = buffer2 {
+
+                // } else {
+                //     todo!()
+                // }
             }) as Pin<Box<dyn Future<Output = _> + Send>>);
         }
 
@@ -246,21 +287,22 @@ impl<T> FutureRead<T> {
         std::mem::swap(me, &mut local_me);
         let FutureRead { reader, future } = local_me;
 
-        let buffer2 = reader.handle.read_result();
-        let res = if let Some(buffer2) = buffer2 {
-            let count = buffer2.get_size();
-            if count > 0 {
-                Ok(unsafe { (reader.vtable.lift)(buffer2.get_address().take_handle() as *mut u8) })
-            } else {
-                Err(reader)
-            }
-        } else {
-            Err(reader)
-        };
-        if future.is_some() {
-            // deregister future callback
-        }
-        res
+        todo!();
+        // let buffer2 = reader.handle.read_result();
+        // let res = if let Some(buffer2) = buffer2 {
+        //     let count = buffer2.get_size();
+        //     if count > 0 {
+        //         Ok(unsafe { (reader.vtable.lift)(buffer2.get_address().take_handle() as *mut u8) })
+        //     } else {
+        //         Err(reader)
+        //     }
+        // } else {
+        //     Err(reader)
+        // };
+        // if future.is_some() {
+        //     // deregister future callback
+        // }
+        // res
     }
 }
 
@@ -280,7 +322,7 @@ pub fn new_future<T: 'static>(
     vtable: &'static FutureVtable<T>,
 ) -> (FutureWriter<T>, FutureReader<T>) {
     let handle = Stream::new();
-    let handle2 = handle.clone();
+    let handle2 = handle.clone(false);
     (
         FutureWriter::new(handle, vtable),
         FutureReader::new(handle2.take_handle() as *mut u8, vtable),

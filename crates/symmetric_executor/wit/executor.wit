@@ -37,6 +37,7 @@ interface symmetric-executor {
     resource event-generator {
         constructor();
         /// Get the receiving side (to pass to other parts of the program)
+        /// Make sure to reset if you only need future events
         subscribe: func() -> event-subscription;
         /// Trigger all subscribers
         activate: func();
@@ -63,43 +64,4 @@ interface symmetric-executor {
     register: func(trigger: event-subscription, callback: callback-function, data: callback-data) -> callback-registration;
     /// Wait for a specific event
     block-on: func(trigger: event-subscription);
-}
-
-// language neutral stream implementation
-interface symmetric-stream {
-    use symmetric-executor.{event-subscription};
-
-    resource address;
-    // special zero allocation/copy data type (caller provided buffer)
-    resource buffer {
-        constructor(addr: address, capacity: u64);
-        get-address: func () -> address;
-        get-size: func() -> u64;
-        set-size: func(size: u64);
-        capacity: func() -> u64;
-    }
-
-    resource stream-obj {
-        constructor();
-        // create a new instance e.g. for reading or tasks
-        clone: func() -> stream-obj;
-        // reading (in roughly chronological order)
-        /// indicates EOF
-        is-write-closed: func() -> bool;
-        start-reading: func(buffer: buffer);
-        write-ready-activate: func();
-        read-ready-subscribe: func() -> event-subscription;
-        // close the reading side, returning any in-flight buffer(s)
-        close-read: func() -> list<buffer>;
-        /// none is EOF when read-ready, no data when polled
-        read-result: func() -> option<buffer>;
-        // writing
-        is-read-closed: func() -> bool;
-        is-ready-to-write: func() -> bool;
-        write-ready-subscribe: func() -> event-subscription;
-        start-writing: func() -> buffer;
-        /// none is EOF
-        finish-writing: func(buffer: option<buffer>);
-        read-ready-activate: func();
-    }
 }

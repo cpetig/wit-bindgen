@@ -4,7 +4,10 @@
 pub mod rt {
     pub fn maybe_link_cabi_realloc() {}
 
-    use std::{alloc::{self, Layout}, ptr::{self, NonNull}};
+    use std::{
+        alloc::{self, Layout},
+        ptr::{self, NonNull},
+    };
 
     pub struct Cleanup {
         ptr: NonNull<u8>,

@@ -136,7 +136,7 @@ name = "tmp"
 [workspace]
 
 [dependencies]
-wit-bindgen = {{ {wit_bindgen_dep} }}
+wit-bindgen = {{ {wit_bindgen_dep}, features = ['async-spawn'] }}
 futures = "0.3.31"
 {symmetric_runtime}
 
@@ -183,7 +183,7 @@ path = 'lib.rs'
         let mut native_deps = Vec::new();
         if runner.is_symmetric() {
             native_deps.push(target_out_dir);
-            let root_dir = runner.opts.artifacts.join(test_name);
+            let root_dir = runner.opts.artifacts.join(test_name).join("runner-rust");
             native_deps.push(root_dir);
         }
 

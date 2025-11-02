@@ -31,7 +31,7 @@ interface symmetric-stream {
         // close the reading side, returning any in-flight buffer(s)
         close-read: func() -> list<buffer>;
         /// none is EOF when read-ready, no data when polled
-        read-result: func() -> option<buffer>;
+        read-result: func() -> result<buffer, stream-state>;
         // writing
         is-read-closed: func() -> bool;
         // this is prone to TOCTOU races
@@ -40,7 +40,7 @@ interface symmetric-stream {
         start-writing: func() -> result<buffer, stream-state>;
         write-ready-subscribe: func() -> event-subscription;
         /// none is EOF (doesn't require start)
-        finish-writing: func(buffer: option<buffer>);
+        finish-writing: func(buffer: buffer) -> result<_, buffer>;
         //read-ready-activate: func();
     }
 }

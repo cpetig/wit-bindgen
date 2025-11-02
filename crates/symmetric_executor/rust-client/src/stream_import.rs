@@ -1155,7 +1155,7 @@ pub mod symmetric {
                 #[allow(unused_unsafe, clippy::all)]
                 /// none is EOF when read-ready, no data when polled
                 #[allow(async_fn_in_trait)]
-                pub fn read_result(&self) -> Option<Buffer> {
+                pub fn read_result(&self) -> Result<Buffer, StreamState> {
                     unsafe {
                         #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
                         #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
@@ -1190,15 +1190,23 @@ pub mod symmetric {
                         );
                         let l1 = i32::from(*ptr0.add(0).cast::<u8>());
                         match l1 {
-                            0 => None,
-                            1 => {
+                            0 => {
                                 let e = {
                                     let l2 = *ptr0
                                         .add(::core::mem::size_of::<*const u8>())
                                         .cast::<*mut u8>();
                                     Buffer::from_handle(l2 as usize)
                                 };
-                                Some(e)
+                                Ok(e)
+                            }
+                            1 => {
+                                let e = {
+                                    let l3 = i32::from(
+                                        *ptr0.add(::core::mem::size_of::<*const u8>()).cast::<u8>(),
+                                    );
+                                    StreamState::_lift(l3 as u8)
+                                };
+                                Err(e)
                             }
                             _ => _rt::invalid_enum_discriminant(),
                         }
@@ -1328,12 +1336,20 @@ pub mod symmetric {
                 #[allow(unused_unsafe, clippy::all)]
                 /// none is EOF (doesn't require start)
                 #[allow(async_fn_in_trait)]
-                pub fn finish_writing(&self, buffer: Option<Buffer>) -> () {
+                pub fn finish_writing(&self, buffer: Buffer) -> Result<(), Buffer> {
                     unsafe {
-                        let (result0_0, result0_1) = match &buffer {
-                            Some(e) => (1i32, (e).take_handle() as *mut u8),
-                            None => (0i32, 0i32),
-                        };
+                        #[cfg_attr(target_pointer_width = "64", repr(align(8)))]
+                        #[cfg_attr(target_pointer_width = "32", repr(align(4)))]
+                        struct RetArea(
+                            [::core::mem::MaybeUninit<
+                                u8,
+                            >; 2 * ::core::mem::size_of::<*const u8>()],
+                        );
+                        let mut ret_area = RetArea(
+                            [::core::mem::MaybeUninit::uninit(); 2
+                                * ::core::mem::size_of::<*const u8>()],
+                        );
+                        let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
                         #[link(name = "symmetric_stream")]
                         #[link(
                             wasm_import_module = "symmetric:runtime/symmetric-stream@0.3.0"
@@ -1346,15 +1362,32 @@ pub mod symmetric {
                             )]
                             fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(
                                 _: *mut u8,
-                                _: i32,
+                                _: *mut u8,
                                 _: *mut u8,
                             );
                         }
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(
                             (self).handle() as *mut u8,
-                            result0_0,
-                            result0_1,
+                            (&buffer).take_handle() as *mut u8,
+                            ptr0,
                         );
+                        let l1 = i32::from(*ptr0.add(0).cast::<u8>());
+                        match l1 {
+                            0 => {
+                                let e = ();
+                                Ok(e)
+                            }
+                            1 => {
+                                let e = {
+                                    let l2 = *ptr0
+                                        .add(::core::mem::size_of::<*const u8>())
+                                        .cast::<*mut u8>();
+                                    Buffer::from_handle(l2 as usize)
+                                };
+                                Err(e)
+                            }
+                            _ => _rt::invalid_enum_discriminant(),
+                        }
                     }
                 }
             }
@@ -1499,8 +1532,8 @@ mod _rt {
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1828] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xa0\x0d\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1795] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xff\x0c\x01A\x02\x01\
 A\x05\x01B&\x01m\x02\x07pending\x05ready\x04\0\x0ecallback-state\x03\0\0\x04\0\x11\
 callback-function\x03\x01\x04\0\x0dcallback-data\x03\x01\x04\0\x12event-subscrip\
 tion\x03\x01\x04\0\x0fevent-generator\x03\x01\x04\0\x15callback-registration\x03\
@@ -1516,7 +1549,7 @@ self\x11\0\x0b\x04\0![method]event-generator.subscribe\x01\x12\x01@\x01\x04self\
 \x04\0\x03run\x01\x17\x01i\x02\x01@\x03\x07trigger\x0b\x08callback\x18\x04data\x15\
 \0\x14\x04\0\x08register\x01\x19\x01@\x01\x07trigger\x0b\x01\0\x04\0\x08block-on\
 \x01\x1a\x03\0*symmetric:runtime/symmetric-executor@0.3.0\x05\0\x02\x03\0\0\x12e\
-vent-subscription\x01B.\x02\x03\x02\x01\x01\x04\0\x12event-subscription\x03\0\0\x04\
+vent-subscription\x01B+\x02\x03\x02\x01\x01\x04\0\x12event-subscription\x03\0\0\x04\
 \0\x07address\x03\x01\x04\0\x06buffer\x03\x01\x01m\x02\x03eof\x07pending\x04\0\x0c\
 stream-state\x03\0\x04\x04\0\x0astream-obj\x03\x01\x01i\x02\x01i\x03\x01@\x02\x04\
 addr\x07\x08capacityw\0\x08\x04\0\x13[constructor]buffer\x01\x09\x01h\x03\x01@\x01\
@@ -1529,14 +1562,13 @@ addr\x07\x08capacityw\0\x08\x04\0\x13[constructor]buffer\x01\x09\x01h\x03\x01@\x
 \x04self\x10\x06buffer\x08\0\x13\x04\0\x20[method]stream-obj.start-reading\x01\x14\
 \x01i\x01\x01@\x01\x04self\x10\0\x15\x04\0'[method]stream-obj.read-ready-subscri\
 be\x01\x16\x01p\x08\x01@\x01\x04self\x10\0\x17\x04\0\x1d[method]stream-obj.close\
--read\x01\x18\x01k\x08\x01@\x01\x04self\x10\0\x19\x04\0\x1e[method]stream-obj.re\
-ad-result\x01\x1a\x04\0![method]stream-obj.is-read-closed\x01\x12\x01j\x01\x08\x01\
-\x05\x01@\x01\x04self\x10\0\x1b\x04\0\x20[method]stream-obj.start-writing\x01\x1c\
-\x04\0([method]stream-obj.write-ready-subscribe\x01\x16\x01@\x02\x04self\x10\x06\
-buffer\x19\x01\0\x04\0![method]stream-obj.finish-writing\x01\x1d\x03\0(symmetric\
-:runtime/symmetric-stream@0.3.0\x05\x02\x04\0%symmetric:runtime/stream-import@0.\
-3.0\x04\0\x0b\x13\x01\0\x0dstream-import\x03\0\0\0G\x09producers\x01\x0cprocesse\
-d-by\x02\x0dwit-component\x070.240.0\x10wit-bindgen-rust\x060.47.0";
+-read\x01\x18\x01j\x01\x08\x01\x05\x01@\x01\x04self\x10\0\x19\x04\0\x1e[method]s\
+tream-obj.read-result\x01\x1a\x04\0![method]stream-obj.is-read-closed\x01\x12\x04\
+\0\x20[method]stream-obj.start-writing\x01\x1a\x04\0([method]stream-obj.write-re\
+ady-subscribe\x01\x16\x04\0![method]stream-obj.finish-writing\x01\x14\x03\0(symm\
+etric:runtime/symmetric-stream@0.3.0\x05\x02\x04\0%symmetric:runtime/stream-impo\
+rt@0.3.0\x04\0\x0b\x13\x01\0\x0dstream-import\x03\0\0\0G\x09producers\x01\x0cpro\
+cessed-by\x02\x0dwit-component\x070.240.0\x10wit-bindgen-rust\x060.47.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

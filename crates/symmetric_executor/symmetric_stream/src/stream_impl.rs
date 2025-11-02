@@ -1237,14 +1237,17 @@ pub mod exports {
                             T::read_result(StreamObjBorrow::lift(arg0 as usize).get())
                         };
                         match result0 {
-                            Some(e) => {
-                                *arg1.add(0).cast::<u8>() = (1i32) as u8;
+                            Ok(e) => {
+                                *arg1.add(0).cast::<u8>() = (0i32) as u8;
                                 *arg1
                                     .add(::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>() = (e).take_handle() as *mut u8;
                             }
-                            None => {
-                                *arg1.add(0).cast::<u8>() = (0i32) as u8;
+                            Err(e) => {
+                                *arg1.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<u8>() = (e.clone() as i32) as u8;
                             }
                         };
                     }
@@ -1310,21 +1313,25 @@ pub mod exports {
                 #[allow(non_snake_case, unused_unsafe)]
                 pub unsafe fn _export_method_stream_obj_finish_writing_cabi<
                     T: GuestStreamObj,
-                >(arg0: *mut u8, arg1: i32, arg2: *mut u8) {
+                >(arg0: *mut u8, arg1: *mut u8, arg2: *mut u8) {
                     unsafe {
                         #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
-                        {
+                        let result0 = {
                             T::finish_writing(
                                 StreamObjBorrow::lift(arg0 as usize).get(),
-                                match arg1 {
-                                    0 => None,
-                                    1 => {
-                                        let e = Buffer::from_handle(arg2 as usize);
-                                        Some(e)
-                                    }
-                                    _ => _rt::invalid_enum_discriminant(),
-                                },
+                                Buffer::from_handle(arg1 as usize),
                             )
+                        };
+                        match result0 {
+                            Ok(_) => {
+                                *arg2.add(0).cast::<u8>() = (0i32) as u8;
+                            }
+                            Err(e) => {
+                                *arg2.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg2
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>() = (e).take_handle() as *mut u8;
+                            }
                         };
                     }
                 }
@@ -1430,7 +1437,7 @@ pub mod exports {
                     fn close_read(&self) -> _rt::Vec<Buffer>;
                     /// none is EOF when read-ready, no data when polled
                     #[allow(async_fn_in_trait)]
-                    fn read_result(&self) -> Option<Buffer>;
+                    fn read_result(&self) -> Result<Buffer, StreamState>;
                     /// writing
                     #[allow(async_fn_in_trait)]
                     fn is_read_closed(&self) -> bool;
@@ -1443,7 +1450,7 @@ pub mod exports {
                     fn write_ready_subscribe(&self) -> EventSubscription;
                     /// none is EOF (doesn't require start)
                     #[allow(async_fn_in_trait)]
-                    fn finish_writing(&self, buffer: Option<Buffer>) -> ();
+                    fn finish_writing(&self, buffer: Buffer) -> Result<(), Buffer>;
                 }
                 #[doc(hidden)]
                 macro_rules! __export_symmetric_runtime_symmetric_stream_0_3_0_cabi {
@@ -1573,7 +1580,7 @@ pub mod exports {
                         = "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern
                         "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(arg0
-                        : * mut u8, arg1 : i32, arg2 : * mut u8,) { unsafe {
+                        : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_finish_writing_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1, arg2) } }
@@ -1719,13 +1726,6 @@ mod _rt {
     }
     pub use alloc_crate::alloc;
     pub use alloc_crate::vec::Vec;
-    pub unsafe fn invalid_enum_discriminant<T>() -> T {
-        if cfg!(debug_assertions) {
-            panic!("invalid enum discriminant")
-        } else {
-            unsafe { core::hint::unreachable_unchecked() }
-        }
-    }
     extern crate alloc as alloc_crate;
 }
 /// Generates `#[unsafe(no_mangle)]` functions to export the specified type as
@@ -1766,8 +1766,8 @@ pub(crate) use __export_stream_impl_impl as export;
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1824] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x9e\x0d\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1791] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xfd\x0c\x01A\x02\x01\
 A\x05\x01B&\x01m\x02\x07pending\x05ready\x04\0\x0ecallback-state\x03\0\0\x04\0\x11\
 callback-function\x03\x01\x04\0\x0dcallback-data\x03\x01\x04\0\x12event-subscrip\
 tion\x03\x01\x04\0\x0fevent-generator\x03\x01\x04\0\x15callback-registration\x03\
@@ -1783,7 +1783,7 @@ self\x11\0\x0b\x04\0![method]event-generator.subscribe\x01\x12\x01@\x01\x04self\
 \x04\0\x03run\x01\x17\x01i\x02\x01@\x03\x07trigger\x0b\x08callback\x18\x04data\x15\
 \0\x14\x04\0\x08register\x01\x19\x01@\x01\x07trigger\x0b\x01\0\x04\0\x08block-on\
 \x01\x1a\x03\0*symmetric:runtime/symmetric-executor@0.3.0\x05\0\x02\x03\0\0\x12e\
-vent-subscription\x01B.\x02\x03\x02\x01\x01\x04\0\x12event-subscription\x03\0\0\x04\
+vent-subscription\x01B+\x02\x03\x02\x01\x01\x04\0\x12event-subscription\x03\0\0\x04\
 \0\x07address\x03\x01\x04\0\x06buffer\x03\x01\x01m\x02\x03eof\x07pending\x04\0\x0c\
 stream-state\x03\0\x04\x04\0\x0astream-obj\x03\x01\x01i\x02\x01i\x03\x01@\x02\x04\
 addr\x07\x08capacityw\0\x08\x04\0\x13[constructor]buffer\x01\x09\x01h\x03\x01@\x01\
@@ -1796,14 +1796,13 @@ addr\x07\x08capacityw\0\x08\x04\0\x13[constructor]buffer\x01\x09\x01h\x03\x01@\x
 \x04self\x10\x06buffer\x08\0\x13\x04\0\x20[method]stream-obj.start-reading\x01\x14\
 \x01i\x01\x01@\x01\x04self\x10\0\x15\x04\0'[method]stream-obj.read-ready-subscri\
 be\x01\x16\x01p\x08\x01@\x01\x04self\x10\0\x17\x04\0\x1d[method]stream-obj.close\
--read\x01\x18\x01k\x08\x01@\x01\x04self\x10\0\x19\x04\0\x1e[method]stream-obj.re\
-ad-result\x01\x1a\x04\0![method]stream-obj.is-read-closed\x01\x12\x01j\x01\x08\x01\
-\x05\x01@\x01\x04self\x10\0\x1b\x04\0\x20[method]stream-obj.start-writing\x01\x1c\
-\x04\0([method]stream-obj.write-ready-subscribe\x01\x16\x01@\x02\x04self\x10\x06\
-buffer\x19\x01\0\x04\0![method]stream-obj.finish-writing\x01\x1d\x04\0(symmetric\
-:runtime/symmetric-stream@0.3.0\x05\x02\x04\0#symmetric:runtime/stream-impl@0.3.\
-0\x04\0\x0b\x11\x01\0\x0bstream-impl\x03\0\0\0G\x09producers\x01\x0cprocessed-by\
-\x02\x0dwit-component\x070.240.0\x10wit-bindgen-rust\x060.47.0";
+-read\x01\x18\x01j\x01\x08\x01\x05\x01@\x01\x04self\x10\0\x19\x04\0\x1e[method]s\
+tream-obj.read-result\x01\x1a\x04\0![method]stream-obj.is-read-closed\x01\x12\x04\
+\0\x20[method]stream-obj.start-writing\x01\x1a\x04\0([method]stream-obj.write-re\
+ady-subscribe\x01\x16\x04\0![method]stream-obj.finish-writing\x01\x14\x04\0(symm\
+etric:runtime/symmetric-stream@0.3.0\x05\x02\x04\0#symmetric:runtime/stream-impl\
+@0.3.0\x04\0\x0b\x11\x01\0\x0bstream-impl\x03\0\0\0G\x09producers\x01\x0cprocess\
+ed-by\x02\x0dwit-component\x070.240.0\x10wit-bindgen-rust\x060.47.0";
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

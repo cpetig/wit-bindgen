@@ -236,29 +236,28 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
                     }
                 }
                 let subsc = handle.read_ready_subscribe();
-                subsc.reset();
-                let res2 = handle.read_result();
-                match res2 {
-                    Ok(buffer2) => {
-                        let count = buffer2.get_size();
-                        if count > 0 {
-                            unsafe { (vtable.lift)(buffer2.get_address().take_handle() as *mut u8) }
-                        } else {
-                            // make sure it lives long enough
-                            drop(cleanup);
-                            todo!()
+                loop {
+                    subsc.reset();
+                    let res2 = handle.read_result();
+                    match res2 {
+                        Ok(buffer2) => {
+                            let count = buffer2.get_size();
+                            if count > 0 {
+                                break unsafe {
+                                    (vtable.lift)(buffer2.get_address().take_handle() as *mut u8)
+                                };
+                            } else {
+                                // make sure it lives long enough
+                                drop(cleanup);
+                                todo!()
+                            }
+                        }
+                        Err(StreamState::Eof) => todo!(),
+                        Err(StreamState::Pending) => {
+                            wait_on(subsc).await;
                         }
                     }
-                    Err(StreamState::Eof) => todo!(),
-                    Err(StreamState::Pending) => todo!(),
                 }
-                //wait_on(subsc).await;
-                // let buffer2 = handle.read_result();
-                // if let Some(buffer2) = buffer2 {
-
-                // } else {
-                //     todo!()
-                // }
             }) as Pin<Box<dyn Future<Output = _> + Send>>);
         }
 

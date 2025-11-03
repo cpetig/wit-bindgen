@@ -316,6 +316,16 @@ impl GuestStreamObj for StreamObj {
         } else {
             self.0.full_buffer.add_writer();
         }
+        #[cfg(feature = "trace")]
+        println!(
+            "Stream::clone({writing}) {} => r {} w {}",
+            self.0.handle(),
+            self.0
+                .empty_buffer
+                .number_of_writers
+                .load(Ordering::Relaxed),
+            self.0.full_buffer.number_of_writers.load(Ordering::Relaxed),
+        );
         symmetric_stream::StreamObj::new(StreamObj(
             Arc::clone(&self.0),
             AtomicDecreaseOnDrop::new(if writing {

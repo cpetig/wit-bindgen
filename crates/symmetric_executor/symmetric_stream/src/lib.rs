@@ -144,6 +144,10 @@ impl<P> SingleDirectionChannel<P> {
     fn subscribe(&self) -> symmetric_stream::EventSubscription {
         self.ready_event.subscribe()
     }
+
+    fn handle(&self) -> usize {
+        self.ready_event.handle() as usize
+    }
 }
 
 struct StreamInner {
@@ -151,6 +155,12 @@ struct StreamInner {
     empty_buffer: SingleDirectionChannel<*mut ()>,
     // writer to reader (address+capacity)
     full_buffer: SingleDirectionChannel<(*mut (), usize)>,
+}
+
+impl StreamInner {
+    fn handle(&self) -> usize {
+        self.empty_buffer.handle()
+    }
 }
 
 #[repr(u8)]
@@ -170,19 +180,13 @@ impl Drop for StreamObj {
             val if val == DecreaseOnDrop::Reader as u8 => {
                 if self.0.empty_buffer.drop_writer() {
                     #[cfg(feature = "trace")]
-                    println!(
-                        "Stream last reader dropped {:x}",
-                        self.0.read_ready_event_send.handle()
-                    );
+                    println!("Stream last reader dropped {:x}", self.0.handle());
                 }
             }
             val if val == DecreaseOnDrop::Writer as u8 => {
                 if self.0.full_buffer.drop_writer() {
                     #[cfg(feature = "trace")]
-                    println!(
-                        "Stream last writer dropped {:x}",
-                        self.0.read_ready_event_send.handle()
-                    );
+                    println!("Stream last writer dropped {:x}", self.0.handle());
                 }
             }
             _ => unimplemented!("Invalid drop type"),
@@ -198,7 +202,7 @@ impl GuestStreamObj for StreamObj {
         };
         inner.full_buffer.add_writer();
         #[cfg(feature = "trace")]
-        println!("Stream::new {:x}", inner.read_ready_event_send.handle());
+        println!("Stream::new {:x}", inner.handle());
         Self(
             Arc::new(inner),
             AtomicDecreaseOnDrop::new(DecreaseOnDrop::Writer as u8),
@@ -221,7 +225,7 @@ impl GuestStreamObj for StreamObj {
         #[cfg(feature = "trace")]
         println!(
             "Stream::start_read {:x} {buf:x?} {size} =>",
-            self.0.read_ready_event_send.handle()
+            self.0.handle()
         );
         let res = self
             .0
@@ -242,10 +246,7 @@ impl GuestStreamObj for StreamObj {
         match res {
             Ok((size, (addr, capacity))) => {
                 #[cfg(feature = "trace")]
-                println!(
-                    "Stream::read_result {:x} {addr:x?} {size}",
-                    self.0.read_ready_event_send.handle()
-                );
+                println!("Stream::read_result {:x} {addr:x?} {size}", self.0.handle());
                 Ok(symmetric_stream::Buffer::new(Buffer {
                     addr,
                     capacity,
@@ -266,10 +267,7 @@ impl GuestStreamObj for StreamObj {
         match res {
             Ok((size, addr)) => {
                 #[cfg(feature = "trace")]
-                println!(
-                    "Stream::start_write {:x} {addr:x?} {size}",
-                    self.0.read_ready_event_send.handle()
-                );
+                println!("Stream::start_write {:x} {addr:x?} {size}", self.0.handle());
                 Ok(symmetric_stream::Buffer::new(Buffer {
                     addr,
                     capacity: size.get(),
@@ -300,7 +298,7 @@ impl GuestStreamObj for StreamObj {
             #[cfg(feature = "trace")]
             println!(
                 "Stream::finish_write {:x} {addr:x?} {elements} =>",
-                self.0.read_ready_event_send.handle()
+                self.0.handle()
             );
         }
         res.map_err(|(size, (addr, capacity))| {

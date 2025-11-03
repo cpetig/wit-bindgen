@@ -432,7 +432,7 @@ impl Cpp {
         if self.dependencies.needs_stream {
             self.include("<stream_support.h>");
         }
-        if self.dependencies.needs_optional {
+        if self.dependencies.needs_optional || self.dependencies.needs_expected {
             self.include("<optional>");
         }
         if self.dependencies.needs_cstring {
@@ -3813,7 +3813,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 };
                 uwriteln!(
                     self.src,
-                    "{full_type} {resultname};
+                    // not all results have a default constructor, so wrap it inside an optional
+                    "std::optional<{full_type} > {resultname};
                     if ({operand}==0) {{
                         {ok}
                         {ok_assign}
@@ -3822,7 +3823,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         {resultname}={err_type}{{{err_result}}};
                     }}"
                 );
-                results.push(resultname);
+                results.push(format!("*std::move({resultname})"));
             }
             abi::Instruction::CallWasm {
                 name,

@@ -71,15 +71,10 @@ impl<T: Unpin + Send + 'static> StreamWrite<'_, T> {
                     Ok(buffer) => {
                         self.writer.ready_buffer.replace(buffer);
                     }
-                    Err(_) => todo!(),
+                    Err(StreamState::Eof) => todo!(),
+                    Err(StreamState::Pending) => todo!(),
                 }
             }
-            // let buffer = self.writer.handle.start_writing();
-            // match buffer {
-            //     Ok(buffer) => todo!(),
-            //     Err(StreamState::Eof) => todo!(),
-            //     Err(StreamState::Pending) => todo!(),
-            // }
             let buffer = self.writer.ready_buffer.take().unwrap();
             let addr = buffer.get_address().take_handle() as *mut u8;
             let size = (buffer.capacity() as usize).min(self.values.remaining());
@@ -216,7 +211,6 @@ impl<T: Unpin + Send> Sink<Vec<T>> for StreamWriter<T> {
                         // repeat start_writing?
                     })
                         as Pin<Box<dyn Future<Output = _> + Send>>);
-                    return Poll::Pending;
                 }
             }
         }
@@ -233,14 +227,6 @@ impl<T: Unpin + Send> Sink<Vec<T>> for StreamWriter<T> {
             todo!("shouldn't get here");
             // Poll::Ready(Ok(()))
         }
-
-        // // see also StreamReader::poll_next
-        // if !ready && me.future.is_none() {
-        // }
-
-        // if let Some(future) = &mut me.future {
-
-        // }
     }
 
     fn start_send(self: Pin<&mut Self>, item: Vec<T>) -> Result<(), Self::Error> {
@@ -397,7 +383,7 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
             }
             let mut buffer2 = Vec::new();
             std::mem::swap(&mut buffer2, &mut me2.buf);
-            let handle = me.handle.clone(true);
+            let handle = me.handle.clone(false);
             let vtable = me._vtable;
             me.future = Some(Box::pin(async move {
                 let mut buffer0: Vec<MaybeUninit<u8>> = iter::repeat_with(MaybeUninit::uninit)
@@ -447,7 +433,7 @@ pub fn new_stream<T: 'static>(
     vtable: &'static StreamVtable<T>,
 ) -> (StreamWriter<T>, StreamReader<T>) {
     let handle = Stream::new();
-    let handle2 = handle.clone(true);
+    let handle2 = handle.clone(false);
     (StreamWriter::new(handle, vtable), unsafe {
         StreamReader::new(handle2.take_handle() as *mut u8, vtable)
     })

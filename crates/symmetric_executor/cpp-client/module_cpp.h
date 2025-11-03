@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <utility>
 namespace symmetric {
 namespace runtime {

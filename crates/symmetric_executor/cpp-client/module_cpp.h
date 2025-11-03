@@ -25,7 +25,6 @@ class CallbackFunction : public wit::ResourceImportBase {
 
 public:
   ~CallbackFunction();
-  ~CallbackFunction();
   CallbackFunction(wit::ResourceImportBase &&);
   CallbackFunction(CallbackFunction &&) = default;
   CallbackFunction &operator=(CallbackFunction &&) = default;
@@ -36,7 +35,6 @@ public:
 class CallbackData : public wit::ResourceImportBase {
 
 public:
-  ~CallbackData();
   ~CallbackData();
   CallbackData(wit::ResourceImportBase &&);
   CallbackData(CallbackData &&) = default;
@@ -49,14 +47,9 @@ class EventSubscription : public wit::ResourceImportBase {
 
 public:
   ~EventSubscription();
-  ~EventSubscription();
-  bool Ready() const;
   bool Ready() const;
   static EventSubscription FromTimeout(uint64_t nanoseconds);
-  static EventSubscription FromTimeout(uint64_t nanoseconds);
   EventSubscription Dup() const;
-  EventSubscription Dup() const;
-  void Reset() const;
   void Reset() const;
   EventSubscription(wit::ResourceImportBase &&);
   EventSubscription(EventSubscription &&) = default;
@@ -69,12 +62,8 @@ class EventGenerator : public wit::ResourceImportBase {
 
 public:
   ~EventGenerator();
-  ~EventGenerator();
-  EventGenerator();
   EventGenerator();
   EventSubscription Subscribe() const;
-  EventSubscription Subscribe() const;
-  void Activate() const;
   void Activate() const;
   EventGenerator(wit::ResourceImportBase &&);
   EventGenerator(EventGenerator &&) = default;
@@ -87,8 +76,6 @@ class CallbackRegistration : public wit::ResourceImportBase {
 
 public:
   ~CallbackRegistration();
-  ~CallbackRegistration();
-  static CallbackData Cancel(symmetric_executor::CallbackRegistration &&obj);
   static CallbackData Cancel(symmetric_executor::CallbackRegistration &&obj);
   CallbackRegistration(wit::ResourceImportBase &&);
   CallbackRegistration(CallbackRegistration &&) = default;
@@ -108,12 +95,8 @@ enum class CallStatus : uint8_t {
 };
 
 void Run();
-void Run();
 CallbackRegistration Register(EventSubscription &&trigger,
                               CallbackFunction &&callback, CallbackData &&data);
-CallbackRegistration Register(EventSubscription &&trigger,
-                              CallbackFunction &&callback, CallbackData &&data);
-void BlockOn(EventSubscription &&trigger);
 void BlockOn(EventSubscription &&trigger);
 } // namespace symmetric_executor
 namespace symmetric_stream {
@@ -121,7 +104,6 @@ using EventSubscription = symmetric_executor::EventSubscription;
 class Address : public wit::ResourceImportBase {
 
 public:
-  ~Address();
   ~Address();
   Address(wit::ResourceImportBase &&);
   Address(Address &&) = default;
@@ -134,16 +116,10 @@ class Buffer : public wit::ResourceImportBase {
 
 public:
   ~Buffer();
-  ~Buffer();
-  Buffer(symmetric_stream::Address &&addr, uint64_t capacity);
   Buffer(symmetric_stream::Address &&addr, uint64_t capacity);
   Address GetAddress() const;
-  Address GetAddress() const;
-  uint64_t GetSize() const;
   uint64_t GetSize() const;
   void SetSize(uint64_t size) const;
-  void SetSize(uint64_t size) const;
-  uint64_t Capacity() const;
   uint64_t Capacity() const;
   Buffer(wit::ResourceImportBase &&);
   Buffer(Buffer &&) = default;
@@ -161,31 +137,17 @@ class StreamObj : public wit::ResourceImportBase {
 
 public:
   ~StreamObj();
-  ~StreamObj();
-  StreamObj();
   StreamObj();
   StreamObj Clone(bool writing) const;
-  StreamObj Clone(bool writing) const;
-  bool IsWriteClosed() const;
   bool IsWriteClosed() const;
   std::expected<void, Buffer>
   StartReading(symmetric_stream::Buffer &&buffer) const;
-  std::expected<void, Buffer>
-  StartReading(symmetric_stream::Buffer &&buffer) const;
-  symmetric_executor::EventSubscription ReadReadySubscribe() const;
   symmetric_executor::EventSubscription ReadReadySubscribe() const;
   wit::vector<Buffer> CloseRead() const;
-  wit::vector<Buffer> CloseRead() const;
-  std::expected<Buffer, StreamState> ReadResult() const;
   std::expected<Buffer, StreamState> ReadResult() const;
   bool IsReadClosed() const;
-  bool IsReadClosed() const;
-  std::expected<Buffer, StreamState> StartWriting() const;
   std::expected<Buffer, StreamState> StartWriting() const;
   symmetric_executor::EventSubscription WriteReadySubscribe() const;
-  symmetric_executor::EventSubscription WriteReadySubscribe() const;
-  std::expected<void, Buffer>
-  FinishWriting(symmetric_stream::Buffer &&buffer) const;
   std::expected<void, Buffer>
   FinishWriting(symmetric_stream::Buffer &&buffer) const;
   StreamObj(wit::ResourceImportBase &&);

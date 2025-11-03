@@ -443,7 +443,7 @@ impl Cpp {
         if self.dependencies.needs_stream {
             self.include("<stream_support.h>");
         }
-        if self.dependencies.needs_optional {
+        if self.dependencies.needs_optional || self.dependencies.needs_expected {
             if self.opts.autosar {
                 self.include("<ara/core/optional.h>");
             } else {
@@ -3850,8 +3850,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     );
                     results.push(format!("std::move({resultname}).value()"));
                 } else {
-                    uwriteln!(self.src, "{full_type} {resultname};\n");
-                    results.push(resultname);
+                    uwriteln!(self.src, "std::optional<{full_type}> {resultname};\n");
+                    results.push(format!("*std::move({resultname})"));
                 }
                 uwriteln!(
                     self.src,

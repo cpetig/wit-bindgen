@@ -4255,7 +4255,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         );
         uwriteln!(
             self.src,
-            "{} ptr{tmp} = static_cast<{0}>(&ret_area);",
+            "{} ptr{tmp} = reinterpret_cast<{0}>(&ret_area);",
             self.gen.gen.opts.ptr_type(),
         );
 

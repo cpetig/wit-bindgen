@@ -7,7 +7,6 @@ use {
     futures::sink::Sink,
     std::{
         alloc::Layout,
-        convert::Infallible,
         fmt,
         future::Future,
         iter,

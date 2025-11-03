@@ -319,10 +319,10 @@ symmetric::runtime::symmetric_stream::StreamObj::StartReading(
     symmetric_stream::Buffer &&buffer) const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
-  uint8_t *ptr0 = static_cast<uint8_t *>(&ret_area);
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Estart_reading(
       (*this).get_handle(), buffer.into_handle(), ptr0);
-  std::expected<void, symmetric_stream::Buffer> result1;
+  std::optional<std::expected<void, symmetric_stream::Buffer>> result1;
 
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
@@ -331,7 +331,7 @@ symmetric::runtime::symmetric_stream::StreamObj::StartReading(
     result1 = std::unexpected{wit::ResourceImportBase{
         *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))}};
   }
-  return result1;
+  return *std::move(result1);
 }
 symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_stream::StreamObj::ReadReadySubscribe() const {
@@ -344,7 +344,7 @@ wit::vector<symmetric::runtime::symmetric_stream::Buffer>
 symmetric::runtime::symmetric_stream::StreamObj::CloseRead() const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
-  uint8_t *ptr0 = static_cast<uint8_t *>(&ret_area);
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Eclose_read(
       (*this).get_handle(), ptr0);
   auto base1 = *reinterpret_cast<uint8_t *const *>(ptr0 + 0);
@@ -364,10 +364,11 @@ std::expected<symmetric::runtime::symmetric_stream::Buffer,
 symmetric::runtime::symmetric_stream::StreamObj::ReadResult() const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
-  uint8_t *ptr0 = static_cast<uint8_t *>(&ret_area);
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Eread_result(
       (*this).get_handle(), ptr0);
-  std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>
+  std::optional<
+      std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
       result1;
 
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
@@ -380,7 +381,7 @@ symmetric::runtime::symmetric_stream::StreamObj::ReadResult() const {
         static_cast<symmetric_stream::StreamState>(static_cast<int32_t>(
             *reinterpret_cast<uint8_t const *>(ptr0 + sizeof(void *))))};
   }
-  return result1;
+  return *std::move(result1);
 }
 bool symmetric::runtime::symmetric_stream::StreamObj::IsReadClosed() const {
   auto ret =
@@ -393,10 +394,11 @@ std::expected<symmetric::runtime::symmetric_stream::Buffer,
 symmetric::runtime::symmetric_stream::StreamObj::StartWriting() const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
-  uint8_t *ptr0 = static_cast<uint8_t *>(&ret_area);
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Estart_writing(
       (*this).get_handle(), ptr0);
-  std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>
+  std::optional<
+      std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
       result1;
 
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
@@ -409,7 +411,7 @@ symmetric::runtime::symmetric_stream::StreamObj::StartWriting() const {
         static_cast<symmetric_stream::StreamState>(static_cast<int32_t>(
             *reinterpret_cast<uint8_t const *>(ptr0 + sizeof(void *))))};
   }
-  return result1;
+  return *std::move(result1);
 }
 symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_stream::StreamObj::WriteReadySubscribe() const {
@@ -423,10 +425,10 @@ symmetric::runtime::symmetric_stream::StreamObj::FinishWriting(
     symmetric_stream::Buffer &&buffer) const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
-  uint8_t *ptr0 = static_cast<uint8_t *>(&ret_area);
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(
       (*this).get_handle(), buffer.into_handle(), ptr0);
-  std::expected<void, symmetric_stream::Buffer> result1;
+  std::optional<std::expected<void, symmetric_stream::Buffer>> result1;
 
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
@@ -435,7 +437,7 @@ symmetric::runtime::symmetric_stream::StreamObj::FinishWriting(
     result1 = std::unexpected{wit::ResourceImportBase{
         *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))}};
   }
-  return result1;
+  return *std::move(result1);
 }
 symmetric::runtime::symmetric_stream::StreamObj::StreamObj(
     wit::ResourceImportBase &&b)

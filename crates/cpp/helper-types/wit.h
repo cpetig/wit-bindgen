@@ -1,5 +1,6 @@
 #pragma once
 
+#include <expected> // needs to precede optional
 #include <assert.h>
 #include <map>
 #include <optional>

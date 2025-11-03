@@ -257,6 +257,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustc-stable-hash"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "781442f29170c5c93b7185ad559492601acdc71d5bb0706f5868094f45cfcd08"
+
+[[package]]
 name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -329,7 +335,7 @@ dependencies = [
 name = "symmetric_stream"
 version = "0.1.0"
 dependencies = [
- "mini-bindgen",
+ "dummy-rt",
  "symmetric_executor",
 ]
 
@@ -358,8 +364,8 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "wasm-encoder"
-version = "0.236.1"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#111361dc41d9b1acbef3369c471c42c0f1e5ce2f"
+version = "0.240.0"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#0d37db5b9baae33e863f4f4b5c29b8ef6616166a"
 dependencies = [
  "leb128fmt",
  "wasmparser",
@@ -367,8 +373,8 @@ dependencies = [
 
 [[package]]
 name = "wasm-metadata"
-version = "0.236.1"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#111361dc41d9b1acbef3369c471c42c0f1e5ce2f"
+version = "0.240.0"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#0d37db5b9baae33e863f4f4b5c29b8ef6616166a"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -378,8 +384,8 @@ dependencies = [
 
 [[package]]
 name = "wasmparser"
-version = "0.236.1"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#111361dc41d9b1acbef3369c471c42c0f1e5ce2f"
+version = "0.240.0"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#0d37db5b9baae33e863f4f4b5c29b8ef6616166a"
 dependencies = [
  "bitflags",
  "hashbrown",
@@ -389,16 +395,19 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.44.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "heck",
+ "indexmap",
+ "rustc-stable-hash",
+ "wit-component",
  "wit-parser",
 ]
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.44.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "heck",
@@ -412,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.44.0"
+version = "0.47.0"
 dependencies = [
  "anyhow",
  "prettyplease",
@@ -434,8 +443,8 @@ dependencies = [
 
 [[package]]
 name = "wit-component"
-version = "0.236.1"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#111361dc41d9b1acbef3369c471c42c0f1e5ce2f"
+version = "0.240.0"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#0d37db5b9baae33e863f4f4b5c29b8ef6616166a"
 dependencies = [
  "anyhow",
  "bitflags",
@@ -452,8 +461,8 @@ dependencies = [
 
 [[package]]
 name = "wit-parser"
-version = "0.236.1"
-source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#111361dc41d9b1acbef3369c471c42c0f1e5ce2f"
+version = "0.240.0"
+source = "git+https://github.com/cpetig/wasm-tools?branch=symmetric#0d37db5b9baae33e863f4f4b5c29b8ef6616166a"
 dependencies = [
  "anyhow",
  "id-arena",

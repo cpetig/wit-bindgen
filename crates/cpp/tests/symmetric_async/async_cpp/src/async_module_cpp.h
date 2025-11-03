@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <utility>
 #include <string_view>
-#include <wit-guest.h>
+#include <wit.h>
 #include <future>
 namespace test {namespace test {namespace wait {std::future<void> Sleep(uint64_t nanoseconds);
 // export_interface Interface(Id { idx: 0 })

@@ -2979,7 +2979,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 uwriteln!(
                     self.src,
-                    "int32_t l{tmp} = *static_cast<int32_t const*>({} + {offset});",
+                    "int32_t l{tmp} = *reinterpret_cast<int32_t const*>({} + {offset});",
                     operands[0],
                     offset = offset.format(POINTER_SIZE_EXPRESSION)
                 );
@@ -3043,7 +3043,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {ptr} = static_cast<{}>({val}.data());\n",
+                        "auto {ptr} = reinterpret_cast<{}>({val}.data());\n",
                         self.gen.gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
@@ -3076,7 +3076,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = static_cast<{}>({}.data());\n",
+                        "auto {} = reinterpret_cast<{}>({}.data());\n",
                         ptr,
                         self.gen.gen.opts.ptr_type(),
                         val
@@ -3112,7 +3112,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = static_cast<{}>({}.data());\n",
+                        "auto {} = reinterpret_cast<{}>({}.data());\n",
                         ptr,
                         self.gen.gen.opts.ptr_type(),
                         val
@@ -3160,12 +3160,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 {
                     if self.gen.gen.opts.symmetric {
                         format!(
-                            "wit::span<{inner} const>(static_cast<{inner}*>({}), {len})",
+                            "wit::span<{inner} const>(reinterpret_cast<{inner}*>({}), {len})",
                             operands[0]
                         )
                     } else {
                         format!(
-                            "wit::vector<{inner} const>(static_cast<{inner}*>({}), {len}).get_view()",
+                            "wit::vector<{inner} const>(reinterpret_cast<{inner}*>({}), {len}).get_view()",
                             operands[0]
                         )
                     }
@@ -3185,10 +3185,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     && self.gen.gen.opts.api_style == APIStyle::Asymmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
-                    uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view((char const *)({}), {len}));\n", operands[0]);
+                    uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view(reinterpret_cast<char const *>({}), {len}));\n", operands[0]);
                     format!("std::move(string{tmp})")
                 } else if self.gen.gen.opts.host {
-                    uwriteln!(self.src, "char const* ptr{} = static_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n", tmp, operands[0]);
+                    uwriteln!(self.src, "char const* ptr{} = reinterpret_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n", tmp, operands[0]);
                     format!("std::string_view(ptr{}, {len})", tmp)
                 } else if self.gen.gen.opts.short_cut
                     || (self.gen.gen.opts.api_style == APIStyle::Symmetric
@@ -3206,12 +3206,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         );
                     }
                     format!(
-                        "std::string_view(static_cast<char const*>({}), {len})",
+                        "std::string_view(reinterpret_cast<char const*>({}), {len})",
                         operands[0]
                     )
                 } else {
                     format!(
-                        "wit::string(static_cast<char const*>({}), {len})",
+                        "wit::string(reinterpret_cast<char const*>({}), {len})",
                         operands[0]
                     )
                 };
@@ -3286,7 +3286,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             && matches!(self.variant, AbiVariant::GuestExport))
                     {
                         self.leak_on_insertion.replace(format!(
-                            "if ({len}>0) _deallocate.push_back(static_cast<void*>({result}.leak()));\n"
+                            "if ({len}>0) _deallocate.push_back(reinterpret_cast<void*>({result}.leak()));\n"
                         ));
                     }
                 } else {
@@ -4125,8 +4125,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.load("size_t", *offset, operands, results)
             }
             abi::Instruction::PointerStore { offset } => {
-                let ptr_type = self.gen.gen.opts.ptr_type();
-                self.store(ptr_type, *offset, operands)
+                let ptr_type = format!("const {}", self.gen.gen.opts.ptr_type());
+                self.store(&ptr_type, *offset, operands)
             }
             abi::Instruction::LengthStore { offset } => self.store("size_t", *offset, operands),
             abi::Instruction::FutureLower { payload, .. } => {

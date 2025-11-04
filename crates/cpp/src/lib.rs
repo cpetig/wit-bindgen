@@ -2769,7 +2769,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             results.push(format!("*(({}*) wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {})))", ty, operands[0], offset.format(POINTER_SIZE_EXPRESSION)));
         } else {
             results.push(format!(
-                "*static_cast<{ty}*>({} + {})",
+                "*reinterpret_cast<{ty} const*>({} + {})",
                 operands[0],
                 offset.format(POINTER_SIZE_EXPRESSION)
             ));
@@ -2800,7 +2800,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             uwriteln!(
                 self.src,
-                "*static_cast<{ty}*>({} + {}) = {};",
+                "*reinterpret_cast<{ty}*>({} + {}) = {};",
                 operands[1],
                 offset.format(POINTER_SIZE_EXPRESSION),
                 operands[0]
@@ -3043,7 +3043,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {ptr} = reinterpret_cast<{}>({val}.data());\n",
+                        "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
                         self.gen.gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
@@ -3076,7 +3076,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = reinterpret_cast<{}>({}.data());\n",
+                        "auto {} = reinterpret_cast<const {}>({}.data());\n",
                         ptr,
                         self.gen.gen.opts.ptr_type(),
                         val
@@ -3112,7 +3112,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = reinterpret_cast<{}>({}.data());\n",
+                        "auto {} = reinterpret_cast<const {}>({}.data());\n",
                         ptr,
                         self.gen.gen.opts.ptr_type(),
                         val

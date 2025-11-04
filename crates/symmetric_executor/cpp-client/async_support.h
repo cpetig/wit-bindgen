@@ -1,4 +1,4 @@
-
+#include <expected> // needs to precede optional
 #include <future>
 #include "module_cpp.h"
 #include "stream_support.h"
@@ -105,7 +105,7 @@ template <class T> struct future_reader {
 template <class T>
 std::pair<future_writer<T>, future_reader<T>> create_wasi_future() {
     auto stream = symmetric::runtime::symmetric_stream::StreamObj();
-    auto stream2 = stream.Clone();
+    auto stream2 = stream.Clone(false);
     return std::make_pair<future_writer<T>, future_reader<T>>(
         future_writer<T>{std::move(stream)}, future_reader<T>{std::move(stream2)});
 }
@@ -116,40 +116,43 @@ template <class T> struct stream_writer {
     // non blocking write, returns remaining data
     std::vector<T> write_nb(std::vector<T> data) {
         auto buffer = handle.StartWriting();
-        auto capacity = buffer.Capacity();
-        uint8_t* dest = (uint8_t*)buffer.GetAddress().into_handle();
-        auto elements = data.size();
-        if (elements<capacity) elements=capacity;
-        for (uint32_t i = 0; i<elements; ++i) {
-            wit::StreamProperties<T>::lower(std::move(data[i]), dest+(i*wit::StreamProperties<T>::lowered_size));
-        }
-        buffer.SetSize(elements);
-        handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>(std::move(buffer)));
+        if (buffer.has_value()) {
+            auto capacity = buffer->Capacity();
+            uint8_t* dest = (uint8_t*)buffer->GetAddress().into_handle();
+            auto elements = data.size();
+            if (elements<capacity) elements=capacity;
+            for (uint32_t i = 0; i<elements; ++i) {
+                wit::StreamProperties<T>::lower(std::move(data[i]), dest+(i*wit::StreamProperties<T>::lowered_size));
+            }
+            buffer->SetSize(elements);
+            handle.FinishWriting(std::move(buffer).value());
 
-        if (capacity>data.size()) capacity = data.size();
-        data.erase(data.begin(), data.begin() + capacity);
+            if (capacity>data.size()) capacity = data.size();
+            data.erase(data.begin(), data.begin() + capacity);
+        }
         return data;
     }
 
     void write(std::vector<T>&& data) {
         while (!data.empty()) {
-            if (!IsReadyToWrite()) {
-                symmetric::runtime::symmetric_executor::BlockOn(handle.WriteReadySubscribe());
-            }
+            auto subsc = handle.WriteReadySubscribe();
             data = write_nb(std::move(data));
+            if (!data.empty()) {
+                symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));
+            }
         }
     }
-    bool IsReadyToWrite() const {
-        return handle.IsReadyToWrite();
-    }
+    // bool IsReadyToWrite() const {
+    //     return handle.IsReadyToWrite();
+    // }
     symmetric::runtime::symmetric_executor::EventSubscription WriteReadySubscribe() const {
         return handle.WriteReadySubscribe();
     }
 
     ~stream_writer() {
-        if (handle.get_handle()!=wit::ResourceImportBase::invalid) {
-            handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>());
-        }
+        // if (handle.get_handle()!=wit::ResourceImportBase::invalid) {
+        //     handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>());
+        // }
     }
     stream_writer(symmetric::runtime::symmetric_stream::StreamObj &&h) : handle(std::move(h)) {}
     stream_writer(const stream_writer&) = delete;
@@ -161,7 +164,7 @@ template <class T> struct stream_writer {
 template <class T>
 std::pair<stream_writer<T>, wit::stream<T>> create_wasi_stream() {
     auto stream = symmetric::runtime::symmetric_stream::StreamObj();
-    auto stream2 = stream.Clone();
+    auto stream2 = stream.Clone(false);
     return std::make_pair<stream_writer<T>, wit::stream<T>>(
         stream_writer<T>{std::move(stream)}, wit::stream<T>{std::move(stream2)});
 }
@@ -179,13 +182,15 @@ static symmetric::runtime::symmetric_executor::CallbackState write_to_future(voi
     std::unique_ptr<write_to_future_data<T>> ptr((write_to_future_data<T>*)data);
     // is future ready?
     if (ptr->fut.wait_for(std::chrono::seconds::zero()) == std::future_status::ready) {
-        auto buffer = ptr->wr.handle.StartWriting();
-        assert(buffer.Capacity()==1);
-        uint8_t* dataptr = (uint8_t*)(buffer.GetAddress().into_handle());
         auto result = ptr->fut.get();
-        LOWER::lower(std::move(result), dataptr);
-        buffer.SetSize(1);
-        ptr->wr.handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>(std::move(buffer)));
+        auto buffer = ptr->wr.handle.StartWriting();
+        if (buffer.has_value()) {
+            assert(buffer->Capacity()==1);
+            uint8_t* dataptr = (uint8_t*)(buffer->GetAddress().into_handle());
+            LOWER::lower(std::move(result), dataptr);
+            buffer->SetSize(1);
+            ptr->wr.handle.FinishWriting(std::move(buffer).value());
+        }
     } else {
         // sadly there is no easier way to wait for a future in the background?
         // move to run_in_background
@@ -193,13 +198,15 @@ static symmetric::runtime::symmetric_executor::CallbackState write_to_future(voi
         auto waiting = gen.Subscribe();
         auto task = std::async(std::launch::async, [](std::unique_ptr<write_to_future_data<T>> &&ptr, 
             symmetric::runtime::symmetric_executor::EventGenerator &&gen){
-            auto buffer = ptr->wr.handle.StartWriting();
-            // assert(buffer.GetSize()==1); //sizeof(T));
-            uint8_t* dataptr = (uint8_t*)(buffer.GetAddress().into_handle());        
             auto result = ptr->fut.get();
-            LOWER::lower(std::move(result), dataptr);
-            buffer.SetSize(1);
-            ptr->wr.handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>(std::move(buffer)));
+            auto buffer = ptr->wr.handle.StartWriting();
+            if (buffer.has_value()) {
+                // assert(buffer.GetSize()==1); //sizeof(T));
+                uint8_t* dataptr = (uint8_t*)(buffer->GetAddress().into_handle());        
+                LOWER::lower(std::move(result), dataptr);
+                buffer->SetSize(1);
+                ptr->wr.handle.FinishWriting(std::move(buffer).value());
+            }
             gen.Activate();
         }, std::move(ptr), std::move(gen));
         auto fut = std::make_unique<std::future<void>>(std::move(task));

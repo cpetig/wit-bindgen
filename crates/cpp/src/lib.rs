@@ -3823,6 +3823,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     format!("std::expected<{ok_type}, {err_type}>",)
                 };
+                let err_type = "std::unexpected";
+                let operand = &operands[0];
+
+                let tmp = self.tmp();
+                let resultname = self.tempname("result", tmp);
                 if result.ok.is_none() && !self.gen.gen.opts.autosar {
                     // construct empty ok type
                     ok_result = format!("{full_type}()");
@@ -3836,7 +3841,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     format!("{resultname}.emplace({ok_result});")
                 } else {
                     if !self.r#gen.r#gen.opts.autosar {
-                        format!("{resultname}.emplace({ok_result});");
+                        format!("{resultname}.emplace({ok_result});")
                     } else {
                         String::new()
                     }

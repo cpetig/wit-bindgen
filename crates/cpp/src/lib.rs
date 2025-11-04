@@ -3801,16 +3801,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.gen.type_name(ty, &self.namespace, Flavor::InStruct)
                 });
                 let full_type = format!("std::expected<{ok_type}, {err_type}>",);
+                if result.ok.is_none() {
+                    // construct empty ok type
+                    ok_result = format!("{full_type}()");
+                }
                 let err_type = "std::unexpected";
                 let operand = &operands[0];
 
                 let tmp = self.tmp();
                 let resultname = self.tempname("result", tmp);
-                let ok_assign = if result.ok.is_some() {
-                    format!("{resultname}.emplace({ok_result});")
-                } else {
-                    String::new()
-                };
+                let ok_assign = format!("{resultname}.emplace({ok_result});");
                 uwriteln!(
                     self.src,
                     // not all results have a default constructor, so wrap it inside an optional

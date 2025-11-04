@@ -259,7 +259,11 @@ impl LanguageMethods for Cpp {
             if !matches!(compile.component.kind, Kind::Runner) {
                 cmd.arg("-shared");
             } else {
-                cmd.arg("-ltest-cpp");
+                let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+                bindings_parent.pop();
+                cmd.arg("-L")
+                    .arg(bindings_parent.to_str().unwrap().to_string());
+                cmd.arg("-ltest");
             }
             cmd.arg("-L")
                 .arg(helper_dir3.to_str().unwrap().to_string())

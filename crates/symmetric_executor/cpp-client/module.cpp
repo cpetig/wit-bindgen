@@ -323,9 +323,9 @@ symmetric::runtime::symmetric_stream::StreamObj::StartReading(
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Estart_reading(
       (*this).get_handle(), buffer.into_handle(), ptr0);
   std::optional<std::expected<void, symmetric_stream::Buffer>> result1;
-
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
+    result1.emplace(std::expected<void, symmetric_stream::Buffer>());
   } else {
 
     result1 = std::unexpected{wit::ResourceImportBase{
@@ -370,7 +370,6 @@ symmetric::runtime::symmetric_stream::StreamObj::ReadResult() const {
   std::optional<
       std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
       result1;
-
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
     result1.emplace(wit::ResourceImportBase{
@@ -400,7 +399,6 @@ symmetric::runtime::symmetric_stream::StreamObj::StartWriting() const {
   std::optional<
       std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
       result1;
-
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
     result1.emplace(wit::ResourceImportBase{
@@ -429,9 +427,9 @@ symmetric::runtime::symmetric_stream::StreamObj::FinishWriting(
   symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(
       (*this).get_handle(), buffer.into_handle(), ptr0);
   std::optional<std::expected<void, symmetric_stream::Buffer>> result1;
-
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
+    result1.emplace(std::expected<void, symmetric_stream::Buffer>());
   } else {
 
     result1 = std::unexpected{wit::ResourceImportBase{

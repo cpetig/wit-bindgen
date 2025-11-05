@@ -354,6 +354,7 @@ impl Cpp {
             sizes,
             in_guest_import,
             wasm_import_module,
+            lift_lower_defined: Default::default(),
         }
     }
 
@@ -1023,6 +1024,8 @@ struct CppInterfaceGenerator<'a> {
     sizes: SizeAlign,
     in_guest_import: bool,
     pub wasm_import_module: Option<String>,
+    #[allow(dead_code)]
+    lift_lower_defined: HashSet<Type>,
 }
 
 impl CppInterfaceGenerator<'_> {
@@ -2856,6 +2859,12 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 
     fn lower_lift_stream(&mut self, payload: Option<&Type>) {
+        if payload.map_or(false, |tp| self.r#gen.lift_lower_defined.contains(tp)) {
+            return;
+        }
+        self.r#gen
+            .lift_lower_defined
+            .insert(payload.unwrap().clone());
         let typestr = self
             .gen
             .optional_type_name(payload, &Vec::new(), Flavor::InStruct);

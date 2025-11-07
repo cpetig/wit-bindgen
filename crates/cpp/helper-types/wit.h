@@ -1,4 +1,6 @@
 #pragma once
+#ifndef WIT_BINDGEN_WIT_H_DEFINED
+#define WIT_BINDGEN_WIT_H_DEFINED
 
 #include <expected> // needs to precede optional
 #include <assert.h>
@@ -260,3 +262,4 @@ public:
   ResourceImportBase &operator=(ResourceImportBase const &r) = delete;
 };
 } // namespace wit
+#endif // WIT_BINDGEN_WIT_H_DEFINED

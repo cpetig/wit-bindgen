@@ -284,7 +284,10 @@ impl<T> FutureRead<T> {
             future: None,
         };
         std::mem::swap(me, &mut local_me);
-        let FutureRead { reader: _, future: _ } = local_me;
+        let FutureRead {
+            reader: _,
+            future: _,
+        } = local_me;
 
         todo!();
         // let buffer2 = reader.handle.read_result();

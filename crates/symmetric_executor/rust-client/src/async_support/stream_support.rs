@@ -393,26 +393,27 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                 handle.start_reading(buffer);
                 let subsc = handle.read_ready_subscribe();
                 subsc.reset();
-                wait_on(subsc).await;
                 let buffer3 = handle.read_result();
-                if let Ok(buffer3) = buffer3 {
-                    let count = buffer3.get_size();
-                    buffer2.reserve(count as usize);
-                    let mut srcptr = buffer3.get_address().take_handle() as *mut u8;
-                    if let Some(lift) = vtable.lift {
-                        for _ in 0..count {
-                            buffer2.push(unsafe { (lift)(srcptr) });
-                            srcptr = unsafe { srcptr.byte_add(vtable.layout.size()) };
+                match buffer3 {
+                    Ok(buffer3) => {
+                        let count = buffer3.get_size();
+                        buffer2.reserve(count as usize);
+                        let mut srcptr = buffer3.get_address().take_handle() as *mut u8;
+                        if let Some(lift) = vtable.lift {
+                            for _ in 0..count {
+                                buffer2.push(unsafe { (lift)(srcptr) });
+                                srcptr = unsafe { srcptr.byte_add(vtable.layout.size()) };
+                            }
+                        } else {
+                            for _ in 0..count {
+                                buffer2.push(unsafe { srcptr.cast::<T>().read() });
+                                srcptr = unsafe { srcptr.byte_add(vtable.layout.size()) };
+                            }
                         }
-                    } else {
-                        for _ in 0..count {
-                            buffer2.push(unsafe { srcptr.cast::<T>().read() });
-                            srcptr = unsafe { srcptr.byte_add(vtable.layout.size()) };
-                        }
+                        (StreamResult::Complete(count as usize), buffer2)
                     }
-                    (StreamResult::Complete(count as usize), buffer2)
-                } else {
-                    (StreamResult::Dropped, Vec::new())
+                    Err(StreamState::Eof) => (StreamResult::Dropped, Vec::new()),
+                    Err(StreamState::Pending) => wait_on(subsc).await,
                 }
             }) as Pin<Box<dyn Future<Output = _> + Send>>);
         }

@@ -2931,7 +2931,7 @@ impl<'a> {camel}Borrow<'a>{{
     }}
 
     /// Gets access to the underlying `T` in this resource.
-    pub fn get<T: Guest{camel}>(&self) -> &T {{
+    pub fn get<T: Guest{camel}>(&self) -> &'a T {{
        let ptr = unsafe {{ &mut *self.as_ptr::<T>() }};
        ptr.as_ref().unwrap()
     }}

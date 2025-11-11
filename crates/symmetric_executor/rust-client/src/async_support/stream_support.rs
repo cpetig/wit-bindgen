@@ -390,7 +390,16 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                     .collect::<Vec<_>>();
                 let address = unsafe { Address::from_handle(buffer0.as_mut_ptr() as usize) };
                 let buffer = Buffer::new(address, buffer2.capacity() as u64);
-                handle.start_reading(buffer);
+                match handle.start_reading(buffer) {
+                    Ok(()) => (),
+                    Err(_buf) => {
+                        if handle.is_write_closed() {
+                            return (StreamResult::Dropped, Vec::new());
+                        } else {
+                            todo!();
+                        }
+                    }
+                }
                 loop {
                     let subsc = handle.read_ready_subscribe();
                     subsc.reset();

@@ -24,6 +24,11 @@ struct Dummy;
 
 impl GuestAddress for Dummy {}
 
+#[cfg(feature = "trace")]
+fn gettid() -> libc::pid_t {
+    unsafe { libc::gettid() }
+}
+
 struct Buffer {
     addr: *mut (),
     capacity: usize,
@@ -180,13 +185,21 @@ impl Drop for StreamObj {
             val if val == DecreaseOnDrop::Reader as u8 => {
                 if self.0.empty_buffer.drop_writer() {
                     #[cfg(feature = "trace")]
-                    println!("Stream last reader dropped {:x}", self.0.handle());
+                    println!(
+                        "{} Stream last reader dropped {:x}",
+                        gettid(),
+                        self.0.handle()
+                    );
                 }
             }
             val if val == DecreaseOnDrop::Writer as u8 => {
                 if self.0.full_buffer.drop_writer() {
                     #[cfg(feature = "trace")]
-                    println!("Stream last writer dropped {:x}", self.0.handle());
+                    println!(
+                        "{} Stream last writer dropped {:x}",
+                        gettid(),
+                        self.0.handle()
+                    );
                 }
             }
             _ => unimplemented!("Invalid drop type"),
@@ -202,7 +215,7 @@ impl GuestStreamObj for StreamObj {
         };
         inner.full_buffer.add_writer();
         #[cfg(feature = "trace")]
-        println!("Stream::new {:x}", inner.handle());
+        println!("{} Stream::new {:x}", gettid(), inner.handle());
         Self(
             Arc::new(inner),
             AtomicDecreaseOnDrop::new(DecreaseOnDrop::Writer as u8),
@@ -224,7 +237,8 @@ impl GuestStreamObj for StreamObj {
         let size = buffer.get::<Buffer>().capacity();
         #[cfg(feature = "trace")]
         println!(
-            "Stream::start_read {:x} {buf:x?} {size} =>",
+            "{} Stream::start_reading {:x} {buf:x?} {size} =>",
+            gettid(),
             self.0.handle()
         );
         let res = self
@@ -232,6 +246,12 @@ impl GuestStreamObj for StreamObj {
             .empty_buffer
             .write(NonZero::new(size as usize).unwrap(), buf);
         res.map_err(|(capacity, addr)| {
+            #[cfg(feature = "trace")]
+            println!(
+                "{} Stream::start_reading {:x} failed",
+                gettid(),
+                self.0.handle()
+            );
             symmetric_stream::Buffer::new(Buffer {
                 addr,
                 capacity: capacity.get(),
@@ -246,7 +266,11 @@ impl GuestStreamObj for StreamObj {
         match res {
             Ok((size, (addr, capacity))) => {
                 #[cfg(feature = "trace")]
-                println!("Stream::read_result {:x} {addr:x?} {size}", self.0.handle());
+                println!(
+                    "{} Stream::read_result {:x} {addr:x?} {size}",
+                    gettid(),
+                    self.0.handle()
+                );
                 Ok(symmetric_stream::Buffer::new(Buffer {
                     addr,
                     capacity,
@@ -254,8 +278,16 @@ impl GuestStreamObj for StreamObj {
                 }))
             }
             Err(()) => Err(if self.0.full_buffer.has_writers() {
+                #[cfg(feature = "trace")]
+                println!(
+                    "{} Stream::read_result {:x} pending",
+                    gettid(),
+                    self.0.handle()
+                );
                 StreamState::Pending
             } else {
+                #[cfg(feature = "trace")]
+                println!("{} Stream::read_result {:x} eof", gettid(), self.0.handle());
                 StreamState::Eof
             }),
         }
@@ -267,7 +299,11 @@ impl GuestStreamObj for StreamObj {
         match res {
             Ok((size, addr)) => {
                 #[cfg(feature = "trace")]
-                println!("Stream::start_write {:x} {addr:x?} {size}", self.0.handle());
+                println!(
+                    "{} Stream::start_write {:x} {addr:x?} {size}",
+                    gettid(),
+                    self.0.handle()
+                );
                 Ok(symmetric_stream::Buffer::new(Buffer {
                     addr,
                     capacity: size.get(),
@@ -275,8 +311,16 @@ impl GuestStreamObj for StreamObj {
                 }))
             }
             Err(()) => Err(if self.0.empty_buffer.has_writers() {
+                #[cfg(feature = "trace")]
+                println!(
+                    "{} Stream::start_write {:x} pending",
+                    gettid(),
+                    self.0.handle()
+                );
                 StreamState::Pending
             } else {
+                #[cfg(feature = "trace")]
+                println!("{} Stream::start_write {:x} eof", gettid(), self.0.handle());
                 StreamState::Eof
             }),
         }
@@ -297,11 +341,18 @@ impl GuestStreamObj for StreamObj {
         if res.is_ok() {
             #[cfg(feature = "trace")]
             println!(
-                "Stream::finish_write {:x} {addr:x?} {elements} =>",
+                "{} Stream::finish_write {:x} {addr:x?} {elements} =>",
+                gettid(),
                 self.0.handle()
             );
         }
         res.map_err(|(size, (addr, capacity))| {
+            #[cfg(feature = "trace")]
+            println!(
+                "{} Stream::finish_write {:x} failed",
+                gettid(),
+                self.0.handle()
+            );
             symmetric_stream::Buffer::new(Buffer {
                 addr,
                 capacity,
@@ -318,13 +369,14 @@ impl GuestStreamObj for StreamObj {
         }
         #[cfg(feature = "trace")]
         println!(
-            "Stream::clone({writing}) {} => r {} w {}",
+            "{} Stream::clone({writing}) {:x} -> w {} r {}",
+            gettid(),
             self.0.handle(),
+            self.0.full_buffer.number_of_writers.load(Ordering::Relaxed),
             self.0
                 .empty_buffer
                 .number_of_writers
                 .load(Ordering::Relaxed),
-            self.0.full_buffer.number_of_writers.load(Ordering::Relaxed),
         );
         symmetric_stream::StreamObj::new(StreamObj(
             Arc::clone(&self.0),
@@ -338,11 +390,23 @@ impl GuestStreamObj for StreamObj {
 
     fn read_ready_subscribe(&self) -> symmetric_stream::EventSubscription {
         assert_eq!(self.1.load(Ordering::Relaxed), DecreaseOnDrop::Reader as u8);
+        #[cfg(feature = "trace")]
+        println!(
+            "{} Stream::read_ready_subscribe {:x}",
+            gettid(),
+            self.0.handle()
+        );
         self.0.full_buffer.subscribe()
     }
 
     fn write_ready_subscribe(&self) -> symmetric_stream::EventSubscription {
         assert_eq!(self.1.load(Ordering::Relaxed), DecreaseOnDrop::Writer as u8);
+        #[cfg(feature = "trace")]
+        println!(
+            "{} Stream::write_ready_subscribe {:x}",
+            gettid(),
+            self.0.handle()
+        );
         self.0.empty_buffer.subscribe()
     }
 
@@ -358,7 +422,7 @@ impl GuestStreamObj for StreamObj {
                     size: AtomicUsize::new(0),
                 });
                 #[cfg(feature = "trace")]
-                println!("Stream::close_read {addr:x?} {size}",);
+                println!("{} Stream::close_read {addr:x?} {size}", gettid());
                 res.push(buffer);
             }
             Err(()) => (),
@@ -372,7 +436,7 @@ impl GuestStreamObj for StreamObj {
                     size: AtomicUsize::new(size.get()),
                 });
                 #[cfg(feature = "trace")]
-                println!("Stream::close_read {addr:x?} {size}",);
+                println!("{} Stream::close_read {addr:x?} {size}", gettid());
                 res.push(buffer);
             }
             Err(()) => (),

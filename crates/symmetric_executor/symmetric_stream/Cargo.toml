@@ -6,9 +6,11 @@ edition.workspace = true
 [dependencies]
 symmetric_executor = { path = ".." }
 wit-bindgen = { package = "dummy-rt", path = "../dummy-rt" }
+libc = { version = "0.2.167", optional = true }
 
 [lib]
 crate-type = ["cdylib"]
 
 [features]
-trace = []
+trace = ["dep:libc"]
+default = ["trace"]

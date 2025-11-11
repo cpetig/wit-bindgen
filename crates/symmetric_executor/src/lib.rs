@@ -20,6 +20,15 @@ struct Guest;
 
 executor::export!(Guest with_types_in executor);
 
+fn gettid() -> libc::pid_t {
+    #[cfg(feature = "trace")]
+    unsafe {
+        libc::gettid()
+    }
+    #[cfg(not(feature = "trace"))]
+    0
+}
+
 struct Ignore;
 struct OpaqueData;
 impl symmetric_executor::GuestCallbackFunction for Ignore {}
@@ -28,11 +37,12 @@ impl symmetric_executor::GuestCallbackData for OpaqueData {}
 // Hide the specifics of eventfd
 mod event_fd {
     pub type EventFd = core::ffi::c_int;
+    use super::gettid;
 
     pub fn activate(fd: EventFd) {
         let file_signal: u64 = 1;
         if super::DEBUGGING {
-            println!("activate(fd {fd})");
+            println!("{} activate(fd {fd})", gettid());
         }
 
         let result = unsafe {
@@ -142,12 +152,13 @@ impl WaitSet {
     fn debug(&self) {
         let rfd_ptr = self.rfds.as_ptr();
         if self.tvptr.is_null() {
-            println!("select({}, {:x}, null)", self.maxfd, unsafe {
+            println!("{} select({}, {:x}, null)", gettid(), self.maxfd, unsafe {
                 *rfd_ptr.cast::<u32>()
             },);
         } else {
             println!(
-                "select({}, {:x}, {}.{})",
+                "{} select({}, {:x}, {}.{})",
+                gettid(),
                 self.maxfd,
                 unsafe { *rfd_ptr.cast::<u32>() },
                 self.wait.tv_sec,
@@ -220,7 +231,11 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
 
     fn subscribe(&self) -> symmetric_executor::EventSubscription {
         if DEBUGGING {
-            println!("subscribe({:x})", Arc::as_ptr(&self.0) as usize);
+            println!(
+                "{} subscribe({:x})",
+                gettid(),
+                Arc::as_ptr(&self.0) as usize
+            );
         }
         symmetric_executor::EventSubscription::new(EventSubscriptionInternal {
             inner: EventType::Triggered {
@@ -235,7 +250,8 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
             event.counter += 1;
             if DEBUGGING {
                 println!(
-                    "activate({:x}) counter={}",
+                    "{} activate({:x}) counter={}",
+                    gettid(),
                     Arc::as_ptr(&self.0) as usize,
                     event.counter
                 );
@@ -244,7 +260,7 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
                 event_fd::activate(*fd);
             });
         } else if DEBUGGING {
-            println!("activate failure");
+            println!("{} activate failure", gettid());
         }
     }
 }
@@ -265,7 +281,7 @@ impl Executor {
         *self.change_event.get_or_insert_with(|| {
             let fd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK) };
             if DEBUGGING {
-                println!("change event fd={fd}");
+                println!("{} change event fd={fd}", gettid());
             }
             fd
         })
@@ -282,7 +298,8 @@ impl Executor {
             if task.inner.ready() {
                 if DEBUGGING {
                     println!(
-                        "task ready {:x} {:x}",
+                        "{} task ready {:x} {:x}",
+                        gettid(),
                         task.callback.as_ref().unwrap().0 as usize,
                         task.callback.as_ref().unwrap().1 as usize
                     );
@@ -358,7 +375,8 @@ impl symmetric_executor::Guest for Guest {
                 // we processed events, perhaps more became ready
                 if DEBUGGING {
                     println!(
-                        "Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
+                        "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
+                        gettid(),
                         EXECUTOR.lock().unwrap().active_tasks.len()
                     );
                 }
@@ -392,10 +410,17 @@ impl symmetric_executor::Guest for Guest {
         let trigger: EventSubscriptionInternal = trigger.into_inner();
         if trigger.inner.ready() {
             if DEBUGGING {
-                println!("register ready event {:x} {:x}", cb as usize, data as usize);
+                println!(
+                    "{} register ready event {:x} {:x}",
+                    gettid(),
+                    cb as usize,
+                    data as usize
+                );
             }
             if matches!((cb)(data), CallbackState::Ready) {
-                println!("registration unnecessary");
+                if DEBUGGING {
+                    println!("{} registration unnecessary", gettid());
+                }
                 return symmetric_executor::CallbackRegistration::new(
                     CallbackRegistrationInternal(0),
                 );
@@ -432,6 +457,10 @@ impl symmetric_executor::Guest for Guest {
 
     fn block_on(trigger: symmetric_executor::EventSubscription) {
         let trigger: EventSubscriptionInternal = trigger.into_inner();
+        if trigger.inner.ready() {
+            // this can happen if the subscription is a bit older
+            return;
+        }
         // part of this function is never used
         let queue = QueuedEvent::new(
             trigger,
@@ -442,8 +471,10 @@ impl symmetric_executor::Guest for Guest {
         );
         let mut set = WaitSet::new(None);
         set.register(queue.event_fd);
-        let active = set.wait();
-        assert_eq!(active, queue.event_fd);
+        let num_active = set.wait();
+        assert_eq!(num_active, 1);
+        let active_fd = set.iter_active().next().unwrap();
+        assert_eq!(active_fd, queue.event_fd);
     }
 }
 
@@ -495,7 +526,8 @@ impl QueuedEvent {
                     last_counter: _,
                     event,
                 } => println!(
-                    "register(Trigger {:x} fd {event_fd}, {:x},{:x})",
+                    "{} register(Trigger {:x} fd {event_fd}, {:x},{:x})",
+                    gettid(),
                     Arc::as_ptr(event) as usize,
                     callback.0 as usize,
                     callback.1 as usize
@@ -506,8 +538,11 @@ impl QueuedEvent {
                         Err(err) => format!("{err}"),
                     };
                     println!(
-                        "register(Time {}, {:x},{:x})",
-                        diff, callback.0 as usize, callback.1 as usize
+                        "{} register(Time {}, {:x},{:x})",
+                        gettid(),
+                        diff,
+                        callback.0 as usize,
+                        callback.1 as usize
                     );
                 }
             }
@@ -533,7 +568,8 @@ impl EventSubscriptionInternal {
                 let last_counter = last_counter_old.load(Ordering::Relaxed);
                 if DEBUGGING {
                     println!(
-                        "dup(subscr {last_counter} {:x})",
+                        "{} dup(subscr {last_counter} {:x})",
+                        gettid(),
                         Arc::as_ptr(event) as usize
                     );
                 }
@@ -553,8 +589,10 @@ impl Drop for QueuedEvent {
         if let Some(cb) = &self.callback {
             if DEBUGGING {
                 println!(
-                    "drop() with active callback {:x},{:x}",
-                    cb.0 as usize, cb.1 as usize
+                    "{} drop() with active callback {:x},{:x}",
+                    gettid(),
+                    cb.0 as usize,
+                    cb.1 as usize
                 );
             }
         }
@@ -564,7 +602,7 @@ impl Drop for QueuedEvent {
                 event,
             } => {
                 if DEBUGGING {
-                    println!("drop(queued fd {})", self.event_fd);
+                    println!("{} drop(queued fd {})", gettid(), self.event_fd);
                 }
                 event
                     .lock()

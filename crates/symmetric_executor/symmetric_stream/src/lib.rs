@@ -185,13 +185,21 @@ impl Drop for StreamObj {
             val if val == DecreaseOnDrop::Reader as u8 => {
                 if self.0.empty_buffer.drop_writer() {
                     #[cfg(feature = "trace")]
-                    println!("{} Stream last reader dropped {:x}", gettid(), self.0.handle());
+                    println!(
+                        "{} Stream last reader dropped {:x}",
+                        gettid(),
+                        self.0.handle()
+                    );
                 }
             }
             val if val == DecreaseOnDrop::Writer as u8 => {
                 if self.0.full_buffer.drop_writer() {
                     #[cfg(feature = "trace")]
-                    println!("{} Stream last writer dropped {:x}", gettid(), self.0.handle());
+                    println!(
+                        "{} Stream last writer dropped {:x}",
+                        gettid(),
+                        self.0.handle()
+                    );
                 }
             }
             _ => unimplemented!("Invalid drop type"),
@@ -258,7 +266,11 @@ impl GuestStreamObj for StreamObj {
         match res {
             Ok((size, (addr, capacity))) => {
                 #[cfg(feature = "trace")]
-                println!("{} Stream::read_result {:x} {addr:x?} {size}", gettid(), self.0.handle());
+                println!(
+                    "{} Stream::read_result {:x} {addr:x?} {size}",
+                    gettid(),
+                    self.0.handle()
+                );
                 Ok(symmetric_stream::Buffer::new(Buffer {
                     addr,
                     capacity,
@@ -267,7 +279,11 @@ impl GuestStreamObj for StreamObj {
             }
             Err(()) => Err(if self.0.full_buffer.has_writers() {
                 #[cfg(feature = "trace")]
-                println!("{} Stream::read_result {:x} pending", gettid(), self.0.handle());
+                println!(
+                    "{} Stream::read_result {:x} pending",
+                    gettid(),
+                    self.0.handle()
+                );
                 StreamState::Pending
             } else {
                 #[cfg(feature = "trace")]
@@ -283,7 +299,11 @@ impl GuestStreamObj for StreamObj {
         match res {
             Ok((size, addr)) => {
                 #[cfg(feature = "trace")]
-                println!("{} Stream::start_write {:x} {addr:x?} {size}", gettid(), self.0.handle());
+                println!(
+                    "{} Stream::start_write {:x} {addr:x?} {size}",
+                    gettid(),
+                    self.0.handle()
+                );
                 Ok(symmetric_stream::Buffer::new(Buffer {
                     addr,
                     capacity: size.get(),
@@ -292,7 +312,11 @@ impl GuestStreamObj for StreamObj {
             }
             Err(()) => Err(if self.0.empty_buffer.has_writers() {
                 #[cfg(feature = "trace")]
-                println!("{} Stream::start_write {:x} pending", gettid(), self.0.handle());
+                println!(
+                    "{} Stream::start_write {:x} pending",
+                    gettid(),
+                    self.0.handle()
+                );
                 StreamState::Pending
             } else {
                 #[cfg(feature = "trace")]
@@ -324,7 +348,11 @@ impl GuestStreamObj for StreamObj {
         }
         res.map_err(|(size, (addr, capacity))| {
             #[cfg(feature = "trace")]
-            println!("{} Stream::finish_write {:x} failed", gettid(), self.0.handle());
+            println!(
+                "{} Stream::finish_write {:x} failed",
+                gettid(),
+                self.0.handle()
+            );
             symmetric_stream::Buffer::new(Buffer {
                 addr,
                 capacity,
@@ -363,14 +391,22 @@ impl GuestStreamObj for StreamObj {
     fn read_ready_subscribe(&self) -> symmetric_stream::EventSubscription {
         assert_eq!(self.1.load(Ordering::Relaxed), DecreaseOnDrop::Reader as u8);
         #[cfg(feature = "trace")]
-        println!("{} Stream::read_ready_subscribe {:x}", gettid(), self.0.handle());
+        println!(
+            "{} Stream::read_ready_subscribe {:x}",
+            gettid(),
+            self.0.handle()
+        );
         self.0.full_buffer.subscribe()
     }
 
     fn write_ready_subscribe(&self) -> symmetric_stream::EventSubscription {
         assert_eq!(self.1.load(Ordering::Relaxed), DecreaseOnDrop::Writer as u8);
         #[cfg(feature = "trace")]
-        println!("{} Stream::write_ready_subscribe {:x}", gettid(), self.0.handle());
+        println!(
+            "{} Stream::write_ready_subscribe {:x}",
+            gettid(),
+            self.0.handle()
+        );
         self.0.empty_buffer.subscribe()
     }
 

@@ -90,10 +90,7 @@ pub async fn wait_on(wait_for: EventSubscription) {
             Poll::Ready(())
         } else {
             #[cfg(feature = "trace")]
-            println!(
-                "wait_on sub {:x?} pending",
-                wait_for.handle()
-            );
+            println!("wait_on sub {:x?} pending", wait_for.handle());
             context_set_wait(cx, wait_for.dup());
             Poll::Pending
         }
@@ -136,7 +133,12 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                     .subscribe()
                     .take_handle() as *mut ()
             } else {
-                state_inner.completion_event.as_ref().unwrap().subscribe().take_handle() as *mut ()
+                state_inner
+                    .completion_event
+                    .as_ref()
+                    .unwrap()
+                    .subscribe()
+                    .take_handle() as *mut ()
                 // core::ptr::null_mut()
             };
             // we want to register without holding the lock to enable direct recursion on ready

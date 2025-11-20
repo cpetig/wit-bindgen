@@ -433,10 +433,11 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                             break (StreamResult::Complete(count as usize), buffer2);
                         }
                         Err(StreamState::Eof) => break (StreamResult::Dropped, Vec::new()),
-                        Err(StreamState::Pending) => { wait_on(subsc).await; 
+                        Err(StreamState::Pending) => {
+                            wait_on(subsc).await;
                             #[cfg(feature = "trace")]
                             println!("renew subscription");
-                        },
+                        }
                     }
                 }
             }) as Pin<Box<dyn Future<Output = _> + Send>>);

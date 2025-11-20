@@ -89,6 +89,8 @@ pub async fn wait_on(wait_for: EventSubscription) {
         if wait_for.ready() {
             Poll::Ready(())
         } else {
+            #[cfg(feature = "trace")]
+            println!("wait_on sub {:x?} pending", wait_for.handle());
             context_set_wait(cx, wait_for.dup());
             Poll::Pending
         }
@@ -118,6 +120,8 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                 println!(" state {:x?} dropped", state);
                 let _ = unsafe { Box::from_raw(state) };
             }
+            #[cfg(feature = "trace")]
+            println!(" ready");
             core::ptr::null_mut()
         }
         Poll::Pending => {
@@ -129,7 +133,13 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                     .subscribe()
                     .take_handle() as *mut ()
             } else {
-                core::ptr::null_mut()
+                state_inner
+                    .completion_event
+                    .as_ref()
+                    .unwrap()
+                    .subscribe()
+                    .take_handle() as *mut ()
+                // core::ptr::null_mut()
             };
             // we want to register without holding the lock to enable direct recursion on ready
             let mut events_to_register_to = Vec::new();
@@ -140,6 +150,8 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
             for waiting_for in events_to_register_to.drain(..) {
                 super::register(waiting_for, symmetric_callback::<F>, obj);
             }
+            #[cfg(feature = "trace")]
+            println!(" chain {:x?}", wait_chain);
             wait_chain
         }
     }
@@ -193,8 +205,10 @@ pub async unsafe fn await_result(function: impl Fn() -> *mut u8) {
 
 pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
     let wait_for = first_poll(future);
-    let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
-    drop(wait_for);
+    if !wait_for.is_null() {
+        let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
+        drop(wait_for);
+    }
 }
 
 pub unsafe fn spawn_unchecked(future: impl Future<Output = ()>) {
@@ -213,8 +227,11 @@ pub fn block_on<T: 'static>(future: impl Future<Output = T> + 'static) -> T {
         let vec = future.await;
         result2.write().unwrap().write(vec);
     };
-    unsafe { spawn_unchecked(future2) };
-    symmetric_executor::run();
+    let wait_for = first_poll(future2);
+    if !wait_for.is_null() {
+        let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
+        symmetric_executor::block_on(wait_for);
+    }
     return unsafe { result.to_owned().write().unwrap().assume_init_read() };
 }
 

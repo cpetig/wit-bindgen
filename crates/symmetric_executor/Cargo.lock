@@ -312,6 +312,7 @@ name = "symmetric_stream"
 version = "0.1.0"
 dependencies = [
  "dummy-rt",
+ "libc",
  "symmetric_executor",
 ]
 
@@ -371,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen"
-version = "0.47.0"
+version = "0.48.0"
 dependencies = [
  "bitflags",
  "futures",
@@ -380,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.47.0"
+version = "0.48.0"
 dependencies = [
  "anyhow",
  "heck",
@@ -392,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.47.0"
+version = "0.48.0"
 dependencies = [
  "anyhow",
  "heck",
@@ -406,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.47.0"
+version = "0.48.0"
 dependencies = [
  "anyhow",
  "prettyplease",

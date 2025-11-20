@@ -29,15 +29,6 @@ fn gettid() -> libc::pid_t {
     0
 }
 
-fn gettid() -> libc::pid_t {
-    #[cfg(feature = "trace")]
-    unsafe {
-        libc::gettid()
-    }
-    #[cfg(not(feature = "trace"))]
-    0
-}
-
 struct Ignore;
 struct OpaqueData;
 impl symmetric_executor::GuestCallbackFunction for Ignore {}

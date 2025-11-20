@@ -29,6 +29,15 @@ fn gettid() -> libc::pid_t {
     0
 }
 
+fn gettid() -> libc::pid_t {
+    #[cfg(feature = "trace")]
+    unsafe {
+        libc::gettid()
+    }
+    #[cfg(not(feature = "trace"))]
+    0
+}
+
 struct Ignore;
 struct OpaqueData;
 impl symmetric_executor::GuestCallbackFunction for Ignore {}
@@ -204,7 +213,7 @@ impl symmetric_executor::GuestEventSubscription for EventSubscriptionInternal {
     fn dup(&self) -> symmetric_executor::EventSubscription {
         let res = symmetric_executor::EventSubscription::new(self.dup());
         // to avoid endless recursion de-activate the original
-        self.reset();
+        // self.reset();
         res
     }
 
@@ -214,7 +223,18 @@ impl symmetric_executor::GuestEventSubscription for EventSubscriptionInternal {
                 last_counter,
                 event,
             } => {
-                last_counter.store(event.lock().unwrap().counter, Ordering::Relaxed);
+                let current = event.lock().unwrap().counter;
+                let last = last_counter.load(Ordering::Relaxed);
+                if last != current && DEBUGGING {
+                    println!(
+                        "{} counter reset {}->{} {:x}",
+                        gettid(),
+                        last,
+                        current,
+                        self as *const Self as usize
+                    );
+                }
+                last_counter.store(current, Ordering::Relaxed);
             }
             EventType::SystemTime(_system_time) => (),
         }
@@ -361,12 +381,18 @@ impl symmetric_executor::Guest for Guest {
                 {
                     let mut new_tasks = NEW_TASKS.lock().unwrap();
                     if !new_tasks.is_empty() {
+                        if DEBUGGING {
+                            println!("{} Adding {} new tasks", gettid(), new_tasks.len());
+                        }
                         ex.active_tasks.append(&mut new_tasks);
                         // collect callbacks and timeouts again
                         continue;
                     }
                 }
                 if ex.active_tasks.is_empty() {
+                    if DEBUGGING {
+                        println!("{} No work left, exiting run()", gettid(),);
+                    }
                     break;
                 }
                 (count_events, count_waiting)
@@ -634,7 +660,27 @@ impl EventType {
                 let current_counter = event.lock().unwrap().counter;
                 let active = current_counter != last_counter.load(Ordering::Acquire);
                 if active {
+                    if DEBUGGING {
+                        println!(
+                            "{} transitioned ready {:x} {}->{} {:x}",
+                            gettid(),
+                            Arc::as_ptr(event) as usize,
+                            last_counter.load(Ordering::Relaxed),
+                            current_counter,
+                            self as *const Self as usize,
+                        );
+                    }
                     last_counter.store(current_counter, Ordering::Release);
+                } else {
+                    if DEBUGGING {
+                        println!(
+                            "{} waiting {:x} {:x} {}",
+                            gettid(),
+                            Arc::as_ptr(event) as usize,
+                            self as *const Self as usize,
+                            current_counter
+                        );
+                    }
                 }
                 active
             }

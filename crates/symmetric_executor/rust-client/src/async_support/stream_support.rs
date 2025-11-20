@@ -148,6 +148,11 @@ impl<T> StreamWriter<T> {
     pub fn cancel(&mut self) {
         todo!()
     }
+
+    #[cfg(feature = "trace")]
+    pub fn take_handle(&self) -> usize {
+        self.handle.take_handle()
+    }
 }
 
 impl<T: Unpin + Send> StreamWriter<T> {
@@ -207,6 +212,7 @@ impl<T: Unpin + Send> Sink<Vec<T>> for StreamWriter<T> {
                 Err(StreamState::Pending) => {
                     me.future = Some(Box::pin(async move {
                         wait_on(subscr).await;
+                        todo!();
                         // repeat start_writing?
                     })
                         as Pin<Box<dyn Future<Output = _> + Send>>);
@@ -309,6 +315,8 @@ impl<T> StreamReader<T> {
 impl<T: Send + Unpin + 'static> StreamReader<T> {
     pub async fn next(&mut self) -> Option<T> {
         let (status, mut buf) = self.read(Vec::with_capacity(1)).await;
+        #[cfg(feature = "trace")]
+        println!("self.read finished with status {:?}", status);
         match status {
             StreamResult::Complete(_) => buf.pop(),
             StreamResult::Dropped | StreamResult::Cancelled => None,
@@ -377,6 +385,8 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
         let me = &mut me2.reader;
 
         if me.future.is_none() {
+            #[cfg(feature = "trace")]
+            println!("creating future");
             if me.handle.is_write_closed() {
                 return Poll::Ready((StreamResult::Dropped, Vec::new()));
             }
@@ -423,14 +433,22 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                             break (StreamResult::Complete(count as usize), buffer2);
                         }
                         Err(StreamState::Eof) => break (StreamResult::Dropped, Vec::new()),
-                        Err(StreamState::Pending) => wait_on(subsc).await,
+                        Err(StreamState::Pending) => { wait_on(subsc).await; 
+                            #[cfg(feature = "trace")]
+                            println!("renew subscription");
+                        },
                     }
                 }
             }) as Pin<Box<dyn Future<Output = _> + Send>>);
+        } else {
+            #[cfg(feature = "trace")]
+            println!("reusing future");
         }
 
         match me.future.as_mut().unwrap().as_mut().poll(cx) {
             Poll::Ready(v) => {
+                #[cfg(feature = "trace")]
+                println!("future ready, removing");
                 me.future = None;
                 Poll::Ready(v)
             }

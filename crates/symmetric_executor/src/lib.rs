@@ -316,8 +316,13 @@ impl Executor {
                     );
                 }
                 count_events += 1;
-                task.callback
-                    .take_if(|CallbackEntry(f, data)| matches!((f)(*data), CallbackState::Ready));
+                task.callback.take_if(|CallbackEntry(f, data)| {
+                    let result = (f)(*data);
+                    if DEBUGGING {
+                        println!("{} callback returned {:?}", gettid(), result,);
+                    }
+                    matches!(result, CallbackState::Ready)
+                });
             } else {
                 count_waiting += 1;
                 match &task.inner {
@@ -363,56 +368,7 @@ impl symmetric_executor::Guest for Guest {
     type EventGenerator = EventGenerator;
 
     fn run() {
-        let change_event = EXECUTOR.lock().unwrap().change_event();
-        loop {
-            let mut ws = WaitSet::new(Some(change_event));
-            let (count_events, count_waiting) = {
-                let mut ex = EXECUTOR.lock().unwrap();
-                let (count_events, count_waiting) = Executor::tick(&mut ex, &mut ws);
-                {
-                    let mut new_tasks = NEW_TASKS.lock().unwrap();
-                    if !new_tasks.is_empty() {
-                        if DEBUGGING {
-                            println!("{} Adding {} new tasks", gettid(), new_tasks.len());
-                        }
-                        ex.active_tasks.append(&mut new_tasks);
-                        // collect callbacks and timeouts again
-                        continue;
-                    }
-                }
-                if ex.active_tasks.is_empty() {
-                    if DEBUGGING {
-                        println!("{} No work left, exiting run()", gettid(),);
-                    }
-                    break;
-                }
-                (count_events, count_waiting)
-            };
-            if count_events != 0 {
-                // we processed events, perhaps more became ready
-                if DEBUGGING {
-                    println!(
-                        "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
-                        gettid(),
-                        EXECUTOR.lock().unwrap().active_tasks.len()
-                    );
-                }
-                continue;
-            }
-            // with no work left the break should have occured
-            // assert!(!tvptr.is_null() || maxfd > 0);
-            if DEBUGGING {
-                ws.debug();
-            }
-            let selectresult = ws.wait();
-            // we could look directly for the timeout
-            if selectresult > 0 {
-                // reset active file descriptors
-                for i in ws.iter_active() {
-                    event_fd::consume(i);
-                }
-            }
-        }
+        run_until(None);
     }
 
     fn register(
@@ -474,9 +430,24 @@ impl symmetric_executor::Guest for Guest {
 
     fn block_on(trigger: symmetric_executor::EventSubscription) {
         let trigger: EventSubscriptionInternal = trigger.into_inner();
-        if trigger.inner.ready() {
-            // this can happen if the subscription is a bit older
-            return;
+        if DEBUGGING {
+            match &trigger.inner {
+                EventType::Triggered {
+                    last_counter: _,
+                    event,
+                } => println!(
+                    "{} block_on(Trigger {:x})",
+                    gettid(),
+                    Arc::as_ptr(event) as usize
+                ),
+                EventType::SystemTime(system_time) => {
+                    let diff = match system_time.duration_since(SystemTime::now()) {
+                        Ok(diff) => format!("{}.{}", diff.as_secs(), diff.subsec_nanos()),
+                        Err(err) => format!("{err}"),
+                    };
+                    println!("{} block_on(Time {})", gettid(), diff);
+                }
+            }
         }
         // part of this function is never used
         let queue = QueuedEvent::new(
@@ -486,12 +457,84 @@ impl symmetric_executor::Guest for Guest {
                 std::ptr::null_mut(),
             ),
         );
-        let mut set = WaitSet::new(None);
-        set.register(queue.event_fd);
-        let num_active = set.wait();
-        assert_eq!(num_active, 1);
-        let active_fd = set.iter_active().next().unwrap();
-        assert_eq!(active_fd, queue.event_fd);
+        if queue.inner.ready() {
+            if DEBUGGING {
+                println!("{} block_on already ready", gettid());
+            }
+            // this can happen if the subscription is a bit older
+            return;
+        }
+        run_until(Some(queue));
+        if DEBUGGING {
+            println!("{} block_on ENDED", gettid());
+        }
+    }
+}
+
+// TODO: Make this more efficient by polling the event?
+fn run_until(event: Option<QueuedEvent>) {
+    let change_event = EXECUTOR.lock().unwrap().change_event();
+    loop {
+        let mut ws = WaitSet::new(Some(change_event));
+        if let Some(event) = event {
+            ws.register(event.event_fd);
+        }
+        let (count_events, count_waiting) = {
+            let mut ex = EXECUTOR.lock().unwrap();
+            let (count_events, count_waiting) = Executor::tick(&mut ex, &mut ws);
+            {
+                let mut new_tasks = NEW_TASKS.lock().unwrap();
+                if !new_tasks.is_empty() {
+                    if DEBUGGING {
+                        println!("{} Adding {} new tasks", gettid(), new_tasks.len());
+                    }
+                    ex.active_tasks.append(&mut new_tasks);
+                    // collect callbacks and timeouts again
+                    continue;
+                }
+            }
+            if ex.active_tasks.is_empty() {
+                if DEBUGGING {
+                    println!("{} No work left, exiting run_until()", gettid(),);
+                }
+                break;
+            }
+            (count_events, count_waiting)
+        };
+        if count_events != 0 {
+            // we processed events, perhaps more became ready
+            if DEBUGGING {
+                println!(
+                        "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
+                        gettid(),
+                        EXECUTOR.lock().unwrap().active_tasks.len()
+                    );
+            }
+            continue;
+        }
+        // with no work left the break should have occured
+        // assert!(!tvptr.is_null() || maxfd > 0);
+        if DEBUGGING {
+            ws.debug();
+        }
+        let selectresult = ws.wait();
+        let mut exit = false;
+        // we could look directly for the timeout
+        if selectresult > 0 {
+            // reset active file descriptors
+            for i in ws.iter_active() {
+                event_fd::consume(i);
+                if event.map(|event| i == event.event_fd) {
+                    exit = true;
+                    if DEBUGGING {
+                        println!("{} Awaited signal active", gettid(),);
+                    }
+                }
+            }
+        }
+        if exit {
+            break;
+        }
     }
 }
 

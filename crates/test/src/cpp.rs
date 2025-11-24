@@ -57,7 +57,6 @@ impl LanguageMethods for Cpp {
             "async-trait-function.wit"
             | "error-context.wit"
             | "futures.wit"
-            | "multiversion"
             | "resources-with-futures.wit"
             | "resources-with-streams.wit"
             | "streams.wit" => true,

@@ -476,7 +476,7 @@ fn run_until(event: Option<QueuedEvent>) {
     let change_event = EXECUTOR.lock().unwrap().change_event();
     loop {
         let mut ws = WaitSet::new(Some(change_event));
-        if let Some(event) = event {
+        if let Some(event) = event.as_ref() {
             ws.register(event.event_fd);
         }
         let (count_events, count_waiting) = {
@@ -524,7 +524,7 @@ fn run_until(event: Option<QueuedEvent>) {
             // reset active file descriptors
             for i in ws.iter_active() {
                 event_fd::consume(i);
-                if event.map(|event| i == event.event_fd) {
+                if event.as_ref().map_or(false, |event| i == event.event_fd) {
                     exit = true;
                     if DEBUGGING {
                         println!("{} Awaited signal active", gettid(),);

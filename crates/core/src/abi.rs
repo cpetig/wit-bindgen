@@ -1382,7 +1382,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     }
 
                     // All async/non-async cases with no results
-                    (_, None) => {
+                    (_, None, false) => {
                         if async_ {
                             let name = &format!("[task-return]{}", func.name);
                             self.emit(&Instruction::AsyncTaskReturn {

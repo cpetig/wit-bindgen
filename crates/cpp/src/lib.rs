@@ -11,7 +11,8 @@ use std::{
 use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
-    make_external_component, make_external_symbol, symmetric, uwrite, uwriteln,
+    make_external_component, make_external_symbol, name_package_module, symmetric, uwrite,
+    uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
@@ -972,9 +973,11 @@ fn namespace(resolve: &Resolve, owner: &TypeOwner, guest_export: bool, opts: &Op
         TypeOwner::World(w) => result.push(to_c_ident(&resolve.worlds[*w].name)),
         TypeOwner::Interface(i) => {
             let iface = &resolve.interfaces[*i];
-            let pkg = &resolve.packages[iface.package.unwrap()];
+            let pkg_id = iface.package.unwrap();
+            let pkg = &resolve.packages[pkg_id];
             result.push(to_c_ident(&pkg.name.namespace));
-            result.push(to_c_ident(&pkg.name.name));
+            // Use name_package_module to get version-specific package names
+            result.push(to_c_ident(&name_package_module(resolve, pkg_id)));
             if let Some(name) = &iface.name {
                 result.push(to_c_ident(name));
             }

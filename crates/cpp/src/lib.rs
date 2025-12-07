@@ -3347,7 +3347,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     );
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
                 } else {
-                    match (self.variant, self.r#gen.r#gen.opts.api_style, self.r#gen.r#gen.opts.symmetric) {
+                    match (
+                        self.variant,
+                        self.r#gen.r#gen.opts.api_style,
+                        self.r#gen.r#gen.opts.symmetric,
+                    ) {
                         (AbiVariant::GuestExport, APIStyle::Symmetric, true) => format!(
                             "wit::span<{inner} const>(reinterpret_cast<{inner}*>({}), {len})",
                             operands[0]
@@ -3360,12 +3364,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             "wit::vector<{inner}>::from_view(wit::span<{inner} const>(static_cast<{inner} const *>({}), {len}))",
                             operands[0]
                         ),
-                        (AbiVariant::GuestImport, _, _) |
-                        (AbiVariant::GuestExport, APIStyle::Asymmetric, false) => format!(
-                            "wit::vector<{inner}>(({inner}*)({}), {len})",
-                            operands[0]
-                        ),
-                        (_, _, _) => todo!()
+                        (AbiVariant::GuestImport, _, _)
+                        | (AbiVariant::GuestExport, APIStyle::Asymmetric, false) => {
+                            format!("wit::vector<{inner}>(({inner}*)({}), {len})", operands[0])
+                        }
+                        (_, _, _) => todo!(),
                     }
                 };
                 results.push(result);
@@ -3390,7 +3393,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     );
                     format!("std::move(string{tmp})")
                 } else if self.r#gen.r#gen.opts.host {
-                    uwriteln!(self.src, "char const* ptr{} = reinterpret_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n", tmp, operands[0]);
+                    uwriteln!(
+                        self.src,
+                        "char const* ptr{} = reinterpret_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n",
+                        tmp,
+                        operands[0]
+                    );
                     format!("{string_view}(ptr{tmp}, {len})")
                 } else if self.r#gen.r#gen.opts.short_cut
                     || (self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric

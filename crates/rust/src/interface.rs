@@ -1,8 +1,8 @@
 use crate::bindgen::{FunctionBindgen, POINTER_SIZE_EXPRESSION};
 use crate::{
-    classify_constructor_return_type, full_wit_type_name, int_repr, to_rust_ident,
-    to_upper_camel_case, wasm_type, ConstructorReturnType, FnSig, Identifier, InterfaceName,
-    Ownership, RuntimeItem, RustFlagsRepr, RustWasm, TypeGeneration,
+    ConstructorReturnType, FnSig, Identifier, InterfaceName, Ownership, RuntimeItem, RustFlagsRepr,
+    RustWasm, TypeGeneration, classify_constructor_return_type, full_wit_type_name, int_repr,
+    to_rust_ident, to_upper_camel_case, wasm_type,
 };
 use anyhow::Result;
 use heck::*;

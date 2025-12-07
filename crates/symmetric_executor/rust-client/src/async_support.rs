@@ -158,7 +158,11 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
 }
 
 extern "C" fn symmetric_callback<F: FusedFuture<Output = ()>>(obj: *mut ()) -> CallbackState {
-    let _ = symmetric_callback_sub::<F>(obj);
+    let wait_on = symmetric_callback_sub::<F>(obj);
+    // drop the subscription as it's no longer needed
+    if !wait_on.is_null() {
+        let _ = unsafe { EventSubscription::from_handle(wait_on as usize) };
+    }
     // obj already re-registered on new eventby _sub, stop calling
     // from the old event
     CallbackState::Ready

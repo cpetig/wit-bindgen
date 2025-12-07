@@ -120,7 +120,7 @@ template <class T> struct stream_writer {
             auto capacity = buffer->Capacity();
             uint8_t* dest = (uint8_t*)buffer->GetAddress().into_handle();
             auto elements = data.size();
-            if (elements<capacity) elements=capacity;
+            if (capacity<elements) elements=capacity;
             for (uint32_t i = 0; i<elements; ++i) {
                 wit::StreamProperties<T>::lower(std::move(data[i]), dest+(i*wit::StreamProperties<T>::lowered_size));
             }

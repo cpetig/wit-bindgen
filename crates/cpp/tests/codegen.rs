@@ -69,7 +69,7 @@ macro_rules! codegen_test {
                 $test.as_ref(),
                 |resolve, world, files| {
                     let mut opts = wit_bindgen_cpp::Opts::default();
-                    opts.new_api = true;
+                    opts.api_style = TBD;
                     opts.build().generate(resolve, world, files).unwrap()
                 },
                 verify,

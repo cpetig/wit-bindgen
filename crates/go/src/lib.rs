@@ -370,7 +370,7 @@ impl Go {
                 );
 
                 let lift_result =
-                    abi::lift_from_memory(resolve, &mut generator, "src".to_string(), &ty);
+                    abi::lift_from_memory(resolve, &mut generator, "src".to_string(), &ty, false);
                 let lift = mem::take(&mut generator.src);
 
                 abi::lower_to_memory(
@@ -379,6 +379,7 @@ impl Go {
                     "dst".to_string(),
                     "value".to_string(),
                     &ty,
+                    false,
                 );
                 let lower = mem::take(&mut generator.src);
                 data.extend(InterfaceData::from_generator_and_code(
@@ -924,6 +925,7 @@ impl Go {
                         format!("unsafe.Add(unsafe.Pointer({params_pointer}), {offset})"),
                         name.clone(),
                         ty,
+                        false,
                     );
                 }
 
@@ -940,7 +942,7 @@ impl Go {
                     .iter()
                     .zip(&func.params)
                     .flat_map(|(name, (_, ty))| {
-                        abi::lower_flat(resolve, &mut generator, name.clone(), ty)
+                        abi::lower_flat(resolve, &mut generator, name.clone(), ty, false)
                     })
                     .collect();
                 (mem::take(&mut generator.src), wasm_params)
@@ -959,6 +961,7 @@ impl Go {
                     &mut generator,
                     IMPORT_RETURN_AREA.to_string(),
                     &result,
+                    false,
                 );
                 let code = mem::take(&mut generator.src);
                 format!("{code}\nreturn {result}")

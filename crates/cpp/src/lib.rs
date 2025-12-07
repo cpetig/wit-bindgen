@@ -4201,7 +4201,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             .declare_import(&module_name, name, &sig.params, &sig.results);
 
                     // ... then call the function with all our operands
-                    if !sig.results.empty() {
+                    if !sig.results.is_empty() {
                         self.src.push_str("auto ret = ");
                         results.push("ret".to_string());
                     }

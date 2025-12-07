@@ -225,15 +225,15 @@ impl LanguageMethods for Cpp {
             for i in runner.cpp_state.as_ref().unwrap().native_deps.iter() {
                 cmd.arg(format!("-L{}", i.as_os_str().to_str().unwrap()));
             }
-            if !matches!(compile.component.kind, Kind::Runner) {
-                cmd.arg("-shared");
-            } else {
-                let mut bindings_parent: PathBuf = compile.bindings_dir.into();
-                bindings_parent.pop();
-                cmd.arg("-L")
-                    .arg(bindings_parent.to_str().unwrap().to_string());
-                cmd.arg("-ltest");
-            }
+            //            if !matches!(compile.component.kind, Kind::Runner) {
+            cmd.arg("-shared");
+            // } else {
+            //     let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+            //     bindings_parent.pop();
+            //     cmd.arg("-L")
+            //         .arg(bindings_parent.to_str().unwrap().to_string());
+            //     cmd.arg("-ltest");
+            // }
             cmd.arg("-L")
                 .arg(helper_dir3.to_str().unwrap().to_string())
                 .arg("-lruntime")

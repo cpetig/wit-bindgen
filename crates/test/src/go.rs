@@ -34,7 +34,7 @@ impl LanguageMethods for Go {
         &["--generate-stubs"]
     }
 
-    fn prepare(&self, runner: &mut Runner<'_>) -> Result<()> {
+    fn prepare(&self, runner: &mut Runner<'_>, _name: &str) -> Result<()> {
         let cwd = env::current_dir()?;
         let dir = cwd.join(&runner.opts.artifacts).join("go");
 

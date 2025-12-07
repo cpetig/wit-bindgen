@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use rayon::prelude::*;
 use std::borrow::Cow;
@@ -18,6 +18,7 @@ mod config;
 mod cpp;
 mod csharp;
 mod custom;
+mod go;
 mod moonbit;
 mod runner;
 mod rust;
@@ -201,6 +202,7 @@ enum Language {
     Wat,
     Csharp,
     MoonBit,
+    Go,
     Custom(custom::Language),
 }
 
@@ -423,6 +425,7 @@ impl Runner<'_> {
             "wat" => Language::Wat,
             "cs" => Language::Csharp,
             "mbt" => Language::MoonBit,
+            "go" => Language::Go,
             other => Language::Custom(custom::Language::lookup(self, other)?),
         };
 
@@ -717,7 +720,7 @@ impl Runner<'_> {
 
         // Next, massage the data a bit. Create a map of all tests to where
         // their components are located. Then perform a product of runners/tests
-        // to generate a list of test cases. Finally actually execute the testj
+        // to generate a list of test cases. Finally actually execute the test
         // cases.
         let mut compiled_components = HashMap::new();
         for (test, component, path) in compilations {
@@ -781,7 +784,7 @@ impl Runner<'_> {
     ) -> Result<()> {
         /// Recursive function which walks over `worlds`, the list of worlds
         /// that `test` expects, one by one. For each world it finds a matching
-        /// component in `components` adn then recurses for the next item in the
+        /// component in `components` and then recurses for the next item in the
         /// `worlds` list.
         ///
         /// Once `worlds` is empty the `test` list, a temporary vector, is
@@ -900,7 +903,7 @@ impl Runner<'_> {
         // and friends.
         let composed = if self.is_symmetric() {
             Vec::new()
-        } else if case.config.wac.is_none() && test_components.len() == 1 {
+        } else if case.config.wac.is_none() {
             self.compose_wasm_with_wasm_compose(runner_wasm, test_components)?
         } else {
             self.compose_wasm_with_wac(case, runner, runner_wasm, test_components)?
@@ -970,13 +973,32 @@ impl Runner<'_> {
         runner_wasm: &Path,
         test_components: &[(&Component, &Path)],
     ) -> Result<Vec<u8>> {
-        assert!(test_components.len() == 1);
-        let test_wasm = test_components[0].1;
-        let mut config = wasm_compose::config::Config::default();
-        config.definitions = vec![test_wasm.to_path_buf()];
-        wasm_compose::composer::ComponentComposer::new(runner_wasm, &config)
-            .compose()
-            .with_context(|| format!("failed to compose {runner_wasm:?} with {test_wasm:?}"))
+        assert!(test_components.len() > 0);
+        let mut last_bytes = None;
+        let mut path: PathBuf;
+        for (i, (_component, component_path)) in test_components.iter().enumerate() {
+            let main = match last_bytes.take() {
+                Some(bytes) => {
+                    path = runner_wasm.with_extension(&format!("composition{i}.wasm"));
+                    std::fs::write(&path, &bytes)
+                        .with_context(|| format!("failed to write temporary file {path:?}"))?;
+                    path.as_path()
+                }
+                None => runner_wasm,
+            };
+
+            let mut config = wasm_compose::config::Config::default();
+            config.definitions = vec![component_path.to_path_buf()];
+            last_bytes = Some(
+                wasm_compose::composer::ComponentComposer::new(main, &config)
+                    .compose()
+                    .with_context(|| {
+                        format!("failed to compose {main:?} with {component_path:?}")
+                    })?,
+            );
+        }
+
+        Ok(last_bytes.unwrap())
     }
 
     fn compose_wasm_with_wac(
@@ -1107,23 +1129,20 @@ status: {}",
             .context("failed to load WIT")?;
         let world = resolve.select_world(&[pkg], Some(&compile.component.bindgen.world))?;
         let mut module = fs::read(&p1).context("failed to read wasm file")?;
-        let encoded = wit_component::metadata::encode(&resolve, world, StringEncoding::UTF8, None)?;
 
-        let section = wasm_encoder::CustomSection {
-            name: Cow::Borrowed("component-type"),
-            data: Cow::Borrowed(&encoded),
-        };
-        module.push(section.id());
-        section.encode(&mut module);
+        if !has_component_type_sections(&module) {
+            let encoded =
+                wit_component::metadata::encode(&resolve, world, StringEncoding::UTF8, None)?;
+            let section = wasm_encoder::CustomSection {
+                name: Cow::Borrowed("component-type"),
+                data: Cow::Borrowed(&encoded),
+            };
+            module.push(section.id());
+            section.encode(&mut module);
+        }
 
-        let wasi_adapter = match compile.component.kind {
-            Kind::Runner => {
-                wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_COMMAND_ADAPTER
-            }
-            Kind::Test => {
-                wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER
-            }
-        };
+        let wasi_adapter =
+            wasi_preview1_component_adapter_provider::WASI_SNAPSHOT_PREVIEW1_REACTOR_ADAPTER;
 
         let component = ComponentEncoder::default()
             .module(module.as_slice())
@@ -1181,6 +1200,18 @@ status: {}",
     fn is_symmetric(&self) -> bool {
         self.opts.symmetric
     }
+}
+
+fn has_component_type_sections(wasm: &[u8]) -> bool {
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        match payload {
+            Ok(wasmparser::Payload::CustomSection(s)) if s.name().starts_with("component-type") => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 struct StepResult<'a> {
@@ -1340,6 +1371,7 @@ impl Language {
         Language::Wat,
         Language::Csharp,
         Language::MoonBit,
+        Language::Go,
     ];
 
     fn obj(&self) -> &dyn LanguageMethods {
@@ -1350,6 +1382,7 @@ impl Language {
             Language::Wat => &wat::Wat,
             Language::Csharp => &csharp::Csharp,
             Language::MoonBit => &moonbit::MoonBit,
+            Language::Go => &go::Go,
             Language::Custom(custom) => custom,
         }
     }

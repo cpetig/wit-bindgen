@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{Kind, LanguageMethods, Runner};
+use crate::{LanguageMethods, Runner};
 use anyhow::Context;
 use heck::ToSnakeCase;
 use serde::Deserialize;
@@ -211,15 +211,9 @@ impl LanguageMethods for Cpp {
         for flag in Vec::from(config.cflags) {
             cmd.arg(flag);
         }
-        match compile.component.kind {
-            Kind::Runner => {}
-            Kind::Test => {
-                if !runner.is_symmetric() {
-                    cmd.arg("-mexec-model=reactor");
-                }
-            }
-        }
-        if runner.is_symmetric() {
+        if !runner.is_symmetric() {
+            cmd.arg("-mexec-model=reactor");
+        } else {
             cmd.arg("-fPIC").arg(format!(
                 "-Wl,--version-script={}",
                 compile
@@ -231,15 +225,15 @@ impl LanguageMethods for Cpp {
             for i in runner.cpp_state.as_ref().unwrap().native_deps.iter() {
                 cmd.arg(format!("-L{}", i.as_os_str().to_str().unwrap()));
             }
-            if !matches!(compile.component.kind, Kind::Runner) {
-                cmd.arg("-shared");
-            } else {
-                let mut bindings_parent: PathBuf = compile.bindings_dir.into();
-                bindings_parent.pop();
-                cmd.arg("-L")
-                    .arg(bindings_parent.to_str().unwrap().to_string());
-                cmd.arg("-ltest");
-            }
+            //            if !matches!(compile.component.kind, Kind::Runner) {
+            cmd.arg("-shared");
+            // } else {
+            //     let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+            //     bindings_parent.pop();
+            //     cmd.arg("-L")
+            //         .arg(bindings_parent.to_str().unwrap().to_string());
+            //     cmd.arg("-ltest");
+            // }
             cmd.arg("-L")
                 .arg(helper_dir3.to_str().unwrap().to_string())
                 .arg("-lruntime")

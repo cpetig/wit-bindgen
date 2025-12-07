@@ -1,6 +1,6 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::{env::consts::DLL_EXTENSION, fmt::Write, path::PathBuf, process::Command};
-use wit_bindgen_core::{abi, make_external_symbol, uwriteln, wit_parser, Files, WorldGenerator};
+use wit_bindgen_core::{Files, WorldGenerator, abi, make_external_symbol, uwriteln, wit_parser};
 
 #[derive(Default)]
 struct ImportLib {

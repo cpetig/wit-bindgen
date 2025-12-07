@@ -10,6 +10,7 @@ use std::{
 };
 use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
+    Files, InterfaceGenerator, Source, Types, WorldGenerator,
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
     make_external_component, make_external_symbol, name_package_module, symmetric, uwrite,
     uwriteln,
@@ -18,7 +19,6 @@ use wit_bindgen_core::{
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
         WorldKey,
     },
-    Files, InterfaceGenerator, Source, Types, WorldGenerator,
 };
 
 mod wamr;
@@ -364,7 +364,7 @@ impl Cpp {
 
         CppInterfaceGenerator {
             _src: Source::default(),
-            gen: self,
+            r#gen: self,
             resolve,
             interface: None,
             _name: name,
@@ -608,15 +608,15 @@ impl WorldGenerator for Cpp {
         self.imported_interfaces.insert(id);
         let wasm_import_module = resolve.name_world_key(name);
         let binding = Some(name);
-        let mut gen = self.interface(resolve, binding, true, Some(wasm_import_module));
-        gen.interface = Some(id);
-        gen.types(id);
-        let namespace = namespace(resolve, &TypeOwner::Interface(id), false, &gen.gen.opts);
+        let mut r#gen = self.interface(resolve, binding, true, Some(wasm_import_module));
+        r#gen.interface = Some(id);
+        r#gen.types(id);
+        let namespace = namespace(resolve, &TypeOwner::Interface(id), false, &r#gen.r#gen.opts);
 
         for (_name, func) in resolve.interfaces[id].functions.iter() {
             if matches!(func.kind, FunctionKind::Freestanding) {
-                gen.gen.h_src.change_namespace(&namespace);
-                gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestImport);
+                r#gen.r#gen.h_src.change_namespace(&namespace);
+                r#gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestImport);
             }
         }
         self.finish_file(&namespace, store);
@@ -646,15 +646,15 @@ impl WorldGenerator for Cpp {
         self.imported_interfaces.remove(&id);
         let wasm_import_module = resolve.name_world_key(name);
         let binding = Some(name);
-        let mut gen = self.interface(resolve, binding, false, Some(wasm_import_module));
-        gen.interface = Some(id);
-        gen.types(id);
-        let namespace = namespace(resolve, &TypeOwner::Interface(id), true, &gen.gen.opts);
+        let mut r#gen = self.interface(resolve, binding, false, Some(wasm_import_module));
+        r#gen.interface = Some(id);
+        r#gen.types(id);
+        let namespace = namespace(resolve, &TypeOwner::Interface(id), true, &r#gen.r#gen.opts);
 
         for (_name, func) in resolve.interfaces[id].functions.iter() {
             if matches!(func.kind, FunctionKind::Freestanding) {
-                gen.gen.h_src.change_namespace(&namespace);
-                gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestExport);
+                r#gen.r#gen.h_src.change_namespace(&namespace);
+                r#gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestExport);
             }
         }
         self.finish_file(&namespace, store);
@@ -672,13 +672,13 @@ impl WorldGenerator for Cpp {
         let name = WorldKey::Name("$root".to_string()); //WorldKey::Name(resolve.worlds[world].name.clone());
         let wasm_import_module = resolve.name_world_key(&name);
         let binding = Some(name);
-        let mut gen = self.interface(resolve, binding.as_ref(), true, Some(wasm_import_module));
-        let namespace = namespace(resolve, &TypeOwner::World(world), false, &gen.gen.opts);
+        let mut r#gen = self.interface(resolve, binding.as_ref(), true, Some(wasm_import_module));
+        let namespace = namespace(resolve, &TypeOwner::World(world), false, &r#gen.r#gen.opts);
 
         for (_name, func) in funcs.iter() {
             if matches!(func.kind, FunctionKind::Freestanding) {
-                gen.gen.h_src.change_namespace(&namespace);
-                gen.generate_function(func, &TypeOwner::World(world), AbiVariant::GuestImport);
+                r#gen.r#gen.h_src.change_namespace(&namespace);
+                r#gen.generate_function(func, &TypeOwner::World(world), AbiVariant::GuestImport);
             }
         }
     }
@@ -692,13 +692,13 @@ impl WorldGenerator for Cpp {
     ) -> anyhow::Result<()> {
         let name = WorldKey::Name(resolve.worlds[world].name.clone());
         let binding = Some(name);
-        let mut gen = self.interface(resolve, binding.as_ref(), false, None);
-        let namespace = namespace(resolve, &TypeOwner::World(world), true, &gen.gen.opts);
+        let mut r#gen = self.interface(resolve, binding.as_ref(), false, None);
+        let namespace = namespace(resolve, &TypeOwner::World(world), true, &r#gen.r#gen.opts);
 
         for (_name, func) in funcs.iter() {
             if matches!(func.kind, FunctionKind::Freestanding) {
-                gen.gen.h_src.change_namespace(&namespace);
-                gen.generate_function(func, &TypeOwner::World(world), AbiVariant::GuestExport);
+                r#gen.r#gen.h_src.change_namespace(&namespace);
+                r#gen.generate_function(func, &TypeOwner::World(world), AbiVariant::GuestExport);
             }
         }
         Ok(())
@@ -711,9 +711,9 @@ impl WorldGenerator for Cpp {
         types: &[(&str, TypeId)],
         _files: &mut Files,
     ) {
-        let mut gen = self.interface(resolve, None, true, Some("$root".to_string()));
+        let mut r#gen = self.interface(resolve, None, true, Some("$root".to_string()));
         for (name, id) in types.iter() {
-            gen.define_type(name, *id);
+            r#gen.define_type(name, *id);
         }
     }
 
@@ -871,7 +871,12 @@ impl WorldGenerator for Cpp {
                 uwriteln!(c_str.src, "  }};");
             }
             for i in self.host_functions.iter() {
-                uwriteln!(c_str.src, "  wasm_runtime_register_natives(\"{}\", {1}_funs, sizeof({1}_funs)/sizeof(NativeSymbol));", i.0, i.0.replace(&[':','.','-','+'], "_").to_snake_case());
+                uwriteln!(
+                    c_str.src,
+                    "  wasm_runtime_register_natives(\"{}\", {1}_funs, sizeof({1}_funs)/sizeof(NativeSymbol));",
+                    i.0,
+                    i.0.replace(&[':', '.', '-', '+'], "_").to_snake_case()
+                );
             }
             uwriteln!(c_str.src, "}}");
         }
@@ -1041,7 +1046,7 @@ impl SourceWithState {
 
 struct CppInterfaceGenerator<'a> {
     _src: Source,
-    gen: &'a mut Cpp,
+    r#gen: &'a mut Cpp,
     resolve: &'a Resolve,
     interface: Option<InterfaceId>,
     _name: Option<&'a WorldKey>,
@@ -1062,10 +1067,10 @@ impl CppInterfaceGenerator<'_> {
             let ty = &self.resolve().types[*id];
             if matches!(&ty.kind, TypeDefKind::Resource) {
                 let pascal = name.to_upper_camel_case();
-                let guest_import = self.gen.imported_interfaces.contains(&iface);
-                let namespc = namespace(self.resolve, &ty.owner, !guest_import, &self.gen.opts);
-                self.gen.h_src.change_namespace(&namespc);
-                uwriteln!(self.gen.h_src.src, "class {pascal};");
+                let guest_import = self.r#gen.imported_interfaces.contains(&iface);
+                let namespc = namespace(self.resolve, &ty.owner, !guest_import, &self.r#gen.opts);
+                self.r#gen.h_src.change_namespace(&namespc);
+                uwriteln!(self.r#gen.h_src.src, "class {pascal};");
             }
         }
 
@@ -1120,15 +1125,16 @@ impl CppInterfaceGenerator<'_> {
             Default::default(),
             self.interface
                 .map(TypeOwner::Interface)
-                .unwrap_or(TypeOwner::World(self.gen.world_id.unwrap())),
+                .unwrap_or(TypeOwner::World(self.r#gen.world_id.unwrap())),
         ));
-        let mut namespace = namespace(self.resolve, &owner, guest_export, &self.gen.opts);
+        let mut namespace = namespace(self.resolve, &owner, guest_export, &self.r#gen.opts);
         let is_drop = is_special_method(func);
         let func_name_h = if !matches!(&func.kind, FunctionKind::Freestanding) {
             namespace.push(object.clone());
             if let FunctionKind::Constructor(_i) = &func.kind {
                 // Fallible constructors return result<T, E> and are static factory methods
-                let is_fallible_constructor = self.gen.is_fallible_constructor(self.resolve, func);
+                let is_fallible_constructor =
+                    self.r#gen.is_fallible_constructor(self.resolve, func);
 
                 if is_fallible_constructor {
                     String::from("Create")
@@ -1140,7 +1146,7 @@ impl CppInterfaceGenerator<'_> {
             } else {
                 match is_drop {
                     SpecialMethod::ResourceDrop => {
-                        if self.gen.opts.host_side() && !guest_export {
+                        if self.r#gen.opts.host_side() && !guest_export {
                             "Dtor".to_string()
                         } else if guest_export {
                             "ResourceDrop".to_string()
@@ -1149,7 +1155,7 @@ impl CppInterfaceGenerator<'_> {
                         }
                     }
                     SpecialMethod::Dtor => {
-                        if self.gen.opts.host_side() && guest_export {
+                        if self.r#gen.opts.host_side() && guest_export {
                             "~".to_string() + &object
                         } else {
                             "Dtor".to_string()
@@ -1170,13 +1176,13 @@ impl CppInterfaceGenerator<'_> {
     // local patching of borrows function needs more complex solution
     fn patched_wasm_signature(&self, variant: AbiVariant, func: &Function) -> WasmSignature {
         self.resolve
-            .wasm_signature_symmetric(variant, func, self.gen.opts.symmetric)
+            .wasm_signature_symmetric(variant, func, self.r#gen.opts.symmetric)
     }
 
     // print the signature of the guest export (lowered (wasm) function calling into highlevel)
     fn print_export_signature(&mut self, func: &Function, variant: AbiVariant) -> Vec<String> {
         let is_drop = is_special_method(func);
-        let id_type = if self.gen.opts.symmetric {
+        let id_type = if self.r#gen.opts.symmetric {
             WasmType::Pointer
         } else {
             WasmType::I32
@@ -1219,7 +1225,7 @@ impl CppInterfaceGenerator<'_> {
         };
         let mut module_name = self.wasm_import_module.clone();
         let mut symbol_variant = variant;
-        if self.gen.opts.symmetric && matches!(variant, AbiVariant::GuestExport) {
+        if self.r#gen.opts.symmetric && matches!(variant, AbiVariant::GuestExport) {
             // symmetric doesn't distinguish
             symbol_variant = AbiVariant::GuestImport;
         }
@@ -1232,93 +1238,96 @@ impl CppInterfaceGenerator<'_> {
             )
         {
             module_name = Some(String::from("[export]") + &module_name.unwrap());
-            if self.gen.opts.host_side() {
+            if self.r#gen.opts.host_side() {
                 symbol_variant = AbiVariant::GuestImport;
             }
         }
-        let func_name = if self.gen.opts.symmetric && matches!(is_drop, SpecialMethod::Dtor) {
+        let func_name = if self.r#gen.opts.symmetric && matches!(is_drop, SpecialMethod::Dtor) {
             // replace [dtor] with [resource_drop]
             format!("[resource_drop]{}", &func.name[6..])
         } else {
             func.name.clone()
         };
-        if self.gen.opts.short_cut {
-            uwrite!(self.gen.c_src.src, "extern \"C\" ");
-        } else if self.gen.opts.host {
-            self.gen.c_src.src.push_str("static ");
+        if self.r#gen.opts.short_cut {
+            uwrite!(self.r#gen.c_src.src, "extern \"C\" ");
+        } else if self.r#gen.opts.host {
+            self.r#gen.c_src.src.push_str("static ");
         } else {
             let module_prefix = module_name.as_ref().map_or(String::default(), |name| {
                 let mut res = name.clone();
                 res.push('#');
                 res
             });
-            if self.gen.opts.symmetric {
-                uwriteln!(self.gen.c_src.src, r#"extern "C" "#);
+            if self.r#gen.opts.symmetric {
+                uwriteln!(self.r#gen.c_src.src, r#"extern "C" "#);
             } else {
                 uwriteln!(
-                    self.gen.c_src.src,
+                    self.r#gen.c_src.src,
                     r#"extern "C" __attribute__((__export_name__("{module_prefix}{func_name}")))"#
                 );
             }
         }
-        let return_via_pointer = signature.retptr && self.gen.opts.host_side();
-        self.gen
+        let return_via_pointer = signature.retptr && self.r#gen.opts.host_side();
+        self.r#gen
             .c_src
             .src
             .push_str(if signature.results.is_empty() || return_via_pointer {
                 "void"
             } else {
-                self.gen.opts.wasm_type(signature.results[0])
+                self.r#gen.opts.wasm_type(signature.results[0])
             });
-        self.gen.c_src.src.push_str(" ");
+        self.r#gen.c_src.src.push_str(" ");
         let export_name = match module_name {
             Some(ref module_name) => make_external_symbol(&module_name, &func_name, symbol_variant),
             None => make_external_component(&func_name),
         };
         // Add prefix to C ABI export functions to avoid conflicts with C++ namespaces
-        self.gen.c_src.src.push_str("__wasm_export_");
-        if let Some(prefix) = self.gen.opts.export_prefix.as_ref() {
-            self.gen.c_src.src.push_str(prefix);
+        self.r#gen.c_src.src.push_str("__wasm_export_");
+        if let Some(prefix) = self.r#gen.opts.export_prefix.as_ref() {
+            self.r#gen.c_src.src.push_str(prefix);
         }
-        self.gen.c_src.src.push_str(&export_name);
-        self.gen.c_src.src.push_str("(");
+        self.r#gen.c_src.src.push_str(&export_name);
+        self.r#gen.c_src.src.push_str("(");
         let mut first_arg = true;
-        if self.gen.opts.host {
-            self.gen.c_src.src.push_str("wasm_exec_env_t exec_env");
+        if self.r#gen.opts.host {
+            self.r#gen.c_src.src.push_str("wasm_exec_env_t exec_env");
             first_arg = false;
         }
         let mut params = Vec::new();
         for (n, ty) in signature.params.iter().enumerate() {
             let name = format!("arg{n}");
             if !first_arg {
-                self.gen.c_src.src.push_str(", ");
+                self.r#gen.c_src.src.push_str(", ");
             } else {
                 first_arg = false;
             }
-            self.gen.c_src.src.push_str(self.gen.opts.wasm_type(*ty));
-            self.gen.c_src.src.push_str(" ");
-            self.gen.c_src.src.push_str(&name);
+            self.r#gen
+                .c_src
+                .src
+                .push_str(self.r#gen.opts.wasm_type(*ty));
+            self.r#gen.c_src.src.push_str(" ");
+            self.r#gen.c_src.src.push_str(&name);
             params.push(name);
         }
         if return_via_pointer {
             if !first_arg {
-                self.gen.c_src.src.push_str(", ");
+                self.r#gen.c_src.src.push_str(", ");
             }
-            self.gen.c_src.src.push_str(self.gen.opts.ptr_type());
-            self.gen.c_src.src.push_str(" resultptr");
+            self.r#gen.c_src.src.push_str(self.r#gen.opts.ptr_type());
+            self.r#gen.c_src.src.push_str(" resultptr");
             params.push("resultptr".into());
         }
-        self.gen.c_src.src.push_str(")\n");
-        if self.gen.opts.host_side() {
+        self.r#gen.c_src.src.push_str(")\n");
+        if self.r#gen.opts.host_side() {
             let signature = wamr::wamr_signature(self.resolve, func);
             let remember = HostFunction {
                 wasm_name: func_name.clone(),
                 wamr_signature: signature.to_string(),
                 host_name: export_name.clone(),
             };
-            self.gen
+            self.r#gen
                 .host_functions
-                .entry(module_name.unwrap_or(self.gen.world.clone()))
+                .entry(module_name.unwrap_or(self.r#gen.world.clone()))
                 .and_modify(|v| v.push(remember.clone()))
                 .or_insert(vec![remember]);
         }
@@ -1342,19 +1351,19 @@ impl CppInterfaceGenerator<'_> {
         // let mut sig = String::new();
 
         // Check if this is a fallible constructor (returns result<T, E>)
-        let is_fallible_constructor = self.gen.is_fallible_constructor(self.resolve, func);
+        let is_fallible_constructor = self.r#gen.is_fallible_constructor(self.resolve, func);
 
-        if self.gen.opts.symmetric && matches!(is_drop, SpecialMethod::ResourceNew) {
+        if self.r#gen.opts.symmetric && matches!(is_drop, SpecialMethod::ResourceNew) {
             res.result = "uint8_t*".into();
         } else
         // not for ctor nor imported dtor on guest (except fallible constructors)
         if (!matches!(&func.kind, FunctionKind::Constructor(_)) || is_fallible_constructor)
             && !(matches!(is_drop, SpecialMethod::ResourceDrop)
                 && matches!(abi_variant, AbiVariant::GuestImport)
-                && !self.gen.opts.host_side())
+                && !self.r#gen.opts.host_side())
             && !(matches!(is_drop, SpecialMethod::Dtor)
                 && matches!(abi_variant, AbiVariant::GuestExport)
-                && self.gen.opts.host_side())
+                && self.r#gen.opts.host_side())
         {
             if matches!(is_drop, SpecialMethod::Allocate) {
                 res.result.push_str("Owned");
@@ -1379,10 +1388,10 @@ impl CppInterfaceGenerator<'_> {
         if (matches!(func.kind, FunctionKind::Static(_)) || is_fallible_constructor)
             && !(matches!(&is_drop, SpecialMethod::ResourceDrop)
                 && matches!(abi_variant, AbiVariant::GuestImport)
-                && !self.gen.opts.host_side())
+                && !self.r#gen.opts.host_side())
             && !(matches!(&is_drop, SpecialMethod::Dtor)
                 && matches!(abi_variant, AbiVariant::GuestExport)
-                && self.gen.opts.host_side())
+                && self.r#gen.opts.host_side())
         {
             res.static_member = true;
         }
@@ -1392,15 +1401,15 @@ impl CppInterfaceGenerator<'_> {
                 && (matches!(&func.kind, FunctionKind::Method(_))
                     || (matches!(&is_drop, SpecialMethod::ResourceDrop)
                         && matches!(abi_variant, AbiVariant::GuestImport)
-                        && !self.gen.opts.host_side())
+                        && !self.r#gen.opts.host_side())
                     || (matches!(&is_drop, SpecialMethod::Dtor)
                         && matches!(abi_variant, AbiVariant::GuestExport)
-                        && self.gen.opts.host_side()))
+                        && self.r#gen.opts.host_side()))
             {
                 res.implicit_self = true;
                 continue;
             }
-            if self.gen.opts.symmetric
+            if self.r#gen.opts.symmetric
                 && matches!(
                     &is_drop,
                     SpecialMethod::ResourceRep | SpecialMethod::ResourceDrop
@@ -1410,7 +1419,7 @@ impl CppInterfaceGenerator<'_> {
                     .push((name.to_snake_case(), "uint8_t*".into()));
             } else {
                 let is_pointer = if matches!(
-                    (&is_drop, self.gen.opts.host_side()),
+                    (&is_drop, self.r#gen.opts.host_side()),
                     (SpecialMethod::Dtor, _)
                         | (SpecialMethod::ResourceNew, _)
                         | (SpecialMethod::ResourceDrop, true)
@@ -1427,7 +1436,7 @@ impl CppInterfaceGenerator<'_> {
             }
         }
         // default to non-const when exporting a method
-        let import = matches!(abi_variant, AbiVariant::GuestImport) ^ self.gen.opts.host_side();
+        let import = matches!(abi_variant, AbiVariant::GuestImport) ^ self.r#gen.opts.host_side();
         if matches!(func.kind, FunctionKind::Method(_)) && import {
             res.const_member = true;
         }
@@ -1443,7 +1452,7 @@ impl CppInterfaceGenerator<'_> {
         let is_special = is_special_method(func);
         // we want to separate the lowered signature (wasm) and the high level signature
         if !(import == true
-            && self.gen.opts.host_side()
+            && self.r#gen.opts.host_side()
             && matches!(
                 &is_special,
                 SpecialMethod::ResourceDrop
@@ -1451,47 +1460,47 @@ impl CppInterfaceGenerator<'_> {
                     | SpecialMethod::ResourceRep
             ))
         {
-            let from_namespace = self.gen.h_src.namespace.clone();
+            let from_namespace = self.r#gen.h_src.namespace.clone();
             let cpp_sig = self.high_level_signature(func, variant, &from_namespace);
             if cpp_sig.static_member {
-                self.gen.h_src.src.push_str("static ");
+                self.r#gen.h_src.src.push_str("static ");
             }
-            if cpp_sig.post_return && self.gen.opts.host_side() {
-                self.gen.h_src.src.push_str("wit::guest_owned<");
+            if cpp_sig.post_return && self.r#gen.opts.host_side() {
+                self.r#gen.h_src.src.push_str("wit::guest_owned<");
             }
-            self.gen.h_src.src.push_str(&cpp_sig.result);
-            if cpp_sig.post_return && self.gen.opts.host_side() {
-                self.gen.h_src.src.push_str(">");
+            self.r#gen.h_src.src.push_str(&cpp_sig.result);
+            if cpp_sig.post_return && self.r#gen.opts.host_side() {
+                self.r#gen.h_src.src.push_str(">");
             }
             if !cpp_sig.result.is_empty() {
-                self.gen.h_src.src.push_str(" ");
+                self.r#gen.h_src.src.push_str(" ");
             }
-            self.gen.h_src.src.push_str(&cpp_sig.name);
-            self.gen.h_src.src.push_str("(");
+            self.r#gen.h_src.src.push_str(&cpp_sig.name);
+            self.r#gen.h_src.src.push_str("(");
             if
             /*import &&*/
-            self.gen.opts.host && !matches!(func.kind, FunctionKind::Method(_)) {
-                self.gen.h_src.src.push_str("WASMExecEnv* exec_env");
+            self.r#gen.opts.host && !matches!(func.kind, FunctionKind::Method(_)) {
+                self.r#gen.h_src.src.push_str("WASMExecEnv* exec_env");
                 if !cpp_sig.arguments.is_empty() {
-                    self.gen.h_src.src.push_str(", ");
+                    self.r#gen.h_src.src.push_str(", ");
                 }
             }
             for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
                 if num > 0 {
-                    self.gen.h_src.src.push_str(", ");
+                    self.r#gen.h_src.src.push_str(", ");
                 }
-                self.gen.h_src.src.push_str(typ);
-                self.gen.h_src.src.push_str(" ");
-                self.gen.h_src.src.push_str(arg);
+                self.r#gen.h_src.src.push_str(typ);
+                self.r#gen.h_src.src.push_str(" ");
+                self.r#gen.h_src.src.push_str(arg);
             }
-            self.gen.h_src.src.push_str(")");
+            self.r#gen.h_src.src.push_str(")");
             if cpp_sig.const_member {
-                self.gen.h_src.src.push_str(" const");
+                self.r#gen.h_src.src.push_str(" const");
             }
-            match (&is_special, self.gen.opts.host_side(), &variant) {
+            match (&is_special, self.r#gen.opts.host_side(), &variant) {
                 (SpecialMethod::Allocate, _, _) => {
                     uwrite!(
-                        self.gen.h_src.src,
+                        self.r#gen.h_src.src,
                         "{{\
                         return {OWNED_CLASS_NAME}(new {}({}));\
                     }}",
@@ -1509,21 +1518,21 @@ impl CppInterfaceGenerator<'_> {
                 (SpecialMethod::Dtor, _, AbiVariant::GuestImport)
                 | (SpecialMethod::ResourceDrop, true, _) => {
                     uwrite!(
-                        self.gen.h_src.src,
+                        self.r#gen.h_src.src,
                         "{{\
                         delete {};\
                     }}",
                         cpp_sig.arguments.get(0).unwrap().0
                     );
                 }
-                _ => self.gen.h_src.src.push_str(";\n"),
+                _ => self.r#gen.h_src.src.push_str(";\n"),
             }
         }
         //        drop(cpp_sig);
 
         // we want to separate the lowered signature (wasm) and the high level signature
         if (!import
-            && (self.gen.opts.host_side()
+            && (self.r#gen.opts.host_side()
                 || !matches!(
                     &is_special,
                     SpecialMethod::ResourceDrop
@@ -1531,7 +1540,7 @@ impl CppInterfaceGenerator<'_> {
                         | SpecialMethod::ResourceRep
                 )))
             || (import
-                && self.gen.opts.host_side()
+                && self.r#gen.opts.host_side()
                 && matches!(
                     &is_special,
                     SpecialMethod::ResourceDrop
@@ -1542,26 +1551,26 @@ impl CppInterfaceGenerator<'_> {
             self.print_export_signature(func, variant)
         } else {
             // recalulate with c file namespace
-            let c_namespace = self.gen.c_src.namespace.clone();
+            let c_namespace = self.r#gen.c_src.namespace.clone();
             let cpp_sig = self.high_level_signature(func, variant, &c_namespace);
             let mut params = Vec::new();
-            if cpp_sig.post_return && self.gen.opts.host_side() {
-                self.gen.c_src.src.push_str("wit::guest_owned<");
+            if cpp_sig.post_return && self.r#gen.opts.host_side() {
+                self.r#gen.c_src.src.push_str("wit::guest_owned<");
             }
-            self.gen.c_src.src.push_str(&cpp_sig.result);
-            if cpp_sig.post_return && self.gen.opts.host_side() {
-                self.gen.c_src.src.push_str(">");
+            self.r#gen.c_src.src.push_str(&cpp_sig.result);
+            if cpp_sig.post_return && self.r#gen.opts.host_side() {
+                self.r#gen.c_src.src.push_str(">");
             }
             if !cpp_sig.result.is_empty() {
-                self.gen.c_src.src.push_str(" ");
+                self.r#gen.c_src.src.push_str(" ");
             }
-            self.gen.c_src.qualify(&cpp_sig.namespace);
-            self.gen.c_src.src.push_str(&cpp_sig.name);
-            self.gen.c_src.src.push_str("(");
-            if import && self.gen.opts.host && !matches!(func.kind, FunctionKind::Method(_)) {
-                self.gen.c_src.src.push_str("wasm_exec_env_t exec_env");
+            self.r#gen.c_src.qualify(&cpp_sig.namespace);
+            self.r#gen.c_src.src.push_str(&cpp_sig.name);
+            self.r#gen.c_src.src.push_str("(");
+            if import && self.r#gen.opts.host && !matches!(func.kind, FunctionKind::Method(_)) {
+                self.r#gen.c_src.src.push_str("wasm_exec_env_t exec_env");
                 if !cpp_sig.arguments.is_empty() || cpp_sig.implicit_self {
-                    self.gen.c_src.src.push_str(", ");
+                    self.r#gen.c_src.src.push_str(", ");
                 }
             }
             if cpp_sig.implicit_self {
@@ -1569,18 +1578,18 @@ impl CppInterfaceGenerator<'_> {
             }
             for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
                 if num > 0 {
-                    self.gen.c_src.src.push_str(", ");
+                    self.r#gen.c_src.src.push_str(", ");
                 }
-                self.gen.c_src.src.push_str(typ);
-                self.gen.c_src.src.push_str(" ");
-                self.gen.c_src.src.push_str(arg);
+                self.r#gen.c_src.src.push_str(typ);
+                self.r#gen.c_src.src.push_str(" ");
+                self.r#gen.c_src.src.push_str(arg);
                 params.push(arg.clone());
             }
-            self.gen.c_src.src.push_str(")");
+            self.r#gen.c_src.src.push_str(")");
             if cpp_sig.const_member {
-                self.gen.c_src.src.push_str(" const");
+                self.r#gen.c_src.src.push_str(" const");
             }
-            self.gen.c_src.src.push_str("\n");
+            self.r#gen.c_src.src.push_str("\n");
             params
         }
     }
@@ -1599,15 +1608,15 @@ impl CppInterfaceGenerator<'_> {
                 cifg.resolve,
                 &owner.owner,
                 matches!(variant, AbiVariant::GuestExport),
-                &cifg.gen.opts,
+                &cifg.r#gen.opts,
             );
             namespace.push(owner.name.as_ref().unwrap().to_upper_camel_case());
             namespace
         }
 
         let export = match variant {
-            AbiVariant::GuestImport => self.gen.opts.host_side(),
-            AbiVariant::GuestExport => !self.gen.opts.host_side(),
+            AbiVariant::GuestImport => self.r#gen.opts.host_side(),
+            AbiVariant::GuestExport => !self.r#gen.opts.host_side(),
             AbiVariant::GuestImportAsync => todo!(),
             AbiVariant::GuestExportAsync => todo!(),
             AbiVariant::GuestExportAsyncStackful => todo!(),
@@ -1615,24 +1624,24 @@ impl CppInterfaceGenerator<'_> {
         let params = self.print_signature(func, variant, !export);
         let special = is_special_method(func);
         if !matches!(special, SpecialMethod::Allocate) {
-            self.gen.c_src.src.push_str("{\n");
-            let needs_dealloc = if self.gen.opts.api_style == APIStyle::Symmetric
+            self.r#gen.c_src.src.push_str("{\n");
+            let needs_dealloc = if self.r#gen.opts.api_style == APIStyle::Symmetric
                 && matches!(variant, AbiVariant::GuestExport)
-                && ((!self.gen.opts.symmetric
+                && ((!self.r#gen.opts.symmetric
                     && symmetric::needs_dealloc(self.resolve, &func.params))
-                    || (self.gen.opts.symmetric
+                    || (self.r#gen.opts.symmetric
                         && symmetric::has_non_canonical_list(self.resolve, &func.params)))
             {
-                self.gen
+                self.r#gen
                     .c_src
                     .src
                     .push_str("std::vector<void*> _deallocate;\n");
-                self.gen.dependencies.needs_vector = true;
+                self.r#gen.dependencies.needs_vector = true;
                 true
             } else {
                 false
             };
-            let lift_lower = if self.gen.opts.symmetric {
+            let lift_lower = if self.r#gen.opts.symmetric {
                 LiftLower::Symmetric
             } else if export {
                 LiftLower::LiftArgsLowerResults
@@ -1642,19 +1651,19 @@ impl CppInterfaceGenerator<'_> {
             match is_special_method(func) {
                 SpecialMethod::ResourceDrop => match lift_lower {
                     LiftLower::LiftArgsLowerResults => {
-                        if self.gen.opts.host_side() {
+                        if self.r#gen.opts.host_side() {
                             let namespace = class_namespace(self, func, variant);
-                            uwrite!(self.gen.c_src.src, "  auto ptr = ");
-                            self.gen.c_src.qualify(&namespace);
+                            uwrite!(self.r#gen.c_src.src, "  auto ptr = ");
+                            self.r#gen.c_src.qualify(&namespace);
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "remove_resource({});
                                 assert(ptr.has_value());",
                                 params[0]
                             );
-                            self.gen.dependencies.needs_assert = true;
-                            self.gen.c_src.qualify(&namespace);
-                            uwriteln!(self.gen.c_src.src, "Dtor(*ptr);")
+                            self.r#gen.dependencies.needs_assert = true;
+                            self.r#gen.c_src.qualify(&namespace);
+                            uwriteln!(self.r#gen.c_src.src, "Dtor(*ptr);")
                         } else {
                             let module_name = String::from("[export]")
                                 + &self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
@@ -1665,17 +1674,17 @@ impl CppInterfaceGenerator<'_> {
                                 &[],
                             );
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "{wasm_sig}({});",
                                 func.params.get(0).unwrap().0
                             );
                         }
                     }
                     LiftLower::LowerArgsLiftResults => {
-                        if self.gen.opts.host_side() {
+                        if self.r#gen.opts.host_side() {
                             let namespace = class_namespace(self, func, variant);
-                            self.gen.c_src.qualify(&namespace);
-                            uwriteln!(self.gen.c_src.src, "remove_resource(arg0);");
+                            self.r#gen.c_src.qualify(&namespace);
+                            uwriteln!(self.r#gen.c_src.src, "remove_resource(arg0);");
                         } else {
                             let module_name =
                                 self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
@@ -1686,7 +1695,7 @@ impl CppInterfaceGenerator<'_> {
                                 &[],
                             );
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "   if (handle>=0) {{
                                 {name}(handle);
                             }}"
@@ -1698,12 +1707,12 @@ impl CppInterfaceGenerator<'_> {
                             self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
                         if matches!(variant, AbiVariant::GuestExport) {
                             let mut namespace = class_namespace(self, func, variant);
-                            self.gen.c_src.qualify(&namespace);
-                            self.gen.c_src.src.push_str("Dtor((");
+                            self.r#gen.c_src.qualify(&namespace);
+                            self.r#gen.c_src.src.push_str("Dtor((");
                             let classname = namespace.pop().unwrap_or_default();
-                            self.gen.c_src.qualify(&namespace);
+                            self.r#gen.c_src.qualify(&namespace);
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "{classname}*){});",
                                 func.params.get(0).unwrap().0
                             );
@@ -1715,7 +1724,7 @@ impl CppInterfaceGenerator<'_> {
                                 &[],
                             );
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "   if (handle!=nullptr) {{
                                 {name}(handle);
                             }}"
@@ -1724,7 +1733,7 @@ impl CppInterfaceGenerator<'_> {
                     }
                 },
                 SpecialMethod::Dtor => {
-                    if self.gen.opts.host_side() {
+                    if self.r#gen.opts.host_side() {
                         let module_name =
                             self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
                         let name = self.declare_import(
@@ -1734,25 +1743,25 @@ impl CppInterfaceGenerator<'_> {
                             &[],
                         );
                         uwriteln!(
-                            self.gen.c_src.src,
+                            self.r#gen.c_src.src,
                             "if (this->rep) {{ {name}(this->rep); }}"
                         );
                     } else {
                         let classname = class_namespace(self, func, variant).join("::");
-                        if self.gen.opts.symmetric {
+                        if self.r#gen.opts.symmetric {
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "{}::ResourceDrop(({})arg0);",
                                 classname,
-                                self.gen.opts.ptr_type()
+                                self.r#gen.opts.ptr_type()
                             );
                         } else {
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "static_cast<{classname}*>(arg0)->handle=-1;"
                             );
                             uwriteln!(
-                                self.gen.c_src.src,
+                                self.r#gen.c_src.src,
                                 "{0}::Dtor(static_cast<{0}*>(arg0));",
                                 classname
                             );
@@ -1760,14 +1769,14 @@ impl CppInterfaceGenerator<'_> {
                     }
                 }
                 SpecialMethod::ResourceNew => {
-                    if self.gen.opts.symmetric {
+                    if self.r#gen.opts.symmetric {
                         uwriteln!(
-                            self.gen.c_src.src,
+                            self.r#gen.c_src.src,
                             "return static_cast<{}>({});",
-                            self.gen.opts.ptr_type(),
+                            self.r#gen.opts.ptr_type(),
                             func.params.get(0).unwrap().0
                         );
-                    } else if !self.gen.opts.host_side() {
+                    } else if !self.r#gen.opts.host_side() {
                         let module_name = String::from("[export]")
                             + &self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
                         let wasm_sig = self.declare_import(
@@ -1777,28 +1786,28 @@ impl CppInterfaceGenerator<'_> {
                             &[WasmType::I32],
                         );
                         uwriteln!(
-                            self.gen.c_src.src,
+                            self.r#gen.c_src.src,
                             "return {wasm_sig}(({}){});",
-                            self.gen.opts.ptr_type(),
+                            self.r#gen.opts.ptr_type(),
                             func.params.get(0).unwrap().0
                         );
                     } else {
-                        uwriteln!(self.gen.c_src.src, "return ");
+                        uwriteln!(self.r#gen.c_src.src, "return ");
                         let namespace = class_namespace(self, func, variant);
-                        self.gen.c_src.qualify(&namespace);
-                        uwriteln!(self.gen.c_src.src, "store_resource(std::move(arg0));");
+                        self.r#gen.c_src.qualify(&namespace);
+                        uwriteln!(self.r#gen.c_src.src, "store_resource(std::move(arg0));");
                     }
                 }
                 SpecialMethod::ResourceRep => {
-                    if self.gen.opts.symmetric {
+                    if self.r#gen.opts.symmetric {
                         let classname = class_namespace(self, func, variant).join("::");
                         uwriteln!(
-                            self.gen.c_src.src,
+                            self.r#gen.c_src.src,
                             "return static_cast<{}*>({});",
                             classname,
                             func.params.get(0).unwrap().0
                         );
-                    } else if !self.gen.opts.host_side() {
+                    } else if !self.r#gen.opts.host_side() {
                         let module_name = String::from("[export]")
                             + &self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
                         let wasm_sig = self.declare_import(
@@ -1809,16 +1818,16 @@ impl CppInterfaceGenerator<'_> {
                         );
                         let classname = class_namespace(self, func, variant).join("::");
                         uwriteln!(
-                            self.gen.c_src.src,
+                            self.r#gen.c_src.src,
                             "return ({}*){wasm_sig}({});",
                             classname,
                             func.params.get(0).unwrap().0
                         );
                     } else {
-                        uwriteln!(self.gen.c_src.src, "return *");
+                        uwriteln!(self.r#gen.c_src.src, "return *");
                         let namespace = class_namespace(self, func, variant);
-                        self.gen.c_src.qualify(&namespace);
-                        uwriteln!(self.gen.c_src.src, "lookup_resource(arg0);",);
+                        self.r#gen.c_src.qualify(&namespace);
+                        uwriteln!(self.r#gen.c_src.src, "lookup_resource(arg0);",);
                     }
                 }
                 SpecialMethod::Allocate => unreachable!(),
@@ -1829,7 +1838,7 @@ impl CppInterfaceGenerator<'_> {
                             self.resolve,
                             owner,
                             matches!(variant, AbiVariant::GuestExport),
-                            &self.gen.opts,
+                            &self.r#gen.opts,
                         )
                     } else {
                         let owner = &self.resolve.types[match &func.kind {
@@ -1846,7 +1855,7 @@ impl CppInterfaceGenerator<'_> {
                             self.resolve,
                             &owner.owner,
                             matches!(variant, AbiVariant::GuestExport),
-                            &self.gen.opts,
+                            &self.r#gen.opts,
                         );
                         namespace.push(owner.name.as_ref().unwrap().to_upper_camel_case());
                         namespace
@@ -1854,21 +1863,21 @@ impl CppInterfaceGenerator<'_> {
                     let mut f = FunctionBindgen::new(self, params);
                     if !export {
                         f.namespace = namespace.clone();
-                        f.wamr_signature = Some(wamr::wamr_signature(&f.gen.resolve, func));
+                        f.wamr_signature = Some(wamr::wamr_signature(&f.r#gen.resolve, func));
                     }
                     f.variant = variant;
                     f.needs_dealloc = needs_dealloc;
                     f.cabi_post = if matches!(variant, AbiVariant::GuestExport)
-                        && f.gen.gen.opts.host_side()
-                        && abi::guest_export_needs_post_return(f.gen.resolve, func)
+                        && f.r#gen.r#gen.opts.host_side()
+                        && abi::guest_export_needs_post_return(f.r#gen.resolve, func)
                     {
                         let module_name = f
-                            .gen
+                            .r#gen
                             .wasm_import_module
                             .as_ref()
                             .map(|e| e.clone())
                             .unwrap();
-                        let cpp_sig = f.gen.high_level_signature(func, variant, &namespace);
+                        let cpp_sig = f.r#gen.high_level_signature(func, variant, &namespace);
                         Some(CabiPostInformation {
                             module: module_name,
                             name: func.name.clone(),
@@ -1877,15 +1886,15 @@ impl CppInterfaceGenerator<'_> {
                     } else {
                         None
                     };
-                    abi::call(f.gen.resolve, variant, lift_lower, func, &mut f, false);
+                    abi::call(f.r#gen.resolve, variant, lift_lower, func, &mut f, false);
                     let ret_area_decl = f.emit_ret_area_if_needed();
                     let code = format!("{}{}", ret_area_decl, String::from(f.src));
-                    self.gen.c_src.src.push_str(&code);
+                    self.r#gen.c_src.src.push_str(&code);
                 }
             }
-            self.gen.c_src.src.push_str("}\n");
+            self.r#gen.c_src.src.push_str("}\n");
             // cabi_post
-            if !self.gen.opts.host_side()
+            if !self.r#gen.opts.host_side()
                 && !matches!(lift_lower, LiftLower::Symmetric)
                 && matches!(variant, AbiVariant::GuestExport)
                 && abi::guest_export_needs_post_return(self.resolve, func)
@@ -1902,7 +1911,7 @@ impl CppInterfaceGenerator<'_> {
                     Some(ref module_name) => make_external_symbol(
                         module_name,
                         &func.name,
-                        if self.gen.opts.symmetric {
+                        if self.r#gen.opts.symmetric {
                             AbiVariant::GuestImport
                         } else {
                             AbiVariant::GuestExport
@@ -1911,39 +1920,39 @@ impl CppInterfaceGenerator<'_> {
                     None => make_external_component(&func.name),
                 };
                 uwriteln!(
-                    self.gen.c_src.src,
+                    self.r#gen.c_src.src,
                     "extern \"C\" __attribute__((__weak__, __export_name__(\"cabi_post_{export_name}\")))"
                 );
-                uwrite!(self.gen.c_src.src, "void cabi_post_{import_name}(");
+                uwrite!(self.r#gen.c_src.src, "void cabi_post_{import_name}(");
 
                 let mut params = Vec::new();
                 for (i, result) in sig.results.iter().enumerate() {
                     let name = format!("arg{i}");
                     uwrite!(
-                        self.gen.c_src.src,
+                        self.r#gen.c_src.src,
                         "{} {name}",
-                        self.gen.opts.wasm_type(*result)
+                        self.r#gen.opts.wasm_type(*result)
                     );
                     params.push(name);
                 }
-                if sig.retptr && self.gen.opts.symmetric {
+                if sig.retptr && self.r#gen.opts.symmetric {
                     let name = "retptr";
                     uwrite!(
-                        self.gen.c_src.src,
+                        self.r#gen.c_src.src,
                         "{} {name}",
-                        self.gen.opts.wasm_type(WasmType::Pointer)
+                        self.r#gen.opts.wasm_type(WasmType::Pointer)
                     );
                     params.push(name.into());
                 }
-                self.gen.c_src.src.push_str(") {\n");
+                self.r#gen.c_src.src.push_str(") {\n");
 
                 let mut f = FunctionBindgen::new(self, params.clone());
                 f.params = params;
-                abi::post_return(f.gen.resolve, func, &mut f);
+                abi::post_return(f.r#gen.resolve, func, &mut f);
                 let ret_area_decl = f.emit_ret_area_if_needed();
                 let code = format!("{}{}", ret_area_decl, String::from(f.src));
-                self.gen.c_src.src.push_str(&code);
-                self.gen.c_src.src.push_str("}\n");
+                self.r#gen.c_src.src.push_str(&code);
+                self.r#gen.c_src.src.push_str("}\n");
             }
         }
     }
@@ -2015,10 +2024,10 @@ impl CppInterfaceGenerator<'_> {
         let name = self.scoped_type_name(id, from_namespace, guest_export);
 
         if let Flavor::Argument(AbiVariant::GuestImport) = flavor {
-            match self.gen.opts.ownership {
+            match self.r#gen.opts.ownership {
                 Ownership::Owning => name.to_string(),
                 Ownership::CoarseBorrowing => {
-                    if self.gen.types.get(id).has_own_handle {
+                    if self.r#gen.types.get(id).has_own_handle {
                         name.to_string()
                     } else {
                         format!("{}Param", name)
@@ -2040,7 +2049,7 @@ impl CppInterfaceGenerator<'_> {
         guest_export: bool,
     ) -> String {
         let ty = &self.resolve.types[id];
-        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.gen.opts);
+        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.r#gen.opts);
         let mut relative = SourceWithState {
             namespace: Vec::from(from_namespace),
             ..Default::default()
@@ -2069,34 +2078,34 @@ impl CppInterfaceGenerator<'_> {
             Type::F64 => "double".into(),
             Type::String => match flavor {
                 Flavor::BorrowedArgument => {
-                    self.gen.dependencies.needs_string_view = true;
+                    self.r#gen.dependencies.needs_string_view = true;
                     "std::string_view".into()
                 }
                 Flavor::Argument(var)
                     if matches!(var, AbiVariant::GuestImport)
-                        || self.gen.opts.api_style == APIStyle::Symmetric =>
+                        || self.r#gen.opts.api_style == APIStyle::Symmetric =>
                 {
-                    self.gen.dependencies.needs_string_view = true;
-                    if self.gen.opts.autosar {
+                    self.r#gen.dependencies.needs_string_view = true;
+                    if self.r#gen.opts.autosar {
                         "::ara::core::StringView".into()
                     } else {
                         "std::string_view".into()
                     }
                 }
-                Flavor::Argument(AbiVariant::GuestExport) if !self.gen.opts.host_side() => {
-                    self.gen.dependencies.needs_wit = true;
+                Flavor::Argument(AbiVariant::GuestExport) if !self.r#gen.opts.host_side() => {
+                    self.r#gen.dependencies.needs_wit = true;
                     "wit::string".into()
                 }
-                Flavor::Result(AbiVariant::GuestExport) if self.gen.opts.host_side() => {
-                    self.gen.dependencies.needs_string_view = true;
-                    if self.gen.opts.autosar {
+                Flavor::Result(AbiVariant::GuestExport) if self.r#gen.opts.host_side() => {
+                    self.r#gen.dependencies.needs_string_view = true;
+                    if self.r#gen.opts.autosar {
                         "::ara::core::StringView".into()
                     } else {
                         "std::string_view".into()
                     }
                 }
                 _ => {
-                    self.gen.dependencies.needs_wit = true;
+                    self.r#gen.dependencies.needs_wit = true;
                     "wit::string".into()
                 }
             },
@@ -2124,7 +2133,7 @@ impl CppInterfaceGenerator<'_> {
                     };
 
                     let is_exported = self.is_exported_type(resource_ty);
-                    match (self.gen.opts.host_side(), flavor) {
+                    match (self.r#gen.opts.host_side(), flavor) {
                         (false, Flavor::Argument(AbiVariant::GuestImport))
                         | (true, Flavor::Argument(AbiVariant::GuestExport)) => {
                             typename.push_str("&&")
@@ -2168,7 +2177,7 @@ impl CppInterfaceGenerator<'_> {
                         }
                         a + &self.type_name(b, from_namespace, flavor)
                     });
-                    self.gen.dependencies.needs_tuple = true;
+                    self.r#gen.dependencies.needs_tuple = true;
                     String::from("std::tuple<") + &types + ">"
                 }
                 TypeDefKind::Variant(_v) => {
@@ -2188,8 +2197,8 @@ impl CppInterfaceGenerator<'_> {
                         Flavor::Argument(AbiVariant::GuestImport) => Flavor::BorrowedArgument,
                         _ => Flavor::InStruct,
                     };
-                    self.gen.dependencies.needs_optional = true;
-                    (if self.gen.opts.autosar {
+                    self.r#gen.dependencies.needs_optional = true;
+                    (if self.r#gen.opts.autosar {
                         "::ara::core::Optional<"
                     } else {
                         "std::optional<"
@@ -2204,8 +2213,8 @@ impl CppInterfaceGenerator<'_> {
                     let err_type = r.err.as_ref().map_or(String::from("wit::Void"), |ty| {
                         self.type_name(ty, from_namespace, template_flavor)
                     });
-                    self.gen.dependencies.needs_expected = true;
-                    (if self.gen.opts.autosar {
+                    self.r#gen.dependencies.needs_expected = true;
+                    (if self.r#gen.opts.autosar {
                         "::ara::core::Result<"
                     } else {
                         "std::expected<"
@@ -2229,7 +2238,7 @@ impl CppInterfaceGenerator<'_> {
                     let inner = self.type_name(ty, from_namespace, element_flavor);
                     match flavor {
                         Flavor::BorrowedArgument => {
-                            self.gen.dependencies.needs_span = true;
+                            self.r#gen.dependencies.needs_span = true;
                             if self.r#gen.opts.autosar {
                                 format!("::ara::core::Span<{inner} const>")
                             } else {
@@ -2238,11 +2247,11 @@ impl CppInterfaceGenerator<'_> {
                         }
                         Flavor::Argument(var)
                             if matches!(var, AbiVariant::GuestImport)
-                                || self.gen.opts.api_style == APIStyle::Symmetric =>
+                                || self.r#gen.opts.api_style == APIStyle::Symmetric =>
                         {
-                            self.gen.dependencies.needs_span = true;
+                            self.r#gen.dependencies.needs_span = true;
                             // If the list has an owning handle, it must support moving, so can't be const
-                            let constness = if self.gen.types.get(*id).has_own_handle {
+                            let constness = if self.r#gen.types.get(*id).has_own_handle {
                                 ""
                             } else {
                                 " const"
@@ -2253,28 +2262,28 @@ impl CppInterfaceGenerator<'_> {
                                 format!("std::span<{inner}{constness}>")
                             }
                         }
-                        Flavor::Argument(AbiVariant::GuestExport) if !self.gen.opts.host => {
-                            self.gen.dependencies.needs_wit = true;
+                        Flavor::Argument(AbiVariant::GuestExport) if !self.r#gen.opts.host => {
+                            self.r#gen.dependencies.needs_wit = true;
                             format!("wit::vector<{inner}>")
                         }
-                        Flavor::Result(AbiVariant::GuestExport) if self.gen.opts.host => {
-                            self.gen.dependencies.needs_wit = true;
+                        Flavor::Result(AbiVariant::GuestExport) if self.r#gen.opts.host => {
+                            self.r#gen.dependencies.needs_wit = true;
                             format!("wit::span<{inner} const>")
                         }
                         _ => {
-                            self.gen.dependencies.needs_wit = true;
+                            self.r#gen.dependencies.needs_wit = true;
                             format!("wit::vector<{inner}>")
                         }
                     }
                 }
                 TypeDefKind::Future(ty) => {
-                    self.gen.dependencies.needs_future = true;
+                    self.r#gen.dependencies.needs_future = true;
                     "std::future<".to_string()
                         + &self.optional_type_name(ty.as_ref(), from_namespace, flavor)
                         + ">"
                 }
                 TypeDefKind::Stream(ty) => {
-                    self.gen.dependencies.needs_stream = true;
+                    self.r#gen.dependencies.needs_stream = true;
                     "wit::stream<".to_string()
                         + &self.optional_type_name(ty.as_ref(), from_namespace, flavor)
                         + ">"
@@ -2303,10 +2312,12 @@ impl CppInterfaceGenerator<'_> {
     ) -> (String, String) {
         let mut extern_name = String::from("__wasm_import_");
         extern_name.push_str(&make_external_symbol(module_name, name, variant));
-        let import = if self.gen.opts.symmetric {
+        let import = if self.r#gen.opts.symmetric {
             format!("extern \"C\" {result} {extern_name}({args});\n")
         } else {
-            format!("extern \"C\" __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n")
+            format!(
+                "extern \"C\" __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n"
+            )
         };
         (extern_name, import)
     }
@@ -2320,7 +2331,7 @@ impl CppInterfaceGenerator<'_> {
     ) -> String {
         let mut args = String::default();
         for (n, param) in params.iter().enumerate() {
-            args.push_str(self.gen.opts.wasm_type(*param));
+            args.push_str(self.r#gen.opts.wasm_type(*param));
             if n + 1 != params.len() {
                 args.push_str(", ");
             }
@@ -2328,15 +2339,15 @@ impl CppInterfaceGenerator<'_> {
         let result = if results.is_empty() {
             "void"
         } else {
-            self.gen.opts.wasm_type(results[0])
+            self.r#gen.opts.wasm_type(results[0])
         };
-        let variant = if self.gen.opts.short_cut {
+        let variant = if self.r#gen.opts.short_cut {
             AbiVariant::GuestExport
         } else {
             AbiVariant::GuestImport
         };
         let (name, code) = self.declare_import2(module_name, name, &args, result, variant);
-        self.gen.extern_c_decls.push_str(&code);
+        self.r#gen.extern_c_decls.push_str(&code);
         name
     }
 
@@ -2358,10 +2369,10 @@ impl CppInterfaceGenerator<'_> {
         namespc: &[String],
     ) {
         let (flavor, needs_param_type) = {
-            match self.gen.opts.ownership {
+            match self.r#gen.opts.ownership {
                 Ownership::Owning => (Flavor::InStruct, false),
                 Ownership::CoarseBorrowing => {
-                    if self.gen.types.get(id).has_own_handle {
+                    if self.r#gen.types.get(id).has_own_handle {
                         (Flavor::InStruct, false)
                     } else {
                         (Flavor::BorrowedArgument, true)
@@ -2374,13 +2385,13 @@ impl CppInterfaceGenerator<'_> {
         if needs_param_type {
             let pascal = format!("{name}-param").to_pascal_case();
 
-            uwriteln!(self.gen.h_src.src, "struct {pascal} {{");
+            uwriteln!(self.r#gen.h_src.src, "struct {pascal} {{");
             for field in record.fields.iter() {
                 let typename = self.type_name(&field.ty, namespc, flavor);
                 let fname = to_c_ident(&field.name);
-                uwriteln!(self.gen.h_src.src, "{typename} {fname};");
+                uwriteln!(self.r#gen.h_src.src, "{typename} {fname};");
             }
-            uwriteln!(self.gen.h_src.src, "}};");
+            uwriteln!(self.r#gen.h_src.src, "}};");
         }
     }
 
@@ -2389,7 +2400,7 @@ impl CppInterfaceGenerator<'_> {
             TypeOwner::Interface(intf) => {
                 // For resources used in export functions, check if the resource's owner
                 // interface is in imported_interfaces (which was populated during import())
-                !self.gen.imported_interfaces.contains(&intf)
+                !self.r#gen.imported_interfaces.contains(&intf)
             }
             TypeOwner::World(_) => {
                 // World-level resources are treated as imports, not exports
@@ -2414,21 +2425,21 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
     ) {
         let ty = &self.resolve.types[id];
         let guest_export = self.is_exported_type(ty);
-        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.gen.opts);
+        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.r#gen.opts);
 
-        if self.gen.is_first_definition(&namespc, name) {
-            self.gen.h_src.change_namespace(&namespc);
-            Self::docs(&mut self.gen.h_src.src, docs);
+        if self.r#gen.is_first_definition(&namespc, name) {
+            self.r#gen.h_src.change_namespace(&namespc);
+            Self::docs(&mut self.r#gen.h_src.src, docs);
             let pascal = name.to_pascal_case();
 
-            uwriteln!(self.gen.h_src.src, "struct {pascal} {{");
+            uwriteln!(self.r#gen.h_src.src, "struct {pascal} {{");
             for field in record.fields.iter() {
-                Self::docs(&mut self.gen.h_src.src, &field.docs);
+                Self::docs(&mut self.r#gen.h_src.src, &field.docs);
                 let typename = self.type_name(&field.ty, &namespc, Flavor::InStruct);
                 let fname = to_c_ident(&field.name);
-                uwriteln!(self.gen.h_src.src, "{typename} {fname};");
+                uwriteln!(self.r#gen.h_src.src, "{typename} {fname};");
             }
-            uwriteln!(self.gen.h_src.src, "}};");
+            uwriteln!(self.r#gen.h_src.src, "}};");
             self.type_record_param(id, name, record, namespc.as_slice());
         }
     }
@@ -2441,33 +2452,33 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
     ) {
         let type_ = &self.resolve.types[id];
         if let TypeOwner::Interface(intf) = type_.owner {
-            let guest_import = self.gen.imported_interfaces.contains(&intf);
-            let definition = !(guest_import ^ self.gen.opts.host_side());
-            let store = self.gen.start_new_file(Some(definition));
-            let mut world_name = to_c_ident(&self.gen.world);
+            let guest_import = self.r#gen.imported_interfaces.contains(&intf);
+            let definition = !(guest_import ^ self.r#gen.opts.host_side());
+            let store = self.r#gen.start_new_file(Some(definition));
+            let mut world_name = to_c_ident(&self.r#gen.world);
             world_name.push_str("::");
-            let namespc = namespace(self.resolve, &type_.owner, !guest_import, &self.gen.opts);
+            let namespc = namespace(self.resolve, &type_.owner, !guest_import, &self.r#gen.opts);
             let pascal = name.to_upper_camel_case();
             let mut user_filename = namespc.clone();
             user_filename.push(pascal.clone());
             if definition {
                 uwriteln!(
-                    self.gen.h_src.src,
+                    self.r#gen.h_src.src,
                     r#"/* User class definition file, autogenerated once, then user modified
                     * Updated versions of this file are generated into {pascal}.template.
                     */"#
                 );
             }
-            self.gen.h_src.change_namespace(&namespc);
+            self.r#gen.h_src.change_namespace(&namespc);
 
             if !definition {
-                self.gen.dependencies.needs_imported_resources = true;
+                self.r#gen.dependencies.needs_imported_resources = true;
             } else {
-                self.gen.dependencies.needs_exported_resources = true;
+                self.r#gen.dependencies.needs_exported_resources = true;
             }
-            self.gen.dependencies.needs_wit = true;
+            self.r#gen.dependencies.needs_wit = true;
 
-            let base_type = match (definition, self.gen.opts.host_side()) {
+            let base_type = match (definition, self.r#gen.opts.host_side()) {
                 (true, false) => format!("wit::{RESOURCE_EXPORT_BASE_CLASS_NAME}<{pascal}>"),
                 (false, false) => {
                     String::from_str("wit::").unwrap() + RESOURCE_IMPORT_BASE_CLASS_NAME
@@ -2478,8 +2489,8 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 (true, true) => format!("wit::{RESOURCE_IMPORT_BASE_CLASS_NAME}<{pascal}>"),
             };
             let derive = format!(" : public {base_type}");
-            uwriteln!(self.gen.h_src.src, "class {pascal}{derive} {{\n");
-            uwriteln!(self.gen.h_src.src, "public:\n");
+            uwriteln!(self.r#gen.h_src.src, "class {pascal}{derive} {{\n");
+            uwriteln!(self.r#gen.h_src.src, "public:\n");
             let variant = if guest_import {
                 AbiVariant::GuestImport
             } else {
@@ -2521,10 +2532,10 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     // For non-fallible constructors on export side, generate a New allocator method
                     // For fallible constructors, the user provides their own Create method
                     let is_fallible_constructor =
-                        self.gen.is_fallible_constructor(self.resolve, func);
+                        self.r#gen.is_fallible_constructor(self.resolve, func);
 
                     if matches!(func.kind, FunctionKind::Constructor(_))
-                        && matches!(variant, AbiVariant::GuestExport) != self.gen.opts.host_side()
+                        && matches!(variant, AbiVariant::GuestExport) != self.r#gen.opts.host_side()
                         && !is_fallible_constructor
                     {
                         // functional safety requires the option to use a different allocator, so move new into the implementation
@@ -2544,25 +2555,25 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
 
             if !definition {
                 // consuming constructor from handle (bindings)
-                uwriteln!(self.gen.h_src.src, "{pascal}({base_type} &&);",);
-                uwriteln!(self.gen.h_src.src, "{pascal}({pascal}&&) = default;");
+                uwriteln!(self.r#gen.h_src.src, "{pascal}({base_type} &&);",);
+                uwriteln!(self.r#gen.h_src.src, "{pascal}({pascal}&&) = default;");
                 uwriteln!(
-                    self.gen.h_src.src,
+                    self.r#gen.h_src.src,
                     "{pascal}& operator=({pascal}&&) = default;"
                 );
-                uwriteln!(self.gen.h_src.src, "{pascal}(const {pascal}&) = delete;");
+                uwriteln!(self.r#gen.h_src.src, "{pascal}(const {pascal}&) = delete;");
                 uwriteln!(
-                    self.gen.h_src.src,
+                    self.r#gen.h_src.src,
                     "{pascal}& operator=(const {pascal}&) = delete;"
                 );
-                self.gen.c_src.qualify(&namespc);
+                self.r#gen.c_src.qualify(&namespc);
                 uwriteln!(
-                    self.gen.c_src.src,
+                    self.r#gen.c_src.src,
                     "{pascal}::{pascal}({base_type}&&b) : {base_type}(std::move(b)) {{}}"
                 );
             }
             if matches!(variant, AbiVariant::GuestExport) {
-                let id_type = if self.gen.opts.symmetric {
+                let id_type = if self.r#gen.opts.symmetric {
                     Type::Id(id)
                 } else {
                     Type::S32
@@ -2597,35 +2608,35 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 };
                 self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
             }
-            uwriteln!(self.gen.h_src.src, "}};\n");
-            self.gen.finish_file(&user_filename, store);
+            uwriteln!(self.r#gen.h_src.src, "}};\n");
+            self.r#gen.finish_file(&user_filename, store);
         } else if matches!(type_.owner, TypeOwner::World(_)) {
             // Handle world-level resources - treat as imported resources
             let guest_export = false; // World-level resources are treated as imports
-            let namespc = namespace(self.resolve, &type_.owner, guest_export, &self.gen.opts);
-            self.gen.h_src.change_namespace(&namespc);
+            let namespc = namespace(self.resolve, &type_.owner, guest_export, &self.r#gen.opts);
+            self.r#gen.h_src.change_namespace(&namespc);
 
             let pascal = name.to_upper_camel_case();
-            self.gen.dependencies.needs_imported_resources = true;
-            self.gen.dependencies.needs_wit = true;
+            self.r#gen.dependencies.needs_imported_resources = true;
+            self.r#gen.dependencies.needs_wit = true;
 
             let base_type = format!("wit::{RESOURCE_IMPORT_BASE_CLASS_NAME}");
             let derive = format!(" : public {base_type}");
-            uwriteln!(self.gen.h_src.src, "class {pascal}{derive}{{\n");
-            uwriteln!(self.gen.h_src.src, "public:\n");
+            uwriteln!(self.r#gen.h_src.src, "class {pascal}{derive}{{\n");
+            uwriteln!(self.r#gen.h_src.src, "public:\n");
 
             // Add destructor and constructor
-            uwriteln!(self.gen.h_src.src, "~{pascal}();");
+            uwriteln!(self.r#gen.h_src.src, "~{pascal}();");
             uwriteln!(
-                self.gen.h_src.src,
+                self.r#gen.h_src.src,
                 "{pascal}(wit::{RESOURCE_IMPORT_BASE_CLASS_NAME} &&);"
             );
-            uwriteln!(self.gen.h_src.src, "{pascal}({pascal}&&) = default;");
+            uwriteln!(self.r#gen.h_src.src, "{pascal}({pascal}&&) = default;");
             uwriteln!(
-                self.gen.h_src.src,
+                self.r#gen.h_src.src,
                 "{pascal}& operator=({pascal}&&) = default;"
             );
-            uwriteln!(self.gen.h_src.src, "}};\n");
+            uwriteln!(self.r#gen.h_src.src, "}};\n");
         }
     }
 
@@ -2638,22 +2649,22 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
     ) {
         let ty = &self.resolve.types[id];
         let guest_export = self.is_exported_type(ty);
-        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.gen.opts);
-        if self.gen.is_first_definition(&namespc, name) {
-            self.gen.h_src.change_namespace(&namespc);
-            Self::docs(&mut self.gen.h_src.src, docs);
+        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.r#gen.opts);
+        if self.r#gen.is_first_definition(&namespc, name) {
+            self.r#gen.h_src.change_namespace(&namespc);
+            Self::docs(&mut self.r#gen.h_src.src, docs);
             let pascal = name.to_pascal_case();
             let int_repr = wit_bindgen_c::int_repr(wit_bindgen_c::flags_repr(flags));
-            uwriteln!(self.gen.h_src.src, "enum class {pascal} : {int_repr} {{");
-            uwriteln!(self.gen.h_src.src, "k_None = 0,");
+            uwriteln!(self.r#gen.h_src.src, "enum class {pascal} : {int_repr} {{");
+            uwriteln!(self.r#gen.h_src.src, "k_None = 0,");
             for (n, field) in flags.flags.iter().enumerate() {
-                Self::docs(&mut self.gen.h_src.src, &field.docs);
+                Self::docs(&mut self.r#gen.h_src.src, &field.docs);
                 let fname = to_c_ident(&field.name).to_pascal_case();
-                uwriteln!(self.gen.h_src.src, "k{fname} = (1ULL<<{n}),");
+                uwriteln!(self.r#gen.h_src.src, "k{fname} = (1ULL<<{n}),");
             }
-            uwriteln!(self.gen.h_src.src, "}};");
+            uwriteln!(self.r#gen.h_src.src, "}};");
             uwriteln!(
-                self.gen.h_src.src,
+                self.r#gen.h_src.src,
                 r#"static inline {pascal} operator|({pascal} a, {pascal} b) {{ return {pascal}({int_repr}(a)|{int_repr}(b)); }}
         static inline {pascal} operator&({pascal} a, {pascal} b) {{ return {pascal}({int_repr}(a)&{int_repr}(b)); }}"#
             );
@@ -2679,32 +2690,35 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
     ) {
         let ty = &self.resolve.types[id];
         let guest_export = self.is_exported_type(ty);
-        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.gen.opts);
-        if self.gen.is_first_definition(&namespc, name) {
-            self.gen.h_src.change_namespace(&namespc);
-            Self::docs(&mut self.gen.h_src.src, docs);
+        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.r#gen.opts);
+        if self.r#gen.is_first_definition(&namespc, name) {
+            self.r#gen.h_src.change_namespace(&namespc);
+            Self::docs(&mut self.r#gen.h_src.src, docs);
             let pascal = name.to_pascal_case();
-            uwriteln!(self.gen.h_src.src, "struct {pascal} {{");
+            uwriteln!(self.r#gen.h_src.src, "struct {pascal} {{");
             let mut inner_namespace = namespc.clone();
             inner_namespace.push(pascal.clone());
             let mut all_types = String::new();
             for case in variant.cases.iter() {
-                Self::docs(&mut self.gen.h_src.src, &case.docs);
+                Self::docs(&mut self.r#gen.h_src.src, &case.docs);
                 let case_pascal = to_c_ident(&case.name).to_pascal_case();
                 if !all_types.is_empty() {
                     all_types += ", ";
                 }
                 all_types += &case_pascal;
-                uwrite!(self.gen.h_src.src, "struct {case_pascal} {{");
+                uwrite!(self.r#gen.h_src.src, "struct {case_pascal} {{");
                 if let Some(ty) = case.ty.as_ref() {
                     let typestr = self.type_name(ty, &inner_namespace, Flavor::InStruct);
-                    uwrite!(self.gen.h_src.src, " {typestr} value; ")
+                    uwrite!(self.r#gen.h_src.src, " {typestr} value; ")
                 }
-                uwriteln!(self.gen.h_src.src, "}};");
+                uwriteln!(self.r#gen.h_src.src, "}};");
             }
-            uwriteln!(self.gen.h_src.src, "  std::variant<{all_types}> variants;");
-            uwriteln!(self.gen.h_src.src, "}};");
-            self.gen.dependencies.needs_variant = true;
+            uwriteln!(
+                self.r#gen.h_src.src,
+                "  std::variant<{all_types}> variants;"
+            );
+            uwriteln!(self.r#gen.h_src.src, "}};");
+            self.r#gen.dependencies.needs_variant = true;
         }
     }
 
@@ -2737,22 +2751,22 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
     ) {
         let ty = &self.resolve.types[id];
         let guest_export = self.is_exported_type(ty);
-        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.gen.opts);
-        if self.gen.is_first_definition(&namespc, name) {
-            self.gen.h_src.change_namespace(&namespc);
+        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.r#gen.opts);
+        if self.r#gen.is_first_definition(&namespc, name) {
+            self.r#gen.h_src.change_namespace(&namespc);
             let pascal = name.to_pascal_case();
-            Self::docs(&mut self.gen.h_src.src, docs);
+            Self::docs(&mut self.r#gen.h_src.src, docs);
             let int_t = wit_bindgen_c::int_repr(enum_.tag());
-            uwriteln!(self.gen.h_src.src, "enum class {pascal} : {int_t} {{");
+            uwriteln!(self.r#gen.h_src.src, "enum class {pascal} : {int_t} {{");
             for (i, case) in enum_.cases.iter().enumerate() {
-                Self::docs(&mut self.gen.h_src.src, &case.docs);
+                Self::docs(&mut self.r#gen.h_src.src, &case.docs);
                 uwriteln!(
-                    self.gen.h_src.src,
+                    self.r#gen.h_src.src,
                     " k{} = {i},",
                     to_c_ident(&case.name).to_pascal_case(),
                 );
             }
-            uwriteln!(self.gen.h_src.src, "}};\n");
+            uwriteln!(self.r#gen.h_src.src, "}};\n");
         }
     }
 
@@ -2765,12 +2779,12 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
     ) {
         let ty = &self.resolve.types[id];
         let guest_export = self.is_exported_type(ty);
-        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.gen.opts);
-        self.gen.h_src.change_namespace(&namespc);
+        let namespc = namespace(self.resolve, &ty.owner, guest_export, &self.r#gen.opts);
+        self.r#gen.h_src.change_namespace(&namespc);
         let pascal = name.to_pascal_case();
-        Self::docs(&mut self.gen.h_src.src, docs);
+        Self::docs(&mut self.r#gen.h_src.src, docs);
         let typename = self.type_name(alias_type, &namespc, Flavor::InStruct);
-        uwriteln!(self.gen.h_src.src, "using {pascal} = {typename};");
+        uwriteln!(self.r#gen.h_src.src, "using {pascal} = {typename};");
     }
 
     fn type_list(
@@ -2809,7 +2823,7 @@ struct CabiPostInformation {
 }
 
 struct FunctionBindgen<'a, 'b> {
-    gen: &'b mut CppInterfaceGenerator<'a>,
+    r#gen: &'b mut CppInterfaceGenerator<'a>,
     params: Vec<String>,
     tmp: usize,
     namespace: Vec<String>,
@@ -2829,9 +2843,9 @@ struct FunctionBindgen<'a, 'b> {
 }
 
 impl<'a, 'b> FunctionBindgen<'a, 'b> {
-    fn new(gen: &'b mut CppInterfaceGenerator<'a>, params: Vec<String>) -> Self {
+    fn new(r#gen: &'b mut CppInterfaceGenerator<'a>, params: Vec<String>) -> Self {
         Self {
-            gen,
+            r#gen,
             params,
             tmp: 0,
             namespace: Default::default(),
@@ -2864,7 +2878,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 
     // fn typename_lift(&self, id: TypeId) -> String {
-    //     self.gen.type_path(id, true)
+    //     self.r#gen.type_path(id, true)
     // }
 
     fn let_results(&mut self, amt: usize, results: &mut Vec<String>) {
@@ -2891,7 +2905,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         operands: &[String],
         results: &mut Vec<String>,
     ) {
-        if self.gen.gen.opts.host {
+        if self.r#gen.r#gen.opts.host {
             results.push(format!("*(({}*) wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {})))", ty, operands[0], offset.format(POINTER_SIZE_EXPRESSION)));
         } else {
             results.push(format!(
@@ -2915,7 +2929,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 
     fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
-        if self.gen.gen.opts.host {
+        if self.r#gen.r#gen.opts.host {
             uwriteln!(
                 self.src,
                 "*(({ty}*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), ({} + {}))) = {};",
@@ -2936,12 +2950,12 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
 
     fn lower_lift(&mut self, payload: Option<&Type>) -> String {
         let typestr = self
-            .gen
+            .r#gen
             .optional_type_name(payload, &Vec::new(), Flavor::InStruct);
         let tmpnr = self.r#gen.r#gen.tmp();
         uwriteln!(self.r#gen.r#gen.c_src_head, "struct Lift{tmpnr} {{");
         let symmetric = self.r#gen.r#gen.opts.symmetric;
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         let lift = if let Some(ty) = payload {
             let res = wit_bindgen_core::abi::lift_from_memory(
                 bindgen.r#gen.resolve,
@@ -2954,7 +2968,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             String::new()
         };
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         // GuestImport doesn't leak the objects (string)
         bindgen.variant = AbiVariant::GuestExport;
         let lower = if let Some(ty) = payload {
@@ -2997,10 +3011,10 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             .lift_lower_defined
             .insert(payload.unwrap().clone());
         let typestr = self
-            .gen
+            .r#gen
             .optional_type_name(payload, &Vec::new(), Flavor::InStruct);
         let symmetric = self.r#gen.r#gen.opts.symmetric;
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         let lift = if let Some(ty) = payload {
             let res = wit_bindgen_core::abi::lift_from_memory(
                 bindgen.r#gen.resolve,
@@ -3013,7 +3027,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             String::new()
         };
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         // GuestImport doesn't leak the objects (string)
         bindgen.variant = AbiVariant::GuestExport;
         let lower = if let Some(ty) = payload {
@@ -3077,7 +3091,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 },
                 Alignment::Pointer => "uintptr_t",
             };
-            let static_var = if self.gen.in_guest_import {
+            let static_var = if self.r#gen.in_guest_import {
                 ""
             } else {
                 "static "
@@ -3115,7 +3129,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         match inst {
             abi::Instruction::GetArg { nth } => {
                 if *nth == 0 && self.params[0].as_str() == "self" {
-                    if self.gen.in_guest_import ^ self.gen.gen.opts.host {
+                    if self.r#gen.in_guest_import ^ self.r#gen.r#gen.opts.host {
                         results.push("(*this)".to_string());
                     } else {
                         results.push("(*lookup_resource(self))".to_string());
@@ -3130,7 +3144,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::Bitcasts { casts } => {
                 for (cast, op) in casts.iter().zip(operands) {
                     // let op = op;
-                    results.push(self.gen.gen.perform_cast(op, cast));
+                    results.push(self.r#gen.r#gen.perform_cast(op, cast));
                 }
             }
             abi::Instruction::ConstZero { tys } => {
@@ -3211,13 +3225,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let len = format!("len{}", tmp);
                 // let result = format!("result{}", tmp);
                 self.push_str(&format!("auto&& {} = {};\n", val, operands[0]));
-                if self.gen.gen.opts.host_side() {
+                if self.r#gen.r#gen.opts.host_side() {
                     self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
                         "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
-                        self.gen.gen.opts.ptr_type(),
+                        self.r#gen.r#gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
                         "auto {} = static_cast<size_t>({}.size());\n",
@@ -3227,8 +3241,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 if realloc.is_none() {
                     results.push(ptr);
                 } else {
-                    if !self.gen.gen.opts.host_side()
-                        && !(self.gen.gen.opts.symmetric
+                    if !self.r#gen.r#gen.opts.host_side()
+                        && !(self.r#gen.r#gen.opts.symmetric
                             && matches!(self.variant, AbiVariant::GuestImport))
                     {
                         uwriteln!(self.src, "{}.leak();\n", operands[0]);
@@ -3244,14 +3258,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let len = format!("len{}", tmp);
                 // let result = format!("result{}", tmp);
                 self.push_str(&format!("auto&& {} = {};\n", val, operands[0]));
-                if self.gen.gen.opts.host_side() {
+                if self.r#gen.r#gen.opts.host_side() {
                     self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
                         "auto {} = reinterpret_cast<const {}>({}.data());\n",
                         ptr,
-                        self.gen.gen.opts.ptr_type(),
+                        self.r#gen.r#gen.opts.ptr_type(),
                         val
                     ));
                     self.push_str(&format!(
@@ -3262,8 +3276,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 if realloc.is_none() {
                     results.push(ptr);
                 } else {
-                    if !self.gen.gen.opts.host_side()
-                        && !(self.gen.gen.opts.symmetric
+                    if !self.r#gen.r#gen.opts.host_side()
+                        && !(self.r#gen.r#gen.opts.symmetric
                             && matches!(self.variant, AbiVariant::GuestImport))
                     {
                         uwriteln!(self.src, "{}.leak();\n", operands[0]);
@@ -3280,14 +3294,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let len = format!("len{}", tmp);
                 self.push_str(&format!("auto&& {} = {};\n", val, operands[0]));
                 //self.push_str(&format!("auto const&{} = {};\n", val, operands[0]));
-                if self.gen.gen.opts.host_side() {
+                if self.r#gen.r#gen.opts.host_side() {
                     self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
                     self.push_str(&format!("auto {} = {}.size();\n", len, val));
                 } else {
                     self.push_str(&format!(
                         "auto {} = reinterpret_cast<const {}>({}.data());\n",
                         ptr,
-                        self.gen.gen.opts.ptr_type(),
+                        self.r#gen.r#gen.opts.ptr_type(),
                         val
                     ));
                     self.push_str(&format!(
@@ -3296,7 +3310,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     ));
                 }
 
-                let size = self.gen.sizes.size(element);
+                let size = self.r#gen.sizes.size(element);
                 self.push_str(&format!("for (size_t i = 0; i < {len}; ++i) {{\n"));
                 self.push_str(&format!(
                     "auto base = {ptr} + i * {size};\n",
@@ -3308,8 +3322,8 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 if realloc.is_none() {
                     results.push(ptr);
                 } else {
-                    if !self.gen.gen.opts.host_side()
-                        && !(self.gen.gen.opts.symmetric
+                    if !self.r#gen.r#gen.opts.host_side()
+                        && !(self.r#gen.r#gen.opts.symmetric
                             && matches!(self.variant, AbiVariant::GuestImport))
                     {
                         uwriteln!(self.src, "{}.leak();\n", operands[0]);
@@ -3322,14 +3336,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 let len = format!("len{}", tmp);
                 let inner = self
-                    .gen
+                    .r#gen
                     .type_name(element, &self.namespace, Flavor::InStruct);
                 self.push_str(&format!("auto {} = {};\n", len, operands[1]));
-                let result = if self.gen.gen.opts.host {
-                    uwriteln!(self.src, "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", operands[0]);
+                let result = if self.r#gen.r#gen.opts.host {
+                    uwriteln!(
+                        self.src,
+                        "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n",
+                        operands[0]
+                    );
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
                 } else {
-                    match (self.variant, self.gen.gen.opts.api_style, self.gen.gen.opts.symmetric) {
+                    match (self.variant, self.r#gen.r#gen.opts.api_style, self.r#gen.r#gen.opts.symmetric) {
                         (AbiVariant::GuestExport, APIStyle::Symmetric, true) => format!(
                             "wit::span<{inner} const>(reinterpret_cast<{inner}*>({}), {len})",
                             operands[0]
@@ -3356,27 +3374,31 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 let len = format!("len{}", tmp);
                 uwriteln!(self.src, "auto {} = {};\n", len, operands[1]);
-                let string_view = if self.gen.gen.opts.autosar {
+                let string_view = if self.r#gen.r#gen.opts.autosar {
                     "::ara::core::StringView"
                 } else {
                     "std::string_view"
                 };
-                let result = if self.gen.gen.opts.symmetric
-                    && self.gen.gen.opts.api_style == APIStyle::Asymmetric
+                let result = if self.r#gen.r#gen.opts.symmetric
+                    && self.r#gen.r#gen.opts.api_style == APIStyle::Asymmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
-                    uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view(reinterpret_cast<char const *>({}), {len}));\n", operands[0]);
+                    uwriteln!(
+                        self.src,
+                        "auto string{tmp} = wit::string::from_view(std::string_view(reinterpret_cast<char const *>({}), {len}));\n",
+                        operands[0]
+                    );
                     format!("std::move(string{tmp})")
-                } else if self.gen.gen.opts.host {
+                } else if self.r#gen.r#gen.opts.host {
                     uwriteln!(self.src, "char const* ptr{} = reinterpret_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n", tmp, operands[0]);
                     format!("{string_view}(ptr{tmp}, {len})")
-                } else if self.gen.gen.opts.short_cut
-                    || (self.gen.gen.opts.api_style == APIStyle::Symmetric
+                } else if self.r#gen.r#gen.opts.short_cut
+                    || (self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                         && matches!(self.variant, AbiVariant::GuestExport))
                 {
-                    if self.gen.gen.opts.api_style == APIStyle::Symmetric
+                    if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                         && matches!(self.variant, AbiVariant::GuestExport)
-                        && !self.gen.gen.opts.symmetric
+                        && !self.r#gen.r#gen.opts.symmetric
                     {
                         assert!(self.needs_dealloc);
                         uwriteln!(
@@ -3400,16 +3422,16 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::ListLift { element, .. } => {
                 let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
-                let size = self.gen.sizes.size(element);
-                let _align = self.gen.sizes.align(element);
-                let flavor = if self.gen.gen.opts.api_style == APIStyle::Symmetric
+                let size = self.r#gen.sizes.size(element);
+                let _align = self.r#gen.sizes.align(element);
+                let flavor = if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
                     Flavor::BorrowedArgument
                 } else {
                     Flavor::InStruct
                 };
-                let vtype = self.gen.type_name(element, &self.namespace, flavor);
+                let vtype = self.r#gen.type_name(element, &self.namespace, flavor);
                 let len = format!("len{tmp}");
                 let base = format!("base{tmp}");
                 let result = format!("result{tmp}");
@@ -3426,9 +3448,9 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     "#,
                 ));
 
-                if self.gen.gen.opts.api_style == APIStyle::Symmetric
+                if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
-                    && !self.gen.gen.opts.symmetric
+                    && !self.r#gen.r#gen.opts.symmetric
                 {
                     assert!(self.needs_dealloc);
                     self.push_str(&format!("if ({len}>0) _deallocate.push_back({base});\n"));
@@ -3450,19 +3472,19 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 uwriteln!(self.src, "{result}.initialize(i, std::move(e{tmp}));");
                 uwriteln!(self.src, "}}");
 
-                if self.gen.gen.opts.api_style == APIStyle::Symmetric
+                if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                     && matches!(self.variant, AbiVariant::GuestImport)
-                    && self.gen.gen.opts.symmetric
+                    && self.r#gen.r#gen.opts.symmetric
                 {
                     // we converted the result, free the returned vector
                     uwriteln!(self.src, "free({base});");
                 }
-                if self.gen.gen.opts.api_style == APIStyle::Symmetric
+                if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
                     results.push(format!("{result}.get_const_view()"));
-                    if !self.gen.gen.opts.symmetric
-                        || (self.gen.gen.opts.api_style == APIStyle::Symmetric
+                    if !self.r#gen.r#gen.opts.symmetric
+                        || (self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                             && matches!(self.variant, AbiVariant::GuestExport))
                     {
                         self.leak_on_insertion.replace(format!(
@@ -3481,7 +3503,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 let result = format!("result{tmp}");
                 let typename = self
-                    .gen
+                    .r#gen
                     .type_name(element, &self.namespace, Flavor::InStruct);
                 self.push_str(&format!("std::array<{typename}, {size}> {result} = {{",));
                 for a in operands.drain(0..(*size as usize)) {
@@ -3533,7 +3555,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::RecordLift { record, ty, .. } => {
                 let mut result =
-                    self.gen
+                    self.r#gen
                         .type_name(&Type::Id(*ty), &self.namespace, Flavor::InStruct);
                 result.push('{');
                 for (_field, val) in record.fields.iter().zip(operands) {
@@ -3547,7 +3569,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ..
             } => {
                 let op = &operands[0];
-                if self.gen.gen.opts.host_side() {
+                if self.r#gen.r#gen.opts.host_side() {
                     if matches!(self.variant, AbiVariant::GuestImport) {
                         results.push(format!("{op}.release()->get_handle()"));
                     } else {
@@ -3561,12 +3583,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         results.push(format!("{op}.into_handle()"));
                     } else {
                         // Check if this is an imported or exported resource
-                        let resource_ty = &self.gen.resolve.types[*ty];
+                        let resource_ty = &self.r#gen.resolve.types[*ty];
                         let resource_ty = match &resource_ty.kind {
-                            TypeDefKind::Type(Type::Id(id)) => &self.gen.resolve.types[*id],
+                            TypeDefKind::Type(Type::Id(id)) => &self.r#gen.resolve.types[*id],
                             _ => resource_ty,
                         };
-                        let is_exported = self.gen.is_exported_type(resource_ty);
+                        let is_exported = self.r#gen.is_exported_type(resource_ty);
 
                         if is_exported {
                             // Exported resources use .release()->handle
@@ -3583,7 +3605,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 ..
             } => {
                 let op = &operands[0];
-                if self.gen.gen.opts.host_side() {
+                if self.r#gen.r#gen.opts.host_side() {
                     if op == "(*this)" {
                         results.push(format!("{op}.get_rep()"));
                     } else {
@@ -3598,7 +3620,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::HandleLift { handle, .. } => {
                 let op = &operands[0];
-                match (handle, self.gen.gen.opts.host_side()) {
+                match (handle, self.r#gen.r#gen.opts.host_side()) {
                     (Handle::Own(ty), true) => match self.variant {
                         AbiVariant::GuestExport => {
                             results.push(format!("wit::{RESOURCE_EXPORT_BASE_CLASS_NAME}{{{op}}}"))
@@ -3606,7 +3628,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         AbiVariant::GuestImport => {
                             let tmp = self.tmp();
                             let var = self.tempname("obj", tmp);
-                            let tname = self.gen.type_name(
+                            let tname = self.r#gen.type_name(
                                 &Type::Id(*ty),
                                 &self.namespace,
                                 Flavor::Argument(self.variant),
@@ -3629,19 +3651,19 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         AbiVariant::GuestExport => {
                             let tmp = self.tmp();
                             let var = self.tempname("obj", tmp);
-                            let tname = self.gen.type_name(
+                            let tname = self.r#gen.type_name(
                                 &Type::Id(*ty),
                                 &self.namespace,
                                 Flavor::Argument(self.variant),
                             );
 
                             // Check if this is an imported or exported resource
-                            let resource_ty = &self.gen.resolve.types[*ty];
+                            let resource_ty = &self.r#gen.resolve.types[*ty];
                             let resource_ty = match &resource_ty.kind {
-                                TypeDefKind::Type(Type::Id(id)) => &self.gen.resolve.types[*id],
+                                TypeDefKind::Type(Type::Id(id)) => &self.r#gen.resolve.types[*id],
                                 _ => resource_ty,
                             };
-                            let is_exported = self.gen.is_exported_type(resource_ty);
+                            let is_exported = self.r#gen.is_exported_type(resource_ty);
 
                             if is_exported {
                                 // Exported resources use ::Owned typedef
@@ -3664,7 +3686,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         AbiVariant::GuestExportAsyncStackful => todo!(),
                     },
                     (Handle::Borrow(ty), true) => {
-                        let tname = self.gen.type_name(
+                        let tname = self.r#gen.type_name(
                             &Type::Id(*ty),
                             &self.namespace,
                             Flavor::Argument(self.variant),
@@ -3674,7 +3696,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     (Handle::Borrow(ty), false) => match self.variant {
                         AbiVariant::GuestImport => results.push(op.clone()),
                         AbiVariant::GuestExport => {
-                            let tname = self.gen.type_name(
+                            let tname = self.r#gen.type_name(
                                 &Type::Id(*ty),
                                 &self.namespace,
                                 Flavor::Argument(self.variant),
@@ -3700,7 +3722,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     &(tuple
                         .types
                         .iter()
-                        .map(|t| self.gen.type_name(t, &self.namespace, Flavor::InStruct)))
+                        .map(|t| self.r#gen.type_name(t, &self.namespace, Flavor::InStruct)))
                     .collect::<Vec<_>>()
                     .join(", "),
                 );
@@ -3722,7 +3744,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                     Int::U64 => {
                         let name =
-                            self.gen
+                            self.r#gen
                                 .type_name(&Type::Id(*ty), &self.namespace, Flavor::InStruct);
                         let tmp = self.tmp();
                         let tempname = self.tempname("flags", tmp);
@@ -3738,7 +3760,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::FlagsLift { flags, ty, .. } => {
                 let typename =
-                    self.gen
+                    self.r#gen
                         .type_name(&Type::Id(*ty), &self.namespace, Flavor::InStruct);
                 match wit_bindgen_c::flags_repr(flags) {
                     Int::U8 | Int::U16 | Int::U32 => {
@@ -3778,7 +3800,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 for ty in result_types.iter() {
                     let name = format!("variant{}", self.tmp());
                     results.push(name.clone());
-                    self.src.push_str(self.gen.gen.opts.wasm_type(*ty));
+                    self.src.push_str(self.r#gen.r#gen.opts.wasm_type(*ty));
                     self.src.push_str(" ");
                     self.src.push_str(&name);
                     self.src.push_str(";\n");
@@ -3787,7 +3809,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
 
                 let expr_to_match = format!("({}).variants.index()", operands[0]);
                 let elem_ns =
-                    self.gen
+                    self.r#gen
                         .type_name(&Type::Id(*var_ty), &self.namespace, Flavor::InStruct);
 
                 uwriteln!(
@@ -3826,7 +3848,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .collect::<Vec<_>>();
 
                 let ty = self
-                    .gen
+                    .r#gen
                     .type_name(&Type::Id(*ty), &self.namespace, Flavor::InStruct);
                 let resultno = self.tmp();
                 let result = format!("variant{resultno}");
@@ -3834,7 +3856,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let op0 = &operands[0];
 
                 // Use std::optional to avoid default constructor issues
-                self.gen.gen.dependencies.needs_optional = true;
+                self.r#gen.r#gen.dependencies.needs_optional = true;
                 uwriteln!(self.src, "std::optional<{ty}> {result}_opt;");
                 uwriteln!(self.src, "switch ({op0}) {{");
                 for (i, (case, (block, block_results))) in
@@ -3859,7 +3881,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::EnumLift { ty, .. } => {
                 let typename =
-                    self.gen
+                    self.r#gen
                         .type_name(&Type::Id(*ty), &self.namespace, Flavor::InStruct);
                 results.push(format!("static_cast<{typename}>({})", &operands[0]));
             }
@@ -3877,7 +3899,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     let tmp = self.tmp();
                     let name = self.tempname("option", tmp);
                     results.push(name.clone());
-                    self.src.push_str(self.gen.gen.opts.wasm_type(*ty));
+                    self.src.push_str(self.r#gen.r#gen.opts.wasm_type(*ty));
                     self.src.push_str(" ");
                     self.src.push_str(&name);
                     self.src.push_str(";\n");
@@ -3893,7 +3915,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     Flavor::InStruct
                 };
-                let ty = self.gen.type_name(payload, &self.namespace, flavor);
+                let ty = self.r#gen.type_name(payload, &self.namespace, flavor);
                 let is_function_param = self.params.iter().any(|p| p == op0);
                 let value_extract = if matches!(payload, Type::String)
                     && matches!(self.variant, AbiVariant::GuestImport)
@@ -3922,15 +3944,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let (_none, none_results) = self.blocks.pop().unwrap();
                 assert!(none_results.is_empty());
                 assert!(some_results.len() == 1);
-                let flavor = if self.gen.gen.opts.api_style == APIStyle::Symmetric
+                let flavor = if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
                     Flavor::BorrowedArgument
                 } else {
                     Flavor::InStruct
                 };
-                let type_name = self.gen.type_name(payload, &self.namespace, flavor);
-                let full_type = if self.gen.gen.opts.autosar {
+                let type_name = self.r#gen.type_name(payload, &self.namespace, flavor);
+                let full_type = if self.r#gen.r#gen.opts.autosar {
                     format!("::ara::core::Optional<{type_name}>")
                 } else {
                     format!("std::optional<{type_name}>")
@@ -3964,7 +3986,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     let tmp = self.tmp();
                     let name = self.tempname("result", tmp);
                     results.push(name.clone());
-                    self.src.push_str(self.gen.gen.opts.wasm_type(*ty));
+                    self.src.push_str(self.r#gen.r#gen.opts.wasm_type(*ty));
                     self.src.push_str(" ");
                     self.src.push_str(&name);
                     self.src.push_str(";\n");
@@ -3975,18 +3997,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
 
                 let op0 = &operands[0];
-                let ok_ty = self.gen.optional_type_name(
+                let ok_ty = self.r#gen.optional_type_name(
                     result.ok.as_ref(),
                     &self.namespace,
                     Flavor::InStruct,
                 );
-                let err_ty = self.gen.optional_type_name(
+                let err_ty = self.r#gen.optional_type_name(
                     result.err.as_ref(),
                     &self.namespace,
                     Flavor::InStruct,
                 );
                 let bind_ok = if let Some(_ok) = result.ok.as_ref() {
-                    let value = if self.gen.gen.opts.autosar {
+                    let value = if self.r#gen.r#gen.opts.autosar {
                         "Value"
                     } else {
                         "value"
@@ -3996,7 +4018,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     String::new()
                 };
                 let bind_err = if let Some(_err) = result.err.as_ref() {
-                    let error = if self.gen.gen.opts.autosar {
+                    let error = if self.r#gen.r#gen.opts.autosar {
                         "Error"
                     } else {
                         "error"
@@ -4006,7 +4028,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     String::new()
                 };
 
-                let has_value = if self.gen.gen.opts.autosar {
+                let has_value = if self.r#gen.r#gen.opts.autosar {
                     "HasValue"
                 } else {
                     "has_value"
@@ -4034,20 +4056,20 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
                 if result.err.is_none() {
                     err.clear();
-                    self.gen.gen.dependencies.needs_wit = true;
+                    self.r#gen.r#gen.dependencies.needs_wit = true;
                     err_result = String::from("wit::Void{}");
                 } else {
                     err_result = move_if_necessary(&err_results[0]);
                 }
-                let ok_type = self.gen.optional_type_name(
+                let ok_type = self.r#gen.optional_type_name(
                     result.ok.as_ref(),
                     &self.namespace,
                     Flavor::InStruct,
                 );
                 let err_type = result.err.as_ref().map_or(String::from("wit::Void"), |ty| {
-                    self.gen.type_name(ty, &self.namespace, Flavor::InStruct)
+                    self.r#gen.type_name(ty, &self.namespace, Flavor::InStruct)
                 });
-                let full_type = if self.gen.gen.opts.autosar {
+                let full_type = if self.r#gen.r#gen.opts.autosar {
                     format!("::ara::core::Result<{ok_type}, {err_type}>",)
                 } else {
                     format!("std::expected<{ok_type}, {err_type}>",)
@@ -4057,7 +4079,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
 
                 let tmp = self.tmp();
                 let resultname = self.tempname("result", tmp);
-                if result.ok.is_none() && !self.gen.gen.opts.autosar {
+                if result.ok.is_none() && !self.r#gen.r#gen.opts.autosar {
                     // construct empty ok type
                     ok_result = format!("{full_type}()");
                 }
@@ -4080,7 +4102,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else {
                     format!("{resultname}={err_type}{{{err_result}}};")
                 };
-                if self.gen.gen.opts.autosar {
+                if self.r#gen.r#gen.opts.autosar {
                     uwriteln!(
                         self.src,
                         "::ara::core::Optional<{full_type}> {resultname};\n"
@@ -4108,12 +4130,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 func: _,
             } => {
                 let module_name = self
-                    .gen
+                    .r#gen
                     .wasm_import_module
                     .as_ref()
                     .map(|e| {
-                        self.gen
-                            .gen
+                        self.r#gen
+                            .r#gen
                             .import_prefix
                             .as_ref()
                             .cloned()
@@ -4122,9 +4144,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             + e
                     })
                     .unwrap();
-                if self.gen.gen.opts.host {
-                    uwriteln!(self.src, "wasm_function_inst_t wasm_func = wasm_runtime_lookup_function(wasm_runtime_get_module_inst(exec_env), \n\
-                            \"{}#{}\", \"{}\");", module_name, name, self.wamr_signature.as_ref().unwrap().to_string());
+                if self.r#gen.r#gen.opts.host {
+                    uwriteln!(
+                        self.src,
+                        "wasm_function_inst_t wasm_func = wasm_runtime_lookup_function(wasm_runtime_get_module_inst(exec_env), \n\
+                            \"{}#{}\", \"{}\");",
+                        module_name,
+                        name,
+                        self.wamr_signature.as_ref().unwrap().to_string()
+                    );
                     if !sig.results.is_empty() {
                         uwriteln!(
                             self.src,
@@ -4143,14 +4171,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                                 WasmType::F32 => uwrite!(self.src, "WASM_F32_VAL({}),", value),
                                 WasmType::F64 => uwrite!(self.src, "WASM_F64_VAL({}),", value),
                                 WasmType::Length => {
-                                    if self.gen.gen.opts.wasm64 {
+                                    if self.r#gen.r#gen.opts.wasm64 {
                                         uwrite!(self.src, "WASM_I64_VAL({}),", value)
                                     } else {
                                         uwrite!(self.src, "WASM_I32_VAL((int32_t){}),", value)
                                     }
                                 }
                                 WasmType::Pointer => {
-                                    if self.gen.gen.opts.wasm64 {
+                                    if self.r#gen.r#gen.opts.wasm64 {
                                         uwrite!(self.src, "WASM_I64_VAL({}),", value)
                                     } else {
                                         uwrite!(self.src, "WASM_I32_VAL((int32_t){}),", value)
@@ -4165,7 +4193,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     } else {
                         uwriteln!(self.src, "wasm_val_t *wasm_args = nullptr;");
                     }
-                    uwriteln!(self.src, "bool wasm_ok = wasm_runtime_call_wasm_a(exec_env, wasm_func, {}, wasm_results, {}, wasm_args);", sig.results.len(), sig.params.len());
+                    uwriteln!(
+                        self.src,
+                        "bool wasm_ok = wasm_runtime_call_wasm_a(exec_env, wasm_func, {}, wasm_results, {}, wasm_args);",
+                        sig.results.len(),
+                        sig.params.len()
+                    );
                     uwriteln!(self.src, "assert(wasm_ok);");
                     if sig.results.len() > 0 {
                         let (kind, elem) = match sig.results.first() {
@@ -4174,14 +4207,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             Some(WasmType::F32) => (String::from("WASM_F32"), String::from("f32")),
                             Some(WasmType::F64) => (String::from("WASM_F64"), String::from("f64")),
                             Some(WasmType::Pointer) => {
-                                if self.gen.gen.opts.wasm64 {
+                                if self.r#gen.r#gen.opts.wasm64 {
                                     (String::from("WASM_I64"), String::from("i64"))
                                 } else {
                                     (String::from("WASM_I32"), String::from("i32"))
                                 }
                             }
                             Some(WasmType::Length) => {
-                                if self.gen.gen.opts.wasm64 {
+                                if self.r#gen.r#gen.opts.wasm64 {
                                     (String::from("WASM_I64"), String::from("i64"))
                                 } else {
                                     (String::from("WASM_I32"), String::from("i32"))
@@ -4198,11 +4231,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                 } else {
                     let func =
-                        self.gen
+                        self.r#gen
                             .declare_import(&module_name, name, &sig.params, &sig.results);
 
                     // ... then call the function with all our operands
-                    if sig.results.len() > 0 {
+                    if !sig.results.is_empty() {
                         self.src.push_str("auto ret = ");
                         results.push("ret".to_string());
                     }
@@ -4222,18 +4255,18 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 // dbg!(func);
                 self.let_results(if func.result.is_some() { 1 } else { 0 }, results);
                 let (mut namespace, func_name_h) =
-                    self.gen
-                        .func_namespace_name(func, !self.gen.gen.opts.host_side(), true);
+                    self.r#gen
+                        .func_namespace_name(func, !self.r#gen.r#gen.opts.host_side(), true);
                 if matches!(func.kind, FunctionKind::Method(_)) {
                     let this = operands.remove(0);
-                    if self.gen.gen.opts.host_side() {
+                    if self.r#gen.r#gen.opts.host_side() {
                         uwrite!(self.src, "({this}).");
                     } else {
                         uwrite!(self.src, "({this}).get().");
                     }
                 } else {
                     if matches!(func.kind, FunctionKind::Constructor(_))
-                        && self.gen.gen.opts.host_side()
+                        && self.r#gen.r#gen.opts.host_side()
                     {
                         let _ = namespace.pop();
                     }
@@ -4243,12 +4276,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 }
                 self.src.push_str(&func_name_h);
                 if matches!(func.kind, FunctionKind::Constructor(_))
-                    && self.gen.gen.opts.host_side()
+                    && self.r#gen.r#gen.opts.host_side()
                 {
                     self.push_str("::New");
                 }
                 self.push_str("(");
-                if self.gen.gen.opts.host {
+                if self.r#gen.r#gen.opts.host {
                     if !matches!(func.kind, FunctionKind::Method(_)) {
                         self.push_str("exec_env");
                         if !operands.is_empty() {
@@ -4278,12 +4311,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     _ => {
                         assert!(*amt == operands.len());
                         // Fallible constructors return expected, not void
-                        let is_fallible_constructor =
-                            self.gen.gen.is_fallible_constructor(self.gen.resolve, func);
+                        let is_fallible_constructor = self
+                            .r#gen
+                            .r#gen
+                            .is_fallible_constructor(self.r#gen.resolve, func);
 
                         match &func.kind {
                             FunctionKind::Constructor(_)
-                                if self.gen.gen.opts.is_only_handle(self.variant)
+                                if self.r#gen.r#gen.opts.is_only_handle(self.variant)
                                     && !is_fallible_constructor =>
                             {
                                 // strange but works
@@ -4321,7 +4356,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             ret_type: _cabi_post_type,
                         }) = self.cabi_post.as_ref()
                         {
-                            if self.gen.gen.opts.host {
+                            if self.r#gen.r#gen.opts.host {
                                 let cabi_post_name = make_external_symbol(
                                     &func_module,
                                     &func_name,
@@ -4329,7 +4364,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                                 );
                                 self.src.push_str(&format!(", wasm_results[0].of.i32, wasm_runtime_lookup_function(wasm_runtime_get_module_inst(exec_env), \"cabi_post_{}\", \"(i)\"), exec_env)", cabi_post_name));
                             } else {
-                                let cabi_post_name = self.gen.declare_import(
+                                let cabi_post_name = self.r#gen.declare_import(
                                     &format!("cabi_post_{func_module}"),
                                     func_name,
                                     &[WasmType::Pointer],
@@ -4339,11 +4374,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             }
                         }
                         if matches!(func.kind, FunctionKind::Constructor(_))
-                            && self.gen.gen.opts.is_only_handle(self.variant)
+                            && self.r#gen.r#gen.opts.is_only_handle(self.variant)
                             && !is_fallible_constructor
                         {
                             // we wrapped the handle in an object, so unpack it
-                            if self.gen.gen.opts.host_side() {
+                            if self.r#gen.r#gen.opts.host_side() {
                                 self.src.push_str(
                                     ".get_handle();
                                     this->rep = *lookup_resource(ret)",
@@ -4379,7 +4414,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 uwriteln!(self.src, "size_t {len} = {};", operands[1]);
                 let i = self.tempname("i", tmp);
                 uwriteln!(self.src, "for (size_t {i} = 0; {i} < {len}; {i}++) {{");
-                let size = self.gen.sizes.size(element);
+                let size = self.r#gen.sizes.size(element);
                 uwriteln!(
                     self.src,
                     "uint8_t* base = {ptr} + {i} * {size};",
@@ -4412,14 +4447,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.src.push_str("}\n");
             }
             abi::Instruction::PointerLoad { offset } => {
-                let ptr_type = self.gen.gen.opts.ptr_type();
+                let ptr_type = self.r#gen.r#gen.opts.ptr_type();
                 self.load(ptr_type, *offset, operands, results)
             }
             abi::Instruction::LengthLoad { offset } => {
                 self.load("size_t", *offset, operands, results)
             }
             abi::Instruction::PointerStore { offset } => {
-                let ptr_type = format!("const {}", self.gen.gen.opts.ptr_type());
+                let ptr_type = format!("const {}", self.r#gen.r#gen.opts.ptr_type());
                 self.store(&ptr_type, *offset, operands)
             }
             abi::Instruction::LengthStore { offset } => self.store("size_t", *offset, operands),
@@ -4427,7 +4462,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let lower_lift = self.lower_lift(payload.as_ref());
                 results.push(format!(
                     "lower_future<{}, {lower_lift}>(std::move({}))",
-                    self.gen.optional_type_name(
+                    self.r#gen.optional_type_name(
                         payload.as_ref(),
                         &self.namespace,
                         Flavor::InStruct
@@ -4439,7 +4474,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let lower_lift = self.lower_lift(payload.as_ref());
                 results.push(format!(
                     "lift_future<{}, {lower_lift}>({})",
-                    self.gen.optional_type_name(
+                    self.r#gen.optional_type_name(
                         payload.as_ref(),
                         &self.namespace,
                         Flavor::InStruct
@@ -4451,7 +4486,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.lower_lift_stream(payload.as_ref());
                 results.push(format!(
                     "lower_stream<{}>(std::move({}))",
-                    self.gen.optional_type_name(
+                    self.r#gen.optional_type_name(
                         payload.as_ref(),
                         &self.namespace,
                         Flavor::InStruct
@@ -4463,7 +4498,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.lower_lift_stream(payload.as_ref());
                 results.push(format!(
                     "lift_stream<{}>({})",
-                    self.gen.optional_type_name(
+                    self.r#gen.optional_type_name(
                         payload.as_ref(),
                         &self.namespace,
                         Flavor::InStruct
@@ -4496,7 +4531,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
         uwriteln!(
             self.src,
             "{} ptr{tmp} = reinterpret_cast<{0}>(&ret_area);",
-            self.gen.gen.opts.ptr_type(),
+            self.r#gen.r#gen.opts.ptr_type(),
         );
 
         format!("ptr{}", tmp)
@@ -4514,7 +4549,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
     }
 
     fn sizes(&self) -> &wit_bindgen_core::wit_parser::SizeAlign {
-        &self.gen.sizes
+        &self.r#gen.sizes
     }
 
     fn is_list_canonical(
@@ -4526,7 +4561,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             return false;
         }
         match ty {
-            Type::Id(id) => !self.gen.gen.types.get(*id).has_resource,
+            Type::Id(id) => !self.r#gen.r#gen.types.get(*id).has_resource,
             _ => true,
         }
     }

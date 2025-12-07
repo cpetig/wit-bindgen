@@ -1,8 +1,8 @@
 use crate::bindgen::{FunctionBindgen, POINTER_SIZE_EXPRESSION};
 use crate::{
-    classify_constructor_return_type, full_wit_type_name, int_repr, to_rust_ident,
-    to_upper_camel_case, wasm_type, ConstructorReturnType, FnSig, Identifier, InterfaceName,
-    Ownership, RuntimeItem, RustFlagsRepr, RustWasm, TypeGeneration,
+    ConstructorReturnType, FnSig, Identifier, InterfaceName, Ownership, RuntimeItem, RustFlagsRepr,
+    RustWasm, TypeGeneration, classify_constructor_return_type, full_wit_type_name, int_repr,
+    to_rust_ident, to_upper_camel_case, wasm_type,
 };
 use anyhow::Result;
 use heck::*;
@@ -11,8 +11,8 @@ use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
 use wit_bindgen_core::{
-    dealias, make_external_component, make_external_symbol, symmetric, uwrite, uwriteln,
-    wit_parser::*, AnonymousTypeGenerator, Source, TypeInfo,
+    AnonymousTypeGenerator, Source, TypeInfo, dealias, make_external_component,
+    make_external_symbol, symmetric, uwrite, uwriteln, wit_parser::*,
 };
 
 pub struct InterfaceGenerator<'a> {
@@ -201,7 +201,7 @@ impl<'i> InterfaceGenerator<'i> {
         for (resource, (trait_name, methods)) in traits.iter() {
             let resource = resource.unwrap();
             let resource_name = self.resolve.types[resource].name.as_ref().unwrap();
-            if self.gen.opts.symmetric {
+            if self.r#gen.opts.symmetric {
                 let resource_type = resource_name.to_pascal_case();
                 let resource_snake = resource_name.to_snake_case();
                 uwriteln!(
@@ -226,7 +226,7 @@ impl<'i> InterfaceGenerator<'i> {
             let rep_name = format!("[resource-rep]{resource_name}");
             let external_rep =
                 make_external_symbol(&wasm_import_module, &rep_name, AbiVariant::GuestImport);
-            let handle_type = if self.gen.opts.symmetric {
+            let handle_type = if self.r#gen.opts.symmetric {
                 abi::WasmType::Pointer
             } else {
                 abi::WasmType::I32
@@ -245,17 +245,17 @@ impl<'i> InterfaceGenerator<'i> {
                 &[handle_type],
                 &[abi::WasmType::Pointer],
             );
-            let handle_type = if self.gen.opts.symmetric {
+            let handle_type = if self.r#gen.opts.symmetric {
                 "usize"
             } else {
                 "u32"
             };
-            let casting = if self.gen.opts.symmetric {
+            let casting = if self.r#gen.opts.symmetric {
                 " as *mut u8"
             } else {
                 " as i32"
             };
-            if self.gen.opts.symmetric {
+            if self.r#gen.opts.symmetric {
                 uwriteln!(
                     self.src,
                     r#"
@@ -366,7 +366,7 @@ macro_rules! {macro_name} {{
             };
             let camel = name.to_upper_camel_case();
             let snake = name.to_snake_case();
-            if self.gen.opts.symmetric {
+            if self.r#gen.opts.symmetric {
                 let dtor_symbol = make_external_symbol(
                     &module,
                     &(String::from("[resource-drop]") + &name),
@@ -631,7 +631,7 @@ macro_rules! {macro_name} {{
         } else {
             (
                 ArchitectureSize {
-                    bytes: if self.gen.opts.symmetric { 1 } else { 0 },
+                    bytes: if self.r#gen.opts.symmetric { 1 } else { 0 },
                     pointers: 0,
                 },
                 Alignment::default(),
@@ -710,7 +710,7 @@ macro_rules! {macro_name} {{
 pub mod vtable{ordinal} {{
 "#
         );
-        if !self.gen.opts.symmetric {
+        if !self.r#gen.opts.symmetric {
             code.push_str(&format!(
                 r#"
     #[cfg(not(target_arch = "wasm32"))]
@@ -807,7 +807,7 @@ pub mod vtable{ordinal} {{
         self.src.push_str("#[allow(unused_unsafe, clippy::all)]\n");
         let params = self.print_signature(func, async_, &sig);
         self.src.push_str("{\n");
-        if self.gen.opts.symmetric
+        if self.r#gen.opts.symmetric
             && symmetric::has_non_canonical_list_rust(self.resolve, &func.params)
         {
             self.needs_deallocate = true;
@@ -893,7 +893,7 @@ pub mod vtable{ordinal} {{
             } else {
                 AbiVariant::GuestImport
             },
-            if f.gen.gen.opts.symmetric {
+            if f.r#gen.r#gen.opts.symmetric {
                 LiftLower::Symmetric
             } else {
                 LiftLower::LowerArgsLiftResults
@@ -1258,7 +1258,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         }
         self.src.push_str("} }\n");
 
-        if async_ && !self.gen.opts.symmetric {
+        if async_ && !self.r#gen.opts.symmetric {
             let async_support = self.r#gen.async_support_path();
             uwrite!(
                 self.src,
@@ -1273,7 +1273,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 "
             );
         } else if abi::guest_export_needs_post_return(self.resolve, func)
-            && !self.gen.opts.symmetric
+            && !self.r#gen.opts.symmetric
         {
             uwrite!(
                 self.src,
@@ -1317,7 +1317,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
         // let mut library_name = String::new();
         let (export_name, external_name) = if self.r#gen.opts.symmetric {
-            if self.gen.opts.hash_in_symbol {
+            if self.r#gen.opts.hash_in_symbol {
                 let export_name =
                     func.standard32_core_export_name(wasm_module_export_name.as_deref());
                 let mut external_name = make_external_component(export_name.as_ref());
@@ -1377,7 +1377,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         self.push_str("}\n");
 
         let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
-        if async_ && !self.gen.opts.symmetric {
+        if async_ && !self.r#gen.opts.symmetric {
             uwrite!(
                 self.src,
                 "\
@@ -1390,9 +1390,9 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 "
             );
         } else if abi::guest_export_needs_post_return(self.resolve, func)
-            && !self.gen.opts.symmetric
+            && !self.r#gen.opts.symmetric
         {
-            let export_prefix = self.gen.opts.export_prefix.as_deref().unwrap_or("");
+            let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
             let external_name = make_external_component(export_prefix)
                 + "cabi_post_"
                 + &make_external_component(&export_name);
@@ -1425,7 +1425,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         };
         let sig = self
             .resolve
-            .wasm_signature_symmetric(variant, func, self.gen.opts.symmetric);
+            .wasm_signature_symmetric(variant, func, self.r#gen.opts.symmetric);
         let mut params = Vec::new();
         for (i, param) in sig.params.iter().enumerate() {
             let name = format!("arg{}", i);
@@ -2807,7 +2807,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
                         }}
                     }}
                 "#,
-                handle_type = if self.gen.opts.symmetric {
+                handle_type = if self.r#gen.opts.symmetric {
                     "usize"
                 } else {
                     "u32"
@@ -2945,13 +2945,13 @@ impl<'a> {camel}Borrow<'a>{{
     }}
 }}
                 "#,
-                handle_type = if self.gen.opts.symmetric {
+                handle_type = if self.r#gen.opts.symmetric {
                     "usize"
                 } else {
                     "u32"
                 }
             );
-            if self.gen.opts.symmetric {
+            if self.r#gen.opts.symmetric {
                 module.clone()
             } else {
                 format!("[export]{module}")
@@ -2966,7 +2966,7 @@ impl<'a> {camel}Borrow<'a>{{
             &wasm_import_module,
             &drop_name,
             &export_name,
-            &[if self.gen.opts.symmetric {
+            &[if self.r#gen.opts.symmetric {
                 abi::WasmType::Pointer
             } else {
                 abi::WasmType::I32
@@ -2984,12 +2984,12 @@ impl<'a> {camel}Borrow<'a>{{
                      }}
                 }}
             "#,
-            handle_type = if self.gen.opts.symmetric {
+            handle_type = if self.r#gen.opts.symmetric {
                 "usize"
             } else {
                 "u32"
             },
-            casting = if self.gen.opts.symmetric {
+            casting = if self.r#gen.opts.symmetric {
                 " as *mut u8"
             } else {
                 " as i32"

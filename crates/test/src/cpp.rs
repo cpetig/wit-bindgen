@@ -213,8 +213,7 @@ impl LanguageMethods for Cpp {
         }
         if !runner.is_symmetric() {
             cmd.arg("-mexec-model=reactor");
-        }
-        else {
+        } else {
             cmd.arg("-fPIC").arg(format!(
                 "-Wl,--version-script={}",
                 compile

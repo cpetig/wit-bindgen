@@ -852,7 +852,12 @@ impl WorldGenerator for Cpp {
                 uwriteln!(c_str.src, "  }};");
             }
             for i in self.host_functions.iter() {
-                uwriteln!(c_str.src, "  wasm_runtime_register_natives(\"{}\", {1}_funs, sizeof({1}_funs)/sizeof(NativeSymbol));", i.0, i.0.replace(&[':','.','-','+'], "_").to_snake_case());
+                uwriteln!(
+                    c_str.src,
+                    "  wasm_runtime_register_natives(\"{}\", {1}_funs, sizeof({1}_funs)/sizeof(NativeSymbol));",
+                    i.0,
+                    i.0.replace(&[':', '.', '-', '+'], "_").to_snake_case()
+                );
             }
             uwriteln!(c_str.src, "}}");
         }
@@ -1277,7 +1282,10 @@ impl CppInterfaceGenerator<'_> {
             } else {
                 first_arg = false;
             }
-            self.r#gen.c_src.src.push_str(self.r#gen.opts.wasm_type(*ty));
+            self.r#gen
+                .c_src
+                .src
+                .push_str(self.r#gen.opts.wasm_type(*ty));
             self.r#gen.c_src.src.push_str(" ");
             self.r#gen.c_src.src.push_str(&name);
             params.push(name);
@@ -2317,7 +2325,9 @@ impl CppInterfaceGenerator<'_> {
         let import = if self.r#gen.opts.symmetric {
             format!("extern \"C\" {result} {extern_name}({args});\n")
         } else {
-            format!("extern \"C\" __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n")
+            format!(
+                "extern \"C\" __attribute__((import_module(\"{module_name}\")))\n __attribute__((import_name(\"{name}\")))\n {result} {extern_name}({args});\n"
+            )
         };
         (extern_name, import)
     }
@@ -2955,7 +2965,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         let tmpnr = self.r#gen.r#gen.tmp();
         uwriteln!(self.r#gen.r#gen.c_src_head, "struct Lift{tmpnr} {{");
         let symmetric = self.r#gen.r#gen.opts.symmetric;
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         let lift = if let Some(ty) = payload {
             let res = wit_bindgen_core::abi::lift_from_memory(
                 bindgen.r#gen.resolve,
@@ -2968,7 +2978,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             String::new()
         };
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         // GuestImport doesn't leak the objects (string)
         bindgen.variant = AbiVariant::GuestExport;
         let lower = if let Some(ty) = payload {
@@ -3014,7 +3024,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             .r#gen
             .optional_type_name(payload, &Vec::new(), Flavor::InStruct);
         let symmetric = self.r#gen.r#gen.opts.symmetric;
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         let lift = if let Some(ty) = payload {
             let res = wit_bindgen_core::abi::lift_from_memory(
                 bindgen.r#gen.resolve,
@@ -3027,7 +3037,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             String::new()
         };
-        let mut bindgen = FunctionBindgen::new(self.gen, Vec::new());
+        let mut bindgen = FunctionBindgen::new(self.r#gen, Vec::new());
         // GuestImport doesn't leak the objects (string)
         bindgen.variant = AbiVariant::GuestExport;
         let lower = if let Some(ty) = payload {
@@ -3340,7 +3350,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .type_name(element, &self.namespace, Flavor::InStruct);
                 self.push_str(&format!("auto {} = {};\n", len, operands[1]));
                 let result = if self.r#gen.r#gen.opts.host {
-                    uwriteln!(self.src, "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n", operands[0]);
+                    uwriteln!(
+                        self.src,
+                        "{inner} const* ptr{tmp} = ({inner} const*)wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {});\n",
+                        operands[0]
+                    );
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
                 } else if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
@@ -3372,10 +3386,19 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     && self.r#gen.r#gen.opts.api_style == APIStyle::Asymmetric
                     && matches!(self.variant, AbiVariant::GuestExport)
                 {
-                    uwriteln!(self.src, "auto string{tmp} = wit::string::from_view(std::string_view(reinterpret_cast<char const *>({}), {len}));\n", operands[0]);
+                    uwriteln!(
+                        self.src,
+                        "auto string{tmp} = wit::string::from_view(std::string_view(reinterpret_cast<char const *>({}), {len}));\n",
+                        operands[0]
+                    );
                     format!("std::move(string{tmp})")
                 } else if self.r#gen.r#gen.opts.host {
-                    uwriteln!(self.src, "char const* ptr{} = reinterpret_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n", tmp, operands[0]);
+                    uwriteln!(
+                        self.src,
+                        "char const* ptr{} = reinterpret_cast<char const*>(wasm_runtime_addr_app_to_native(wasm_runtime_get_module_inst(exec_env), {}));\n",
+                        tmp,
+                        operands[0]
+                    );
                     format!("std::string_view(ptr{}, {len})", tmp)
                 } else if self.r#gen.r#gen.opts.short_cut
                     || (self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
@@ -4088,8 +4111,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     })
                     .unwrap();
                 if self.r#gen.r#gen.opts.host {
-                    uwriteln!(self.src, "wasm_function_inst_t wasm_func = wasm_runtime_lookup_function(wasm_runtime_get_module_inst(exec_env), \n\
-                            \"{}#{}\", \"{}\");", module_name, name, self.wamr_signature.as_ref().unwrap().to_string());
+                    uwriteln!(
+                        self.src,
+                        "wasm_function_inst_t wasm_func = wasm_runtime_lookup_function(wasm_runtime_get_module_inst(exec_env), \n\
+                            \"{}#{}\", \"{}\");",
+                        module_name,
+                        name,
+                        self.wamr_signature.as_ref().unwrap().to_string()
+                    );
                     if !sig.results.is_empty() {
                         uwriteln!(
                             self.src,
@@ -4130,7 +4159,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     } else {
                         uwriteln!(self.src, "wasm_val_t *wasm_args = nullptr;");
                     }
-                    uwriteln!(self.src, "bool wasm_ok = wasm_runtime_call_wasm_a(exec_env, wasm_func, {}, wasm_results, {}, wasm_args);", sig.results.len(), sig.params.len());
+                    uwriteln!(
+                        self.src,
+                        "bool wasm_ok = wasm_runtime_call_wasm_a(exec_env, wasm_func, {}, wasm_results, {}, wasm_args);",
+                        sig.results.len(),
+                        sig.params.len()
+                    );
                     uwriteln!(self.src, "assert(wasm_ok);");
                     if sig.results.len() > 0 {
                         let (kind, elem) = match sig.results.first() {

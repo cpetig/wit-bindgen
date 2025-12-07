@@ -1,9 +1,9 @@
 use std::fmt::Write;
 use wit_bindgen_core::{
+    Source, WorldGenerator,
     abi::{AbiVariant, WasmType},
     make_external_symbol, uwriteln,
     wit_parser::{self, Function, Resolve, TypeOwner, WorldId, WorldKey},
-    Source, WorldGenerator,
 };
 
 #[derive(Default)]
@@ -85,9 +85,9 @@ impl WorldGenerator for Bridge {
         };
         uwriteln!(self.src, "// Import IF {world}");
 
-        let mut gen = self.interface(resolve);
+        let mut r#gen = self.interface(resolve);
         for (_name, func) in resolve.interfaces[iface].functions.iter() {
-            gen.generate_function(func, &TypeOwner::Interface(iface), AbiVariant::GuestImport);
+            r#gen.generate_function(func, &TypeOwner::Interface(iface), AbiVariant::GuestImport);
         }
         Ok(())
     }
@@ -105,9 +105,9 @@ impl WorldGenerator for Bridge {
         };
         uwriteln!(self.src, "// Export IF {world}");
 
-        let mut gen = self.interface(resolve);
+        let mut r#gen = self.interface(resolve);
         for (_name, func) in resolve.interfaces[iface].functions.iter() {
-            gen.generate_function(func, &TypeOwner::Interface(iface), AbiVariant::GuestExport);
+            r#gen.generate_function(func, &TypeOwner::Interface(iface), AbiVariant::GuestExport);
         }
         Ok(())
     }
@@ -121,9 +121,9 @@ impl WorldGenerator for Bridge {
     ) {
         let world = &resolve.worlds[worldid];
         uwriteln!(self.src, "// Import Funcs {}", world.name);
-        let mut gen = self.interface(resolve);
+        let mut r#gen = self.interface(resolve);
         for (_name, func) in funcs.iter() {
-            gen.generate_function(func, &TypeOwner::World(worldid), AbiVariant::GuestImport);
+            r#gen.generate_function(func, &TypeOwner::World(worldid), AbiVariant::GuestImport);
         }
     }
 
@@ -136,9 +136,9 @@ impl WorldGenerator for Bridge {
     ) -> anyhow::Result<()> {
         let world = &resolve.worlds[worldid];
         uwriteln!(self.src, "// Export Funcs {}", world.name);
-        let mut gen = self.interface(resolve);
+        let mut r#gen = self.interface(resolve);
         for (_name, func) in funcs.iter() {
-            gen.generate_function(func, &TypeOwner::World(worldid), AbiVariant::GuestExport);
+            r#gen.generate_function(func, &TypeOwner::World(worldid), AbiVariant::GuestExport);
         }
         Ok(())
     }
@@ -168,7 +168,10 @@ impl WorldGenerator for Bridge {
 
 impl Bridge {
     fn interface<'a>(&'a mut self, resolve: &'a Resolve) -> BridgeInterfaceGenerator<'a> {
-        BridgeInterfaceGenerator { gen: self, resolve }
+        BridgeInterfaceGenerator {
+            r#gen: self,
+            resolve,
+        }
     }
 
     fn wasm_type(&self, ty: WasmType, _var: TypeVariant) -> String {
@@ -200,7 +203,7 @@ impl Bridge {
 }
 
 struct BridgeInterfaceGenerator<'a> {
-    gen: &'a mut Bridge,
+    r#gen: &'a mut Bridge,
     resolve: &'a Resolve,
 }
 
@@ -211,7 +214,7 @@ enum TypeVariant {
 
 impl<'a> BridgeInterfaceGenerator<'a> {
     fn generate_function(&mut self, func: &Function, owner: &TypeOwner, variant: AbiVariant) {
-        uwriteln!(self.gen.src, "// Func {} {:?}", func.name, variant);
+        uwriteln!(self.r#gen.src, "// Func {} {:?}", func.name, variant);
         let result_var = match variant {
             AbiVariant::GuestImport => TypeVariant::W2C2,
             AbiVariant::GuestExport => TypeVariant::Native,
@@ -223,18 +226,18 @@ impl<'a> BridgeInterfaceGenerator<'a> {
         let return_via_pointer = signature.retptr;
         let is_export = matches!(variant, AbiVariant::GuestExport);
         if is_export {
-            self.gen
+            self.r#gen
                 .src
                 .push_str(r#"__attribute__ ((visibility ("default"))) "#);
         }
         let res = if signature.results.is_empty() || return_via_pointer {
             "void".into()
         } else {
-            self.gen.wasm_type(signature.results[0], result_var)
+            self.r#gen.wasm_type(signature.results[0], result_var)
         };
-        self.gen.src.push_str(&res);
-        self.gen.src.push_str(" ");
-        let fname = self.gen.func_name(self.resolve, func, owner, variant);
-        self.gen.src.push_str(&fname);
+        self.r#gen.src.push_str(&res);
+        self.r#gen.src.push_str(" ");
+        let fname = self.r#gen.func_name(self.resolve, func, owner, variant);
+        self.r#gen.src.push_str(&fname);
     }
 }

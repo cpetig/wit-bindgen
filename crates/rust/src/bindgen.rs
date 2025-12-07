@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
 use wit_bindgen_core::{
-    dealias, make_external_component, make_external_symbol, uwrite, uwriteln, wit_parser::*, Source,
+    Source, dealias, make_external_component, make_external_symbol, uwrite, uwriteln, wit_parser::*,
 };
 
 pub(super) struct FunctionBindgen<'a, 'b> {
@@ -66,10 +66,12 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         func: Option<&Function>,
     ) -> String {
         let rust_name = String::from(module_prefix)
-            + &if self.gen.gen.opts.symmetric && func.is_some() && self.gen.gen.opts.hash_in_symbol
+            + &if self.r#gen.r#gen.opts.symmetric
+                && func.is_some()
+                && self.r#gen.r#gen.opts.hash_in_symbol
             {
                 let func = func.unwrap();
-                let hash = wit_bindgen_core::symmetric::hash(self.gen.resolve, func);
+                let hash = wit_bindgen_core::symmetric::hash(self.r#gen.resolve, func);
                 make_external_component(
                     func.standard32_core_export_name(Some(self.wasm_import_module))
                         .as_ref(),
@@ -977,7 +979,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // ... then call the function with all our operands
                 let async_ = name.starts_with("[async]")
                     && !sig.results.is_empty()
-                    && self.gen.gen.opts.symmetric;
+                    && self.r#gen.r#gen.opts.symmetric;
                 if async_ {
                     self.push_str("wit_bindgen::rt::async_support::await_result(move || unsafe {");
                     results.push(String::new());
@@ -1007,7 +1009,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 // this instruction the result is going to be lowered. This
                 // lowering must happen in terms of `&T`, so force the result
                 // of this expression to have `&` in front.
-                if func.result.is_some() && *async_ && !self.gen.gen.opts.symmetric {
+                if func.result.is_some() && *async_ && !self.r#gen.r#gen.opts.symmetric {
                     self.push_str("&");
                 }
 

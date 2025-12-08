@@ -16,3 +16,4 @@ symmetric = [ "dep:dummy-rt", "dep:wit-bindgen-symmetric-rt", "wit-bindgen-rust-
 canonical = [ "original/async-spawn" ]
 async = []
 async-spawn = []
+inter-task-wakeup = ["async"]

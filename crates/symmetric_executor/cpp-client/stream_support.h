@@ -56,10 +56,8 @@ private:
 
       auto res = data->handle.StartReading(std::move(*buffer));
       if (!res.has_value()) {
-        // Pending indicates that other reader was faster (misuse), ignore case
-        // for now
-        assert(res.error() ==
-               symmetric::runtime::symmetric_stream::StreamState::kEof);
+        // Pending indicates that other reader was faster (misuse), handle as
+        // eof for now
         data->reader(wit::span<T>());
         auto release = std::unique_ptr<background_object>(data);
         return symmetric::runtime::symmetric_executor::CallbackState::kReady;
@@ -100,10 +98,8 @@ public:
         buffer_size);
 
     auto res = object->handle.StartReading(std::move(b));
-    // success & eof will trigger the event, pending indicates misuse
-    assert(res.has_value() ||
-           res.error() !=
-               symmetric::runtime::symmetric_stream::StreamState::kPending);
+    // success will trigger the event, a buffer indicates misuse
+    assert(res.has_value());
     return symmetric::runtime::symmetric_executor::Register(
         object->handle.ReadReadySubscribe(),
         symmetric::runtime::symmetric_executor::CallbackFunction(

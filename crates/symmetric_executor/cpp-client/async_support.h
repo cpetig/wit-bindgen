@@ -262,7 +262,8 @@ write_to_future(void *data) {
               buffer->SetSize(1);
               ptr->wr.handle.FinishWriting(std::move(buffer).value());
             } else {
-              if (buffer.error() == kPending) {
+              if (buffer.error() ==
+                  symmetric::runtime::symmetric_stream::StreamState::kPending) {
                 symmetric::runtime::symmetric_executor::BlockOn(
                     ptr->wr.handle.WriteReadySubscribe());
               }

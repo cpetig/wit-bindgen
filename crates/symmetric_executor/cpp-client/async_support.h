@@ -136,6 +136,7 @@ template <class T> struct stream_writer {
     void write(std::vector<T>&& data) {
         while (!data.empty()) {
             auto subsc = handle.WriteReadySubscribe();
+            subsc.Reset();
             data = write_nb(std::move(data));
             if (!data.empty()) {
                 symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));

@@ -83,6 +83,7 @@ std::future<T> lift_future(uint8_t* stream) {
         1
     );
     data->stream.StartReading(std::move(buf));
+    // return value doesn't influence callback logic
     symmetric::runtime::symmetric_executor::Register(std::move(event),
             symmetric::runtime::symmetric_executor::CallbackFunction(wit::ResourceImportBase((uint8_t*)&fulfil_promise<T, LIFT>)),
             symmetric::runtime::symmetric_executor::CallbackData(wit::ResourceImportBase((uint8_t*)data.release())));
@@ -130,6 +131,7 @@ template <class T> struct stream_writer {
             if (capacity>data.size()) capacity = data.size();
             data.erase(data.begin(), data.begin() + capacity);
         }
+        // no need to handle eof or pending
         return data;
     }
 
@@ -139,6 +141,9 @@ template <class T> struct stream_writer {
             subsc.Reset();
             data = write_nb(std::move(data));
             if (!data.empty()) {
+                if (handle.IsReadClosed()) { 
+                    return; 
+                }
                 symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));
             }
         }
@@ -191,6 +196,12 @@ static symmetric::runtime::symmetric_executor::CallbackState write_to_future(voi
             LOWER::lower(std::move(result), dataptr);
             buffer->SetSize(1);
             ptr->wr.handle.FinishWriting(std::move(buffer).value());
+        } else {
+            if (buffer.error() == symmetric::runtime::symmetric_stream::StreamState::kPending) {
+                symmetric::runtime::symmetric_executor::Register(ptr->wr.handle.WriteReadySubscribe(),
+                    symmetric::runtime::symmetric_executor::CallbackFunction(wit::ResourceImportBase((uint8_t*)write_to_future<T, LOWER>)),
+                    symmetric::runtime::symmetric_executor::CallbackData(wit::ResourceImportBase((uint8_t*)ptr.release())));
+            }
         }
     } else {
         // sadly there is no easier way to wait for a future in the background?
@@ -200,13 +211,19 @@ static symmetric::runtime::symmetric_executor::CallbackState write_to_future(voi
         auto task = std::async(std::launch::async, [](std::unique_ptr<write_to_future_data<T>> &&ptr, 
             symmetric::runtime::symmetric_executor::EventGenerator &&gen){
             auto result = ptr->fut.get();
-            auto buffer = ptr->wr.handle.StartWriting();
-            if (buffer.has_value()) {
-                // assert(buffer.GetSize()==1); //sizeof(T));
-                uint8_t* dataptr = (uint8_t*)(buffer->GetAddress().into_handle());        
-                LOWER::lower(std::move(result), dataptr);
-                buffer->SetSize(1);
-                ptr->wr.handle.FinishWriting(std::move(buffer).value());
+            while (!ptr->wr.handle.IsReadClosed()) {
+                auto buffer = ptr->wr.handle.StartWriting();
+                if (buffer.has_value()) {
+                    // assert(buffer.GetSize()==1); //sizeof(T));
+                    uint8_t* dataptr = (uint8_t*)(buffer->GetAddress().into_handle());        
+                    LOWER::lower(std::move(result), dataptr);
+                    buffer->SetSize(1);
+                    ptr->wr.handle.FinishWriting(std::move(buffer).value());
+                } else {
+                    if (buffer.error() == kPending) {
+                        symmetric::runtime::symmetric_executor::BlockOn(ptr->wr.handle.WriteReadySubscribe());
+                    }
+                }
             }
             gen.Activate();
         }, std::move(ptr), std::move(gen));

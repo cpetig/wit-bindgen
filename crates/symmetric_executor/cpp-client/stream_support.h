@@ -48,16 +48,20 @@ private:
                 }
                 if (size>0)
                     data->reader(wit::span<T>(lifted.data(), size));
-                // if closed we won't get another notification
-                if (data->handle.IsWriteClosed()) {
+
+                auto res = data->handle.StartReading(std::move(*buffer));
+                if (!res.has_value()) {
+                    // Pending indicates that other reader was faster (misuse), ignore case for now
+                    assert(res.error()==symmetric::runtime::symmetric_stream::StreamState::kEof);
                     data->reader(wit::span<T>());
                     auto release = std::unique_ptr<background_object>(data);
                     return symmetric::runtime::symmetric_executor::CallbackState::kReady;
                 } else {
-                    data->handle.StartReading(std::move(*buffer));
+                    // just wait for the next event
                     return symmetric::runtime::symmetric_executor::CallbackState::kPending;
                 }
             } else {
+                assert(buffer.error() == symmetric::runtime::symmetric_stream::StreamState::kEof);
                 data->reader(wit::span<T>());
                 auto release = std::unique_ptr<background_object>(data);
                 return symmetric::runtime::symmetric_executor::CallbackState::kReady;
@@ -79,7 +83,9 @@ public:
             symmetric::runtime::symmetric_stream::Buffer b(
                 symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase{(wit::ResourceImportBase::handle_t)object->buffer.data()}), buffer_size);
 
-            object->handle.StartReading(std::move(b));
+            auto res = object->handle.StartReading(std::move(b));
+            // success & eof will trigger the event, pending indicates misuse
+            assert(res.has_value() || res.error()!=symmetric::runtime::symmetric_stream::StreamState::kPending);
             return symmetric::runtime::symmetric_executor::Register(object->handle.ReadReadySubscribe(),
                 symmetric::runtime::symmetric_executor::CallbackFunction(wit::ResourceImportBase{(wit::ResourceImportBase::handle_t)&data_available}),
                 symmetric::runtime::symmetric_executor::CallbackData(wit::ResourceImportBase{(wit::ResourceImportBase::handle_t)object}));

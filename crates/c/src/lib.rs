@@ -4085,4 +4085,4 @@ pub fn to_c_ident(name: &str) -> String {
     }
 }
 
-pub const POINTER_SIZE_EXPRESSION: &str = "sizeof(void*)";
+const POINTER_SIZE_EXPRESSION: &str = "sizeof(void*)";

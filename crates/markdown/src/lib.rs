@@ -1,10 +1,10 @@
 use anyhow::Result;
 use heck::*;
-use pulldown_cmark::{Event, LinkType, Parser, Tag, html};
+use pulldown_cmark::{html, Event, LinkType, Parser, Tag};
 use std::collections::HashMap;
 use std::fmt::Write;
 use wit_bindgen_core::{
-    Files, InterfaceGenerator as _, Source, WorldGenerator, uwriteln, wit_parser,
+    uwriteln, wit_parser, Files, InterfaceGenerator as _, Source, WorldGenerator,
 };
 use wit_parser::*;
 
@@ -420,6 +420,7 @@ impl InterfaceGenerator<'_> {
                     }
                     TypeDefKind::Unknown => unreachable!(),
                     TypeDefKind::FixedSizeList(..) => todo!(),
+                    TypeDefKind::Map(..) => todo!(),
                 }
             }
         }

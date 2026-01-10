@@ -145,7 +145,13 @@ impl<'a> InterfaceGenerator<'a> {
         } else {
             let mut f = FunctionBindgen::new(self, "INVALID", self.name, Box::new([]));
             for (name, ty) in mbt_sig.params.iter() {
-                lower_params.extend(abi::lower_flat(f.r#gen.resolve, &mut f, name.clone(), ty));
+                lower_params.extend(abi::lower_flat(
+                    f.r#gen.resolve,
+                    &mut f,
+                    name.clone(),
+                    ty,
+                    false,
+                ));
             }
             lower_results.push(f.src.clone());
         }
@@ -422,13 +428,20 @@ fn {table_name}() -> {ffi}{camel_kind}VTable[{result}] {{
     fn lift_from_memory(&mut self, address: &str, ty: &Type, module: &str) -> (String, String) {
         let mut f = FunctionBindgen::new(self, "INVALID", module, Box::new([]));
 
-        let result = abi::lift_from_memory(f.r#gen.resolve, &mut f, address.into(), ty);
+        let result = abi::lift_from_memory(f.r#gen.resolve, &mut f, address.into(), ty, false);
         (f.src, result)
     }
 
     fn lower_to_memory(&mut self, address: &str, value: &str, ty: &Type, module: &str) -> String {
         let mut f = FunctionBindgen::new(self, "INVALID", module, Box::new([]));
-        abi::lower_to_memory(f.r#gen.resolve, &mut f, address.into(), value.into(), ty);
+        abi::lower_to_memory(
+            f.r#gen.resolve,
+            &mut f,
+            address.into(),
+            value.into(),
+            ty,
+            false,
+        );
         f.src
     }
 

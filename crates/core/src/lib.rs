@@ -185,6 +185,7 @@ pub trait InterfaceGenerator<'a> {
             TypeDefKind::Stream(t) => self.type_stream(id, name, t, &ty.docs),
             TypeDefKind::Handle(_) => panic!("handle types do not require definition"),
             TypeDefKind::FixedSizeList(..) => todo!(),
+            TypeDefKind::Map(..) => todo!(),
             TypeDefKind::Unknown => unreachable!(),
         }
     }
@@ -224,6 +225,7 @@ pub trait AnonymousTypeGenerator<'a> {
             TypeDefKind::FixedSizeList(t, size) => {
                 self.anonymous_type_fixed_size_list(id, t, *size, &ty.docs)
             }
+            TypeDefKind::Map(..) => todo!(),
             TypeDefKind::Unknown => unreachable!(),
         }
     }

@@ -173,7 +173,7 @@ pub struct Opts {
     /// Symmetric API is the same API for imported and exported functions.
     /// Reduces the allocation overhead for symmetric ABI.
     #[cfg_attr(
-        feature = "clap", 
+        feature = "clap",
         arg(
             long,
             default_value_t = APIStyle::default(),
@@ -1108,6 +1108,7 @@ impl CppInterfaceGenerator<'_> {
             TypeDefKind::Stream(_) => todo!("generate for stream"),
             TypeDefKind::Handle(_) => todo!("generate for handle"),
             TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::Map(_, _) => todo!(),
             TypeDefKind::Unknown => unreachable!(),
         }
     }
@@ -2336,6 +2337,7 @@ impl CppInterfaceGenerator<'_> {
                         self.type_name(ty, from_namespace, flavor)
                     )
                 }
+                TypeDefKind::Map(_, _) => todo!(),
                 TypeDefKind::Unknown => todo!(),
             },
             Type::ErrorContext => todo!(),

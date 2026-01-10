@@ -1463,60 +1463,6 @@ impl CppInterfaceGenerator<'_> {
         import: bool,
     ) -> Vec<String> {
         let is_special = is_special_method(func);
-        let from_namespace = self.r#gen.h_src.namespace.clone();
-        let cpp_sig = self.high_level_signature(func, variant, &from_namespace);
-        if cpp_sig.static_member {
-            self.r#gen.h_src.src.push_str("static ");
-        }
-        self.r#gen.h_src.src.push_str(&cpp_sig.result);
-        if !cpp_sig.result.is_empty() {
-            self.r#gen.h_src.src.push_str(" ");
-        }
-        self.r#gen.h_src.src.push_str(&cpp_sig.name);
-        self.r#gen.h_src.src.push_str("(");
-        for (num, (arg, typ)) in cpp_sig.arguments.iter().enumerate() {
-            if num > 0 {
-                self.r#gen.h_src.src.push_str(", ");
-            }
-            self.r#gen.h_src.src.push_str(typ);
-            self.r#gen.h_src.src.push_str(" ");
-            self.r#gen.h_src.src.push_str(arg);
-        }
-        self.r#gen.h_src.src.push_str(")");
-        if cpp_sig.const_member {
-            self.r#gen.h_src.src.push_str(" const");
-        }
-        match (&is_special, false, &variant) {
-            (SpecialMethod::Allocate, _, _) => {
-                uwriteln!(
-                    self.r#gen.h_src.src,
-                    "{{\
-                        return {OWNED_CLASS_NAME}(new {}({}));\
-                    }}",
-                    cpp_sig.namespace.last().unwrap(), //join("::"),
-                    cpp_sig
-                        .arguments
-                        .iter()
-                        .map(|(arg, _)| format!("std::move({arg})"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                // body is inside the header
-                return Vec::default();
-            }
-            (SpecialMethod::Dtor, _, _ /*AbiVariant::GuestImport*/)
-            | (SpecialMethod::ResourceDrop, true, _) => {
-                uwriteln!(
-                    self.r#gen.h_src.src,
-                    "{{\
-                        delete {};\
-                    }}",
-                    cpp_sig.arguments.first().unwrap().0
-                );
-            }
-            _ => self.r#gen.h_src.src.push_str(";\n"),
-        }
-
         // we want to separate the lowered signature (wasm) and the high level signature
         if !(import == true
             && self.r#gen.opts.host_side()
@@ -1566,7 +1512,7 @@ impl CppInterfaceGenerator<'_> {
             }
             match (&is_special, self.r#gen.opts.host_side(), &variant) {
                 (SpecialMethod::Allocate, _, _) => {
-                    uwrite!(
+                    uwriteln!(
                         self.r#gen.h_src.src,
                         "{{\
                         return {OWNED_CLASS_NAME}(new {}({}));\
@@ -1575,7 +1521,7 @@ impl CppInterfaceGenerator<'_> {
                         cpp_sig
                             .arguments
                             .iter()
-                            .map(|(arg, _)| arg.clone())
+                            .map(|(arg, _)| move_if_necessary(arg))
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
@@ -1589,7 +1535,7 @@ impl CppInterfaceGenerator<'_> {
                         "{{\
                         delete {};\
                     }}",
-                        cpp_sig.arguments.get(0).unwrap().0
+                        cpp_sig.arguments.first().unwrap().0
                     );
                 }
                 _ => self.r#gen.h_src.src.push_str(";\n"),

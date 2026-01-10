@@ -62,6 +62,7 @@ fn push_wamr(ty: &Type, resolve: &Resolve, params_str: &mut String) {
                 params_str.push('i');
             }
             TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
     }
@@ -126,6 +127,7 @@ fn wamr_add_result(sig: &mut WamrSig, resolve: &Resolve, ty: &Type) {
                 sig.wamr_result = "i".into();
             }
             TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
     }

@@ -50,6 +50,7 @@ fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
             TypeDefKind::Type(tp) => needs_dealloc2(resolve, tp),
             TypeDefKind::Unknown => false,
             TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
     }
@@ -116,6 +117,7 @@ fn has_non_canonical_list2(resolve: &Resolve, ty: &Type, maybe: bool) -> bool {
             TypeDefKind::Type(ty) => has_non_canonical_list2(resolve, ty, maybe),
             TypeDefKind::Unknown => false,
             TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
     }
@@ -181,6 +183,7 @@ fn has_non_canonical_list_rust2(resolve: &Resolve, ty: &Type) -> bool {
             TypeDefKind::Type(ty) => has_non_canonical_list_rust2(resolve, ty),
             TypeDefKind::Unknown => false,
             TypeDefKind::FixedSizeList(ty, _) => has_non_canonical_list_rust2(resolve, ty),
+            TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
     }
@@ -308,6 +311,7 @@ fn add_type(
                 }
             }
             TypeDefKind::Type(tp) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::Map(_, _) => todo!(),
             TypeDefKind::Unknown => todo!(),
         }
         let interface = &mut resolve.interfaces[iface];

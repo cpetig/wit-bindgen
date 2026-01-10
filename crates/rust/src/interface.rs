@@ -1428,7 +1428,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             .wasm_signature_symmetric(variant, func, self.r#gen.opts.symmetric);
         let mut params = Vec::new();
         for (i, param) in sig.params.iter().enumerate() {
-            let name = format!("arg{}", i);
+            let name = format!("arg{i}");
             uwrite!(self.src, "{name}: {},", wasm_type(*param));
             params.push(name);
         }
@@ -1450,7 +1450,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         let mut params = Vec::new();
         let sig = self.resolve.wasm_signature(AbiVariant::GuestExport, func);
         for (i, result) in sig.results.iter().enumerate() {
-            let name = format!("arg{}", i);
+            let name = format!("arg{i}");
             uwrite!(self.src, "{name}: {},", wasm_type(*result));
             params.push(name);
         }
@@ -2165,7 +2165,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 self.push_str(&derives.into_iter().collect::<Vec<_>>().join(", "));
                 self.push_str(")]\n")
             }
-            self.push_str(&format!("pub struct {}", name));
+            self.push_str(&format!("pub struct {name}"));
             self.print_generics(mode.lifetime);
             self.push_str(" {\n");
             for field in record.fields.iter() {
@@ -2188,7 +2188,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             self.push_str(
                 "fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {\n",
             );
-            self.push_str(&format!("f.debug_struct(\"{}\")", name));
+            self.push_str(&format!("f.debug_struct(\"{name}\")"));
             for field in record.fields.iter() {
                 self.push_str(&format!(
                     ".field(\"{}\", &self.{})",
@@ -2354,7 +2354,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 self.push_str("(e)");
             }
             self.push_str(" => {\n");
-            self.push_str(&format!("f.debug_tuple(\"{}::{}\")", name, case_name));
+            self.push_str(&format!("f.debug_tuple(\"{name}::{case_name}\")"));
             if payload.is_some() {
                 self.push_str(".field(e)");
             }
@@ -2369,7 +2369,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
     fn print_typedef_option(&mut self, id: TypeId, payload: &Type, docs: &Docs) {
         for (name, mode) in self.modes_of(id) {
             self.rustdoc(docs);
-            self.push_str(&format!("pub type {}", name));
+            self.push_str(&format!("pub type {name}"));
             self.print_generics(mode.lifetime);
             self.push_str("= Option<");
             self.print_ty(payload, mode);
@@ -2380,7 +2380,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
     fn print_typedef_result(&mut self, id: TypeId, result: &Result_, docs: &Docs) {
         for (name, mode) in self.modes_of(id) {
             self.rustdoc(docs);
-            self.push_str(&format!("pub type {}", name));
+            self.push_str(&format!("pub type {name}"));
             self.print_generics(mode.lifetime);
             self.push_str("= Result<");
             self.print_optional_ty(result.ok.as_ref(), mode);
@@ -2406,7 +2406,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         let name = to_upper_camel_case(name);
         self.rustdoc(docs);
         for attr in attrs {
-            self.push_str(&format!("{}\n", attr));
+            self.push_str(&format!("{attr}\n"));
         }
         self.push_str("#[repr(");
         self.int_repr(enum_.tag());
@@ -2543,7 +2543,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         let info = self.info(ty);
         let name = to_upper_camel_case(self.resolve.types[ty].name.as_ref().unwrap());
         if self.uses_two_names(&info) {
-            format!("{}Param", name)
+            format!("{name}Param")
         } else {
             name
         }
@@ -2553,7 +2553,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         let info = self.info(ty);
         let name = to_upper_camel_case(self.resolve.types[ty].name.as_ref().unwrap());
         if self.uses_two_names(&info) {
-            format!("{}Result", name)
+            format!("{name}Result")
         } else {
             name
         }
@@ -3000,7 +3000,7 @@ impl<'a> {camel}Borrow<'a>{{
     fn type_tuple(&mut self, id: TypeId, _name: &str, tuple: &Tuple, docs: &Docs) {
         for (name, mode) in self.modes_of(id) {
             self.rustdoc(docs);
-            self.push_str(&format!("pub type {}", name));
+            self.push_str(&format!("pub type {name}"));
             self.print_generics(mode.lifetime);
             self.push_str(" = (");
             for ty in tuple.types.iter() {
@@ -3084,7 +3084,7 @@ impl<'a> {camel}Borrow<'a>{{
     fn type_list(&mut self, id: TypeId, _name: &str, ty: &Type, docs: &Docs) {
         for (name, mode) in self.modes_of(id) {
             self.rustdoc(docs);
-            self.push_str(&format!("pub type {}", name));
+            self.push_str(&format!("pub type {name}"));
             self.print_generics(mode.lifetime);
             self.push_str(" = ");
             self.print_list(ty, mode);

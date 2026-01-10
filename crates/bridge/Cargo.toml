@@ -1,10 +1,11 @@
 [package]
 name = "wit-bindgen-bridge"
 authors = ["Christof Petig <christof.petig@arcor.de>"]
-version = "0.1.0"
-edition.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
 repository = 'https://github.com/cpetig/wit-bindgen'
-license = "Apache-2.0 WITH LLVM-exception"
+license = { workspace = true }
+rust-version = { workspace = true }
 description = """
 Bridge binding (forwarding) generator for WIT and the component model, targeting w2c2 and wamr.
 """

@@ -37,7 +37,7 @@ macro_rules! def_instruction {
 
         impl $name<'_> {
             /// How many operands does this instruction pop from the stack?
-            #[allow(unused_variables)]
+            #[allow(unused_variables, reason = "match arms bind fields for exhaustiveness, not usage")]
             pub fn operands_len(&self) -> usize {
                 match self {
                     $(
@@ -51,7 +51,7 @@ macro_rules! def_instruction {
             }
 
             /// How many results does this instruction push onto the stack?
-            #[allow(unused_variables)]
+            #[allow(unused_variables, reason = "match arms bind fields for exhaustiveness, not usage")]
             pub fn results_len(&self) -> usize {
                 match self {
                     $(
@@ -876,6 +876,7 @@ fn needs_deallocate(resolve: &Resolve, ty: &Type, what: Deallocate) -> bool {
             TypeDefKind::Future(_) | TypeDefKind::Stream(_) => what.handles(),
             TypeDefKind::Unknown => unreachable!(),
             TypeDefKind::FixedSizeList(t, _) => needs_deallocate(resolve, t, what),
+            TypeDefKind::Map(..) => todo!(),
         },
 
         Type::Bool
@@ -1669,6 +1670,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         self.lower(ty);
                     }
                 }
+                TypeDefKind::Map(..) => todo!(),
             },
         }
     }
@@ -1871,6 +1873,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         id,
                     });
                 }
+                TypeDefKind::Map(..) => todo!(),
             },
         }
     }
@@ -2069,6 +2072,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         id,
                     });
                 }
+                TypeDefKind::Map(..) => todo!(),
             },
         }
     }
@@ -2272,6 +2276,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         id,
                     });
                 }
+                TypeDefKind::Map(..) => todo!(),
             },
         }
     }
@@ -2460,6 +2465,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Unknown => unreachable!(),
 
                 TypeDefKind::FixedSizeList(..) => todo!(),
+                TypeDefKind::Map(..) => todo!(),
             },
         }
     }
@@ -2579,6 +2585,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Stream(_) => unreachable!(),
                 TypeDefKind::Unknown => unreachable!(),
                 TypeDefKind::FixedSizeList(_, _) => {}
+                TypeDefKind::Map(..) => todo!(),
             },
         }
     }

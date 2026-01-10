@@ -206,6 +206,7 @@ impl Types {
             TypeDefKind::FixedSizeList(ty, _) => {
                 info = self.type_info(resolve, ty);
             }
+            TypeDefKind::Map(..) => todo!(),
             TypeDefKind::Unknown => unreachable!(),
         }
         let prev = self.type_info.insert(ty, info);

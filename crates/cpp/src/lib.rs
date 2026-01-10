@@ -1530,7 +1530,7 @@ impl CppInterfaceGenerator<'_> {
             }
             match (&is_special, self.r#gen.opts.host_side(), &variant) {
                 (SpecialMethod::Allocate, _, _) => {
-                    uwrite!(
+                    uwriteln!(
                         self.r#gen.h_src.src,
                         "{{\
                         return {OWNED_CLASS_NAME}(new {}({}));\
@@ -1539,7 +1539,7 @@ impl CppInterfaceGenerator<'_> {
                         cpp_sig
                             .arguments
                             .iter()
-                            .map(|(arg, _)| arg.clone())
+                            .map(|(arg, _)| move_if_necessary(arg))
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
@@ -1553,7 +1553,7 @@ impl CppInterfaceGenerator<'_> {
                         "{{\
                         delete {};\
                     }}",
-                        cpp_sig.arguments.get(0).unwrap().0
+                        cpp_sig.arguments.first().unwrap().0
                     );
                 }
                 _ => self.r#gen.h_src.src.push_str(";\n"),

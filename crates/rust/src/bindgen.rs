@@ -98,7 +98,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             0 => {}
             1 => {
                 let tmp = self.tmp();
-                let res = format!("result{}", tmp);
+                let res = format!("result{tmp}");
                 self.push_str("let ");
                 self.push_str(&res);
                 results.push(res);
@@ -108,7 +108,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 let tmp = self.tmp();
                 self.push_str("let (");
                 for i in 0..n {
-                    let arg = format!("result{}_{}", tmp, i);
+                    let arg = format!("result{tmp}_{i}");
                     self.push_str(&arg);
                     self.push_str(",");
                     results.push(arg);
@@ -132,7 +132,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         self.push_str("{ ");
         for field in record.fields.iter() {
             let name = to_rust_ident(&field.name);
-            let arg = format!("{}{}", name, tmp);
+            let arg = format!("{name}{tmp}");
             self.push_str(&name);
             self.push_str(":");
             self.push_str(&arg);
@@ -167,7 +167,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         let tmp = self.tmp();
         self.push_str("let (");
         for i in 0..tuple.types.len() {
-            let arg = format!("t{}_{}", tmp, i);
+            let arg = format!("t{tmp}_{i}");
             self.push_str(&arg);
             self.push_str(", ");
             results.push(arg);
@@ -275,7 +275,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 "let ptr{tmp} = (&raw mut _RET_AREA.0).cast::<u8>();"
             );
         }
-        format!("ptr{}", tmp)
+        format!("ptr{tmp}")
     }
 
     fn sizes(&self) -> &SizeAlign {
@@ -302,7 +302,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
         match inst {
             Instruction::GetArg { nth } => results.push(self.params[*nth].clone()),
-            Instruction::I32Const { val } => results.push(format!("{}i32", val)),
+            Instruction::I32Const { val } => results.push(format!("{val}i32")),
             Instruction::ConstZero { tys } => {
                 for ty in tys.iter() {
                     match ty {
@@ -738,23 +738,22 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::ListCanonLower { realloc, .. } => {
                 let tmp = self.tmp();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
+                let val = format!("vec{tmp}");
+                let ptr = format!("ptr{tmp}");
+                let len = format!("len{tmp}");
                 let vec = self.r#gen.path_to_vec();
                 if realloc.is_none() || (self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
                     self.push_str(&format!("let {} = {};\n", val, operands[0]));
                 } else {
                     let op0 = operands.pop().unwrap();
                     self.push_str(&format!(
-                        "let {} = <_ as Into<{vec}<_>>>::into({}).into_boxed_slice();\n",
-                        val, op0
+                        "let {val} = <_ as Into<{vec}<_>>>::into({op0}).into_boxed_slice();\n"
                     ));
                 }
-                self.push_str(&format!("let {} = {}.as_ptr().cast::<u8>();\n", ptr, val));
-                self.push_str(&format!("let {} = {}.len();\n", len, val));
+                self.push_str(&format!("let {ptr} = {val}.as_ptr().cast::<u8>();\n",));
+                self.push_str(&format!("let {len} = {val}.len();\n",));
                 if realloc.is_some() && !(self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
-                    self.push_str(&format!("::core::mem::forget({});\n", val));
+                    self.push_str(&format!("::core::mem::forget({val});\n"));
                 }
                 results.push(format!("{ptr}.cast_mut()"));
                 results.push(len);
@@ -762,7 +761,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::ListCanonLift { .. } => {
                 let tmp = self.tmp();
-                let len = format!("len{}", tmp);
+                let len = format!("len{tmp}");
                 self.push_str(&format!("let {} = {};\n", len, operands[1]));
                 let vec = self.r#gen.path_to_vec();
                 let result = if !self.r#gen.r#gen.opts.symmetric || self.r#gen.in_import {
@@ -781,19 +780,19 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::StringLower { realloc } => {
                 let tmp = self.tmp();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
+                let val = format!("vec{tmp}",);
+                let ptr = format!("ptr{tmp}",);
+                let len = format!("len{tmp}",);
                 if realloc.is_none() || (self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
                     self.push_str(&format!("let {} = {};\n", val, operands[0]));
                 } else {
                     let op0 = format!("{}.into_bytes()", operands[0]);
-                    self.push_str(&format!("let {} = ({}).into_boxed_slice();\n", val, op0));
+                    self.push_str(&format!("let {val} = ({op0}).into_boxed_slice();\n"));
                 }
-                self.push_str(&format!("let {} = {}.as_ptr().cast::<u8>();\n", ptr, val));
-                self.push_str(&format!("let {} = {}.len();\n", len, val));
+                self.push_str(&format!("let {ptr} = {val}.as_ptr().cast::<u8>();\n"));
+                self.push_str(&format!("let {len} = {val}.len();\n",));
                 if realloc.is_some() && !(self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
-                    self.push_str(&format!("::core::mem::forget({});\n", val));
+                    self.push_str(&format!("::core::mem::forget({val});\n"));
                 }
                 results.push(format!("{ptr}.cast_mut()"));
                 results.push(len);
@@ -801,7 +800,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::StringLift => {
                 let tmp = self.tmp();
-                let len = format!("len{}", tmp);
+                let len = format!("len{tmp}");
                 uwriteln!(self.src, "let {len} = {};", operands[1]);
                 if self.r#gen.r#gen.opts.symmetric && !self.r#gen.in_import {
                     uwriteln!(
@@ -1109,7 +1108,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::Flush { amt } => {
                 for i in 0..*amt {
                     let tmp = self.tmp();
-                    let result = format!("result{}", tmp);
+                    let result = format!("result{tmp}");
                     uwriteln!(self.src, "let {result} = {};", operands[i]);
                     results.push(result);
                 }

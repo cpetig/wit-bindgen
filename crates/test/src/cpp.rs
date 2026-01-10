@@ -158,12 +158,12 @@ impl LanguageMethods for Cpp {
         .arg("-I")
         .arg(&compile.bindings_dir)
         .arg("-I")
-        .arg(helper_dir.to_str().unwrap().to_string())
+        .arg(helper_dir.to_str().unwrap())
         .arg("-I")
-        .arg(helper_dir2.to_str().unwrap().to_string());
+        .arg(helper_dir2.to_str().unwrap());
         if runner.is_symmetric() {
             cmd.arg("-I")
-                .arg(helper_dir3.to_str().unwrap().to_string())
+                .arg(helper_dir3.to_str().unwrap())
                 .arg("-fPIC");
         }
         cmd.arg("-fno-exceptions")
@@ -191,13 +191,13 @@ impl LanguageMethods for Cpp {
         cmd.arg("-I")
             .arg(&compile.bindings_dir)
             .arg("-I")
-            .arg(helper_dir.to_str().unwrap().to_string())
+            .arg(helper_dir.to_str().unwrap())
             .arg("-I")
-            .arg(helper_dir2.to_str().unwrap().to_string());
+            .arg(helper_dir2.to_str().unwrap());
         if !runner.is_symmetric() {
             cmd.arg("-fno-exceptions");
         } else {
-            cmd.arg("-I").arg(helper_dir3.to_str().unwrap().to_string());
+            cmd.arg("-I").arg(helper_dir3.to_str().unwrap());
         }
         cmd.arg("-Wall")
             .arg("-Wextra")
@@ -262,7 +262,7 @@ impl LanguageMethods for Cpp {
         .arg("-I")
         .arg(&verify.bindings_dir)
         .arg("-I")
-        .arg(helper_dir2.to_str().unwrap().to_string())
+        .arg(helper_dir2.to_str().unwrap())
         .arg("-Wall")
         .arg("-Wextra")
         .arg("-Werror")

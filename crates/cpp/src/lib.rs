@@ -122,6 +122,14 @@ struct Cpp {
     temp: usize,
 }
 
+#[cfg(feature = "clap")]
+fn parse_with(s: &str) -> Result<(String, String), String> {
+    let (k, v) = s.split_once('=').ok_or_else(|| {
+        format!("expected string of form `<key>=<value>[,<key>=<value>...]`; got `{s}`")
+    })?;
+    Ok((k.to_string(), v.to_string()))
+}
+
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "clap", derive(clap::Args))]
 pub struct Opts {
@@ -195,6 +203,14 @@ pub struct Opts {
     /// Where to place output files
     #[cfg_attr(feature = "clap", arg(skip))]
     out_dir: Option<PathBuf>,
+
+    /// Importing wit interface from custom include
+    ///
+    /// Argument must be of the form `k=v` and this option can be passed
+    /// multiple times or one option can be comma separated, for example
+    /// `k1=v1,k2=v2`.
+    #[cfg_attr(feature = "clap", arg(long, value_parser = parse_with, value_delimiter = ','))]
+    pub with: Vec<(String, String)>,
 }
 
 /// Supported API styles for the generated bindings.
@@ -223,10 +239,7 @@ impl FromStr for APIStyle {
         match s {
             "asymmetric" => Ok(APIStyle::Asymmetric),
             "symmetric" => Ok(APIStyle::Symmetric),
-            _ => bail!(
-                "unrecognized API style: `{}`; expected `asymmetric` or `symmetric`",
-                s
-            ),
+            _ => bail!("unrecognized API style: `{s}`; expected `asymmetric` or `symmetric`"),
         }
     }
 }
@@ -394,32 +407,32 @@ impl Cpp {
         match cast {
             Bitcast::I32ToF32 | Bitcast::I64ToF32 => {
                 self.dependencies.needs_bit = true;
-                format!("std::bit_cast<float, int32_t>({})", op)
+                format!("std::bit_cast<float, int32_t>({op})")
             }
             Bitcast::F32ToI32 | Bitcast::F32ToI64 => {
                 self.dependencies.needs_bit = true;
-                format!("std::bit_cast<int32_t, float>({})", op)
+                format!("std::bit_cast<int32_t, float>({op})")
             }
             Bitcast::I64ToF64 => {
                 self.dependencies.needs_bit = true;
-                format!("std::bit_cast<double, int64_t>({})", op)
+                format!("std::bit_cast<double, int64_t>({op})")
             }
             Bitcast::F64ToI64 => {
                 self.dependencies.needs_bit = true;
-                format!("std::bit_cast<int64_t, double>({})", op)
+                format!("std::bit_cast<int64_t, double>({op})")
             }
             Bitcast::I32ToI64 | Bitcast::LToI64 | Bitcast::PToP64 => {
-                format!("static_cast<int64_t>({})", op)
+                format!("static_cast<int64_t>({op})")
             }
             Bitcast::I64ToI32 | Bitcast::PToI32 | Bitcast::LToI32 => {
-                format!("static_cast<int32_t>({})", op)
+                format!("static_cast<int32_t>({op})")
             }
             Bitcast::P64ToI64 | Bitcast::None | Bitcast::I64ToP64 => op.to_string(),
             Bitcast::P64ToP | Bitcast::I32ToP | Bitcast::LToP => {
-                format!("static_cast<uint8_t*>({})", op)
+                format!("static_cast<uint8_t*>({op})")
             }
             Bitcast::PToL | Bitcast::I32ToL | Bitcast::I64ToL => {
-                format!("static_cast<size_t>({})", op)
+                format!("static_cast<size_t>({op})")
             }
             Bitcast::Sequence(sequence) => {
                 let [first, second] = &**sequence;
@@ -582,29 +595,46 @@ impl WorldGenerator for Cpp {
         id: InterfaceId,
         _files: &mut Files,
     ) -> anyhow::Result<()> {
-        if let Some(prefix) = self
-            .interface_prefixes
-            .get(&(Direction::Import, name.clone()))
-        {
-            self.import_prefix = Some(prefix.clone());
-        }
-
-        let store = self.start_new_file(None);
         self.imported_interfaces.insert(id);
-        let wasm_import_module = resolve.name_world_key(name);
-        let binding = Some(name);
-        let mut r#gen = self.interface(resolve, binding, true, Some(wasm_import_module));
-        r#gen.interface = Some(id);
-        r#gen.types(id);
-        let namespace = namespace(resolve, &TypeOwner::Interface(id), false, &r#gen.r#gen.opts);
 
-        for (_name, func) in resolve.interfaces[id].functions.iter() {
-            if matches!(func.kind, FunctionKind::Freestanding) {
-                r#gen.r#gen.h_src.change_namespace(&namespace);
-                r#gen.generate_function(func, &TypeOwner::Interface(id), AbiVariant::GuestImport);
+        let full_name = resolve.name_world_key(name);
+        match self.opts.with.iter().find(|e| e.0 == full_name) {
+            None => {
+                if let Some(prefix) = self
+                    .interface_prefixes
+                    .get(&(Direction::Import, name.clone()))
+                {
+                    self.import_prefix = Some(prefix.clone());
+                }
+
+                let store = self.start_new_file(None);
+                let wasm_import_module = resolve.name_world_key(name);
+                let binding = Some(name);
+                let mut r#gen = self.interface(resolve, binding, true, Some(wasm_import_module));
+                r#gen.interface = Some(id);
+                r#gen.types(id);
+                let namespace =
+                    namespace(resolve, &TypeOwner::Interface(id), false, &r#gen.r#gen.opts);
+
+                for (_name, func) in resolve.interfaces[id].functions.iter() {
+                    if matches!(func.kind, FunctionKind::Freestanding) {
+                        r#gen.r#gen.h_src.change_namespace(&namespace);
+                        r#gen.generate_function(
+                            func,
+                            &TypeOwner::Interface(id),
+                            AbiVariant::GuestImport,
+                        );
+                    }
+                }
+                self.finish_file(&namespace, store);
+            }
+            Some((_, val)) => {
+                let with_quotes = format!("\"{val}\"");
+                if !self.includes.contains(&with_quotes) {
+                    self.includes.push(with_quotes);
+                }
             }
         }
-        self.finish_file(&namespace, store);
         let _ = self.import_prefix.take();
         Ok(())
     }
@@ -1466,7 +1496,7 @@ impl CppInterfaceGenerator<'_> {
                     cpp_sig
                         .arguments
                         .iter()
-                        .map(|(arg, _)| format!("std::move({})", arg))
+                        .map(|(arg, _)| format!("std::move({arg})"))
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
@@ -2066,11 +2096,11 @@ impl CppInterfaceGenerator<'_> {
                     if self.r#gen.types.get(id).has_own_handle {
                         name.to_string()
                     } else {
-                        format!("{}Param", name)
+                        format!("{name}Param")
                     }
                 }
                 Ownership::FineBorrowing => {
-                    format!("{}Param", name)
+                    format!("{name}Param")
                 }
             }
         } else {
@@ -2894,7 +2924,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     fn let_results(&mut self, amt: usize, results: &mut Vec<String>) {
         if amt > 0 {
             let tmp = self.tmp();
-            let res = format!("result{}", tmp);
+            let res = format!("result{tmp}");
             self.push_str("auto ");
             self.push_str(&res);
             self.push_str(" = ");
@@ -2935,7 +2965,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     ) {
         self.load(ty, offset, operands, results);
         let result = results.pop().unwrap();
-        results.push(format!("static_cast<int32_t>({})", result));
+        results.push(format!("static_cast<int32_t>({result})"));
     }
 
     fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
@@ -3230,22 +3260,20 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::BoolFromI32 => top_as("bool"),
             abi::Instruction::ListCanonLower { realloc, .. } => {
                 let tmp = self.tmp();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
-                // let result = format!("result{}", tmp);
+                let val = format!("vec{tmp}");
+                let ptr = format!("ptr{tmp}");
+                let len = format!("len{tmp}");
                 self.push_str(&format!("auto&& {} = {};\n", val, operands[0]));
                 if self.r#gen.r#gen.opts.host_side() {
-                    self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
-                    self.push_str(&format!("auto {} = {}.size();\n", len, val));
+                    self.push_str(&format!("auto {ptr} = {val}.data();\n"));
+                    self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
                     self.push_str(&format!(
                         "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
                         self.r#gen.r#gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
-                        "auto {} = static_cast<size_t>({}.size());\n",
-                        len, val
+                        "auto {len} = static_cast<size_t>({val}.size());\n"
                     ));
                 }
                 if realloc.is_none() {
@@ -3263,24 +3291,20 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::StringLower { realloc } => {
                 let tmp = self.tmp();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
-                // let result = format!("result{}", tmp);
-                self.push_str(&format!("auto&& {} = {};\n", val, operands[0]));
+                let val = format!("vec{tmp}");
+                let ptr = format!("ptr{tmp}");
+                let len = format!("len{tmp}");
+                self.push_str(&format!("auto&& {val} = {};\n", operands[0]));
                 if self.r#gen.r#gen.opts.host_side() {
-                    self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
-                    self.push_str(&format!("auto {} = {}.size();\n", len, val));
+                    self.push_str(&format!("auto {ptr} = {val}.data();\n"));
+                    self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = reinterpret_cast<const {}>({}.data());\n",
-                        ptr,
+                        "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
                         self.r#gen.r#gen.opts.ptr_type(),
-                        val
                     ));
                     self.push_str(&format!(
-                        "auto {} = static_cast<size_t>({}.size());\n",
-                        len, val
+                        "auto {len} = static_cast<size_t>({val}.size());\n",
                     ));
                 }
                 if realloc.is_none() {
@@ -3299,24 +3323,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::ListLower { element, realloc } => {
                 let tmp = self.tmp();
                 let body = self.blocks.pop().unwrap();
-                let val = format!("vec{}", tmp);
-                let ptr = format!("ptr{}", tmp);
-                let len = format!("len{}", tmp);
-                self.push_str(&format!("auto&& {} = {};\n", val, operands[0]));
+                let val = format!("vec{tmp}");
+                let ptr = format!("ptr{tmp}",);
+                let len = format!("len{tmp}",);
+                self.push_str(&format!("auto&& {val} = {};\n", operands[0]));
                 //self.push_str(&format!("auto const&{} = {};\n", val, operands[0]));
                 if self.r#gen.r#gen.opts.host_side() {
-                    self.push_str(&format!("auto {} = {}.data();\n", ptr, val));
-                    self.push_str(&format!("auto {} = {}.size();\n", len, val));
+                    self.push_str(&format!("auto {ptr} = {val}.data();\n"));
+                    self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
                     self.push_str(&format!(
-                        "auto {} = reinterpret_cast<const {}>({}.data());\n",
-                        ptr,
+                        "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
                         self.r#gen.r#gen.opts.ptr_type(),
-                        val
                     ));
                     self.push_str(&format!(
-                        "auto {} = static_cast<size_t>({}.size());\n",
-                        len, val
+                        "auto {len} = static_cast<size_t>({val}.size());\n",
                     ));
                 }
 
@@ -3344,7 +3365,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::ListCanonLift { element, .. } => {
                 let tmp = self.tmp();
-                let len = format!("len{}", tmp);
+                let len = format!("len{tmp}");
                 let inner = self
                     .r#gen
                     .type_name(element, &self.namespace, Flavor::InStruct);
@@ -3380,7 +3401,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             }
             abi::Instruction::StringLift => {
                 let tmp = self.tmp();
-                let len = format!("len{}", tmp);
+                let len = format!("len{tmp}");
                 uwriteln!(self.src, "auto {} = {};\n", len, operands[1]);
                 let result = if self.r#gen.r#gen.opts.symmetric
                     && self.r#gen.r#gen.opts.api_style == APIStyle::Asymmetric
@@ -4336,7 +4357,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                                     &[WasmType::Pointer],
                                     &[],
                                 );
-                                self.src.push_str(&format!(", ret, {})", cabi_post_name));
+                                self.src.push_str(&format!(", ret, {cabi_post_name})"));
                             }
                         }
                         if matches!(func.kind, FunctionKind::Constructor(_))
@@ -4477,7 +4498,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             abi::Instruction::Flush { amt } => {
                 for i in operands.iter().take(*amt) {
                     let tmp = self.tmp();
-                    let result = format!("result{}", tmp);
+                    let result = format!("result{tmp}");
                     uwriteln!(self.src, "auto {result} = {};", move_if_necessary(i));
                     results.push(result);
                 }
@@ -4500,7 +4521,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
             self.r#gen.r#gen.opts.ptr_type(),
         );
 
-        format!("ptr{}", tmp)
+        format!("ptr{tmp}")
     }
 
     fn push_block(&mut self) {

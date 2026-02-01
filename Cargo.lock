@@ -189,31 +189,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-deque"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
-dependencies = [
- "crossbeam-epoch",
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-epoch"
-version = "0.9.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
-
-[[package]]
 name = "displaydoc"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,12 +198,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "either"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "env_filter"
@@ -268,6 +237,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "escape8259"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5692dd7b5a1978a5aeb0ce83b7655c58ca8efdcb79d21036ea249da95afec2c6"
 
 [[package]]
 name = "fixedbitset"
@@ -606,6 +581,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 
 [[package]]
+name = "libtest-mimic"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5297962ef19edda4ce33aaa484386e0a5b3d7f2f4e037cbeee00503ef6b29d33"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "clap",
+ "escape8259",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -616,12 +603,6 @@ name = "litemap"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
-
-[[package]]
-name = "log"
-version = "0.4.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "log"
@@ -811,26 +792,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f97cdb2a36ed4183de61b2f824cc45c9f1037f28afe0a322e9fff4c108b5aaa"
 dependencies = [
  "rand_core",
-]
-
-[[package]]
-name = "rayon"
-version = "1.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "368f01d005bf8fd9b1206fb6fa653e6c4a81ceb1466406b81792d87c5677a58f"
-dependencies = [
- "either",
- "rayon-core",
-]
-
-[[package]]
-name = "rayon-core"
-version = "1.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
-dependencies = [
- "crossbeam-deque",
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -1489,7 +1450,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "bitflags",
  "futures",
@@ -1500,7 +1461,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-bridge"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1511,7 +1472,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-c"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1525,7 +1486,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-cli"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1547,7 +1508,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1561,7 +1522,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-cpp"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1576,7 +1537,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-csharp"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1590,7 +1551,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-go"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1603,7 +1564,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-importlib"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1613,7 +1574,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-markdown"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1624,7 +1585,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-moonbit"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1634,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1655,7 +1616,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "prettyplease",
@@ -1668,14 +1629,14 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-test"
-version = "0.50.0"
+version = "0.52.0"
 dependencies = [
  "anyhow",
  "clap",
  "heck",
  "indexmap",
+ "libtest-mimic",
  "log",
- "rayon",
  "regex",
  "serde",
  "toml",
@@ -1810,3 +1771,9 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "zmij"
+version = "1.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fc5a66a20078bf1251bde995aa2fdcc4b800c70b5d92dd2c62abc5c60f679f8"

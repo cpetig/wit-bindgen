@@ -311,21 +311,21 @@ def_instruction! {
 
         /// Pops all fields for a fixed list off the stack and then composes them
         /// into an array.
-        FixedSizeListLift {
+        FixedLengthListLift {
             element: &'a Type,
             size: u32,
             id: TypeId,
         } : [*size as usize] => [1],
 
         /// Pops an array off the stack, decomposes the elements and then pushes them onto the stack.
-        FixedSizeListLower {
+        FixedLengthListLower {
             element: &'a Type,
             size: u32,
             id: TypeId,
         } : [1] => [*size as usize],
 
         /// Pops an array and an address off the stack, passes each element to a block storing it
-        FixedSizeListLowerToMemory {
+        FixedLengthListLowerToMemory {
             element: &'a Type,
             size: u32,
             id: TypeId,
@@ -335,7 +335,7 @@ def_instruction! {
         ///
         /// This will also pop a block from the block stack which is how to
         /// read each individual element from the list.
-        FixedSizeListLiftFromMemory {
+        FixedLengthListLiftFromMemory {
             element: &'a Type,
             size: u32,
             id: TypeId,
@@ -1188,10 +1188,21 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 // Emit the function return
-                self.emit(&Instruction::Return {
-                    func,
-                    amt: usize::from(func.result.is_some()),
-                });
+                if async_ {
+                    self.emit(&Instruction::AsyncTaskReturn {
+                        name: &func.name,
+                        params: if func.result.is_some() {
+                            &[WasmType::Pointer]
+                        } else {
+                            &[]
+                        },
+                    });
+                } else {
+                    self.emit(&Instruction::Return {
+                        func,
+                        amt: usize::from(func.result.is_some()),
+                    });
+                }
             }
             false => {
                 let max_flat_params = match (variant, async_) {
@@ -1667,7 +1678,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
                 TypeDefKind::Unknown => unreachable!(),
                 TypeDefKind::FixedSizeList(ty, size) => {
-                    self.emit(&FixedSizeListLower {
+                    self.emit(&FixedLengthListLower {
                         element: ty,
                         size: *size,
                         id,
@@ -1878,7 +1889,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         self.stack.extend(lowered_args.drain(..flat_per_elem));
                         self.lift(ty);
                     }
-                    self.emit(&FixedSizeListLift {
+                    self.emit(&FixedLengthListLift {
                         element: ty,
                         size: *size,
                         id,
@@ -2077,7 +2088,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     self.write_to_memory(element, elem_addr, offset);
                     self.finish_block(0);
                     self.stack.push(addr);
-                    self.emit(&FixedSizeListLowerToMemory {
+                    self.emit(&FixedLengthListLowerToMemory {
                         element,
                         size: *size,
                         id,
@@ -2281,7 +2292,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     self.read_from_memory(ty, elemaddr, offset);
                     self.finish_block(1);
                     self.stack.push(addr.clone());
-                    self.emit(&FixedSizeListLiftFromMemory {
+                    self.emit(&FixedLengthListLiftFromMemory {
                         element: ty,
                         size: *size,
                         id,

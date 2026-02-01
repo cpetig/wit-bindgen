@@ -3472,7 +3472,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results.push(move_if_necessary(&result));
                 }
             }
-            abi::Instruction::FixedSizeListLift {
+            abi::Instruction::FixedLengthListLift {
                 element,
                 size,
                 id: _,
@@ -3490,7 +3490,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.push_str("};\n");
                 results.push(result);
             }
-            abi::Instruction::FixedSizeListLiftFromMemory {
+            abi::Instruction::FixedLengthListLiftFromMemory {
                 element,
                 size: elemsize,
                 id: _,
@@ -3519,7 +3519,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.push_str("\n}\n}\n");
                 results.push(vec);
             }
-            abi::Instruction::FixedSizeListLower {
+            abi::Instruction::FixedLengthListLower {
                 element: _,
                 size,
                 id: _,
@@ -3528,7 +3528,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results.push(format!("{}[{i}]", operands[0]));
                 }
             }
-            abi::Instruction::FixedSizeListLowerToMemory {
+            abi::Instruction::FixedLengthListLowerToMemory {
                 element,
                 size: elemsize,
                 id: _,

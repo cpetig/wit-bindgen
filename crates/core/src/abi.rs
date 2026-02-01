@@ -886,7 +886,7 @@ fn needs_deallocate(resolve: &Resolve, ty: &Type, what: Deallocate) -> bool {
             TypeDefKind::Flags(_) | TypeDefKind::Enum(_) => false,
             TypeDefKind::Future(_) | TypeDefKind::Stream(_) => what.handles(),
             TypeDefKind::Unknown => unreachable!(),
-            TypeDefKind::FixedSizeList(t, _) => needs_deallocate(resolve, t, what),
+            TypeDefKind::FixedLengthList(t, _) => needs_deallocate(resolve, t, what),
             TypeDefKind::Map(..) => todo!(),
         },
 
@@ -1677,7 +1677,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     });
                 }
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     self.emit(&FixedLengthListLower {
                         element: ty,
                         size: *size,
@@ -1877,7 +1877,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     });
                 }
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     let temp = flat_types(self.resolve, ty, Some(MAX_FLAT_PARAMS)).unwrap();
                     let flat_per_elem = temp.to_vec().len();
                     let flatsize = flat_per_elem * (*size as usize);
@@ -2079,7 +2079,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(element, size) => {
+                TypeDefKind::FixedLengthList(element, size) => {
                     // resembles write_list_to_memory
                     self.push_block();
                     self.emit(&IterElem { element });
@@ -2285,7 +2285,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     self.push_block();
                     self.emit(&IterBasePointer);
                     let elemaddr = self.stack.pop().unwrap();
@@ -2486,7 +2486,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Resource => unreachable!(),
                 TypeDefKind::Unknown => unreachable!(),
 
-                TypeDefKind::FixedSizeList(..) => todo!(),
+                TypeDefKind::FixedLengthList(..) => todo!(),
                 TypeDefKind::Map(..) => todo!(),
             },
         }
@@ -2606,7 +2606,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Future(_) => unreachable!(),
                 TypeDefKind::Stream(_) => unreachable!(),
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(_, _) => {}
+                TypeDefKind::FixedLengthList(_, _) => {}
                 TypeDefKind::Map(..) => todo!(),
             },
         }

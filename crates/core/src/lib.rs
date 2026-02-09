@@ -43,7 +43,7 @@ pub trait WorldGenerator {
                 WorldItem::Interface { id, .. } => {
                     self.import_interface(resolve, name, *id, files)?
                 }
-                WorldItem::Type(id) => types.push((unwrap_name(name), *id)),
+                WorldItem::Type { id, .. } => types.push((unwrap_name(name), *id)),
             }
         }
         if !types.is_empty() {
@@ -67,7 +67,7 @@ pub trait WorldGenerator {
             match export {
                 WorldItem::Function(f) => funcs.push((unwrap_name(name), f)),
                 WorldItem::Interface { id, .. } => interfaces.push((name, id)),
-                WorldItem::Type(_) => unreachable!(),
+                WorldItem::Type { .. } => unreachable!(),
             }
         }
         if !funcs.is_empty() {
@@ -184,7 +184,7 @@ pub trait InterfaceGenerator<'a> {
             TypeDefKind::Future(t) => self.type_future(id, name, t, &ty.docs),
             TypeDefKind::Stream(t) => self.type_stream(id, name, t, &ty.docs),
             TypeDefKind::Handle(_) => panic!("handle types do not require definition"),
-            TypeDefKind::FixedSizeList(..) => todo!(),
+            TypeDefKind::FixedLengthList(..) => todo!(),
             TypeDefKind::Map(..) => todo!(),
             TypeDefKind::Unknown => unreachable!(),
         }
@@ -199,7 +199,7 @@ pub trait AnonymousTypeGenerator<'a> {
     fn anonymous_type_option(&mut self, id: TypeId, ty: &Type, docs: &Docs);
     fn anonymous_type_result(&mut self, id: TypeId, ty: &Result_, docs: &Docs);
     fn anonymous_type_list(&mut self, id: TypeId, ty: &Type, docs: &Docs);
-    fn anonymous_type_fixed_size_list(&mut self, id: TypeId, ty: &Type, size: u32, docs: &Docs);
+    fn anonymous_type_fixed_length_list(&mut self, id: TypeId, ty: &Type, size: u32, docs: &Docs);
     fn anonymous_type_future(&mut self, id: TypeId, ty: &Option<Type>, docs: &Docs);
     fn anonymous_type_stream(&mut self, id: TypeId, ty: &Option<Type>, docs: &Docs);
     fn anonymous_type_type(&mut self, id: TypeId, ty: &Type, docs: &Docs);
@@ -222,8 +222,8 @@ pub trait AnonymousTypeGenerator<'a> {
             TypeDefKind::Future(f) => self.anonymous_type_future(id, f, &ty.docs),
             TypeDefKind::Stream(s) => self.anonymous_type_stream(id, s, &ty.docs),
             TypeDefKind::Handle(handle) => self.anonymous_type_handle(id, handle, &ty.docs),
-            TypeDefKind::FixedSizeList(t, size) => {
-                self.anonymous_type_fixed_size_list(id, t, *size, &ty.docs)
+            TypeDefKind::FixedLengthList(t, size) => {
+                self.anonymous_type_fixed_length_list(id, t, *size, &ty.docs)
             }
             TypeDefKind::Map(..) => todo!(),
             TypeDefKind::Unknown => unreachable!(),

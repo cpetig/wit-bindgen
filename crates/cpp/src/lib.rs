@@ -1126,7 +1126,7 @@ impl CppInterfaceGenerator<'_> {
             TypeDefKind::Future(_) => todo!("generate for future"),
             TypeDefKind::Stream(_) => todo!("generate for stream"),
             TypeDefKind::Handle(_) => todo!("generate for handle"),
-            TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::FixedLengthList(_, _) => todo!(),
             TypeDefKind::Map(_, _) => todo!(),
             TypeDefKind::Unknown => unreachable!(),
         }
@@ -2320,7 +2320,7 @@ impl CppInterfaceGenerator<'_> {
                         + ">"
                 }
                 TypeDefKind::Type(ty) => self.type_name(ty, from_namespace, flavor),
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     self.r#gen.dependencies.needs_array = true;
                     format!(
                         "std::array<{}, {size}>",
@@ -2546,6 +2546,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func, &TypeOwner::Interface(intf), variant);
             }
@@ -2579,6 +2580,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                             result: Some(Type::Id(id)),
                             docs: Docs::default(),
                             stability: Stability::Unknown,
+                            span: Default::default(),
                         };
                         self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
                     }
@@ -2617,6 +2619,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: Some(id_type),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func, &TypeOwner::Interface(intf), variant);
 
@@ -2627,6 +2630,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: Some(Type::Id(id)),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func1, &TypeOwner::Interface(intf), variant);
 
@@ -2637,6 +2641,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
             }
@@ -3526,7 +3531,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results.push(move_if_necessary(&result));
                 }
             }
-            abi::Instruction::FixedSizeListLift {
+            abi::Instruction::FixedLengthListLift {
                 element,
                 size,
                 id: _,
@@ -3544,7 +3549,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.push_str("};\n");
                 results.push(result);
             }
-            abi::Instruction::FixedSizeListLiftFromMemory {
+            abi::Instruction::FixedLengthListLiftFromMemory {
                 element,
                 size: elemsize,
                 id: _,
@@ -3573,7 +3578,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 self.push_str("\n}\n}\n");
                 results.push(vec);
             }
-            abi::Instruction::FixedSizeListLower {
+            abi::Instruction::FixedLengthListLower {
                 element: _,
                 size,
                 id: _,
@@ -3582,7 +3587,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     results.push(format!("{}[{i}]", operands[0]));
                 }
             }
-            abi::Instruction::FixedSizeListLowerToMemory {
+            abi::Instruction::FixedLengthListLowerToMemory {
                 element,
                 size: elemsize,
                 id: _,

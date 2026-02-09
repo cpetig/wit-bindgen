@@ -23,7 +23,7 @@ struct LangConfig {
     cflags: StringList,
 }
 
-fn clangpp(runner: &Runner<'_>) -> PathBuf {
+fn clangpp(runner: &Runner) -> PathBuf {
     if runner.is_symmetric() {
         "clang++".into()
     } else {
@@ -59,12 +59,13 @@ impl LanguageMethods for Cpp {
             | "futures.wit"
             | "resources-with-futures.wit"
             | "resources-with-streams.wit"
-            | "streams.wit" => true,
+            | "streams.wit"
+            | "async-resource-func.wit" => true,
             _ => false,
         }
     }
 
-    fn prepare(&self, runner: &mut crate::Runner<'_>, test_name: &str) -> anyhow::Result<()> {
+    fn prepare(&self, runner: &mut crate::Runner, test_name: &str) -> anyhow::Result<()> {
         let compiler = clangpp(runner);
         let cwd = std::env::current_dir()?;
         let dir = cwd.join(&runner.opts.artifacts).join("cpp");
@@ -100,7 +101,7 @@ impl LanguageMethods for Cpp {
 
     fn generate_bindings_prepare(
         &self,
-        _runner: &Runner<'_>,
+        _runner: &Runner,
         bindgen: &crate::Bindgen,
         dir: &std::path::Path,
     ) -> anyhow::Result<()> {
@@ -127,7 +128,7 @@ impl LanguageMethods for Cpp {
         Ok(())
     }
 
-    fn compile(&self, runner: &crate::Runner<'_>, compile: &crate::Compile) -> anyhow::Result<()> {
+    fn compile(&self, runner: &Runner, compile: &crate::Compile) -> anyhow::Result<()> {
         let compiler = clangpp(runner);
         let config = compile.component.deserialize_lang_config::<LangConfig>()?;
 
@@ -244,7 +245,7 @@ impl LanguageMethods for Cpp {
         Ok(())
     }
 
-    fn verify(&self, runner: &crate::Runner<'_>, verify: &crate::Verify) -> anyhow::Result<()> {
+    fn verify(&self, runner: &Runner, verify: &crate::Verify) -> anyhow::Result<()> {
         // for expected
         let cwd = std::env::current_dir()?;
         let mut helper_dir2 = cwd;

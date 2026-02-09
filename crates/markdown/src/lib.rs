@@ -76,7 +76,7 @@ impl WorldGenerator for Markdown {
                     r#gen.push_str(name);
                     r#gen.push_str("`\n");
                 }
-                WorldItem::Type(_) => {
+                WorldItem::Type { .. } => {
                     r#gen.push_str("    - type `");
                     r#gen.push_str(name);
                     r#gen.push_str("`\n");
@@ -101,7 +101,7 @@ impl WorldGenerator for Markdown {
                     r#gen.push_str(name);
                     r#gen.push_str("`\n");
                 }
-                WorldItem::Type(_) => {
+                WorldItem::Type { .. } => {
                     r#gen.push_str("    - type `");
                     r#gen.push_str(name);
                     r#gen.push_str("`\n");
@@ -419,7 +419,7 @@ impl InterfaceGenerator<'_> {
                         self.push_str(">");
                     }
                     TypeDefKind::Unknown => unreachable!(),
-                    TypeDefKind::FixedSizeList(..) => todo!(),
+                    TypeDefKind::FixedLengthList(..) => todo!(),
                     TypeDefKind::Map(..) => todo!(),
                 }
             }

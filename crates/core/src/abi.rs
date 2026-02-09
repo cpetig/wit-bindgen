@@ -311,21 +311,21 @@ def_instruction! {
 
         /// Pops all fields for a fixed list off the stack and then composes them
         /// into an array.
-        FixedSizeListLift {
+        FixedLengthListLift {
             element: &'a Type,
             size: u32,
             id: TypeId,
         } : [*size as usize] => [1],
 
         /// Pops an array off the stack, decomposes the elements and then pushes them onto the stack.
-        FixedSizeListLower {
+        FixedLengthListLower {
             element: &'a Type,
             size: u32,
             id: TypeId,
         } : [1] => [*size as usize],
 
         /// Pops an array and an address off the stack, passes each element to a block storing it
-        FixedSizeListLowerToMemory {
+        FixedLengthListLowerToMemory {
             element: &'a Type,
             size: u32,
             id: TypeId,
@@ -335,7 +335,7 @@ def_instruction! {
         ///
         /// This will also pop a block from the block stack which is how to
         /// read each individual element from the list.
-        FixedSizeListLiftFromMemory {
+        FixedLengthListLiftFromMemory {
             element: &'a Type,
             size: u32,
             id: TypeId,
@@ -886,7 +886,7 @@ fn needs_deallocate(resolve: &Resolve, ty: &Type, what: Deallocate) -> bool {
             TypeDefKind::Flags(_) | TypeDefKind::Enum(_) => false,
             TypeDefKind::Future(_) | TypeDefKind::Stream(_) => what.handles(),
             TypeDefKind::Unknown => unreachable!(),
-            TypeDefKind::FixedSizeList(t, _) => needs_deallocate(resolve, t, what),
+            TypeDefKind::FixedLengthList(t, _) => needs_deallocate(resolve, t, what),
             TypeDefKind::Map(..) => todo!(),
         },
 
@@ -1188,10 +1188,21 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 // Emit the function return
-                self.emit(&Instruction::Return {
-                    func,
-                    amt: usize::from(func.result.is_some()),
-                });
+                if async_ {
+                    self.emit(&Instruction::AsyncTaskReturn {
+                        name: &func.name,
+                        params: if func.result.is_some() {
+                            &[WasmType::Pointer]
+                        } else {
+                            &[]
+                        },
+                    });
+                } else {
+                    self.emit(&Instruction::Return {
+                        func,
+                        amt: usize::from(func.result.is_some()),
+                    });
+                }
             }
             false => {
                 let max_flat_params = match (variant, async_) {
@@ -1666,8 +1677,8 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     });
                 }
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(ty, size) => {
-                    self.emit(&FixedSizeListLower {
+                TypeDefKind::FixedLengthList(ty, size) => {
+                    self.emit(&FixedLengthListLower {
                         element: ty,
                         size: *size,
                         id,
@@ -1866,7 +1877,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     });
                 }
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     let temp = flat_types(self.resolve, ty, Some(MAX_FLAT_PARAMS)).unwrap();
                     let flat_per_elem = temp.to_vec().len();
                     let flatsize = flat_per_elem * (*size as usize);
@@ -1878,7 +1889,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         self.stack.extend(lowered_args.drain(..flat_per_elem));
                         self.lift(ty);
                     }
-                    self.emit(&FixedSizeListLift {
+                    self.emit(&FixedLengthListLift {
                         element: ty,
                         size: *size,
                         id,
@@ -2068,7 +2079,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(element, size) => {
+                TypeDefKind::FixedLengthList(element, size) => {
                     // resembles write_list_to_memory
                     self.push_block();
                     self.emit(&IterElem { element });
@@ -2077,7 +2088,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     self.write_to_memory(element, elem_addr, offset);
                     self.finish_block(0);
                     self.stack.push(addr);
-                    self.emit(&FixedSizeListLowerToMemory {
+                    self.emit(&FixedLengthListLowerToMemory {
                         element,
                         size: *size,
                         id,
@@ -2274,14 +2285,14 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     self.push_block();
                     self.emit(&IterBasePointer);
                     let elemaddr = self.stack.pop().unwrap();
                     self.read_from_memory(ty, elemaddr, offset);
                     self.finish_block(1);
                     self.stack.push(addr.clone());
-                    self.emit(&FixedSizeListLiftFromMemory {
+                    self.emit(&FixedLengthListLiftFromMemory {
                         element: ty,
                         size: *size,
                         id,
@@ -2475,7 +2486,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Resource => unreachable!(),
                 TypeDefKind::Unknown => unreachable!(),
 
-                TypeDefKind::FixedSizeList(..) => todo!(),
+                TypeDefKind::FixedLengthList(..) => todo!(),
                 TypeDefKind::Map(..) => todo!(),
             },
         }
@@ -2595,7 +2606,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 TypeDefKind::Future(_) => unreachable!(),
                 TypeDefKind::Stream(_) => unreachable!(),
                 TypeDefKind::Unknown => unreachable!(),
-                TypeDefKind::FixedSizeList(_, _) => {}
+                TypeDefKind::FixedLengthList(_, _) => {}
                 TypeDefKind::Map(..) => todo!(),
             },
         }

@@ -2502,6 +2502,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func, &TypeOwner::Interface(intf), variant);
             }
@@ -2535,6 +2536,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                             result: Some(Type::Id(id)),
                             docs: Docs::default(),
                             stability: Stability::Unknown,
+                            span: Default::default(),
                         };
                         self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
                     }
@@ -2573,6 +2575,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: Some(id_type),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func, &TypeOwner::Interface(intf), variant);
 
@@ -2583,6 +2586,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: Some(Type::Id(id)),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func1, &TypeOwner::Interface(intf), variant);
 
@@ -2593,6 +2597,7 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                     result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
+                    span: Default::default(),
                 };
                 self.generate_function(&func2, &TypeOwner::Interface(intf), variant);
             }

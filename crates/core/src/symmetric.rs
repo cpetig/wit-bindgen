@@ -49,7 +49,7 @@ fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
             TypeDefKind::Stream(_) => todo!(),
             TypeDefKind::Type(tp) => needs_dealloc2(resolve, tp),
             TypeDefKind::Unknown => false,
-            TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::FixedLengthList(_, _) => todo!(),
             TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
@@ -116,7 +116,7 @@ fn has_non_canonical_list2(resolve: &Resolve, ty: &Type, maybe: bool) -> bool {
             TypeDefKind::Future(_) | TypeDefKind::Stream(_) => false,
             TypeDefKind::Type(ty) => has_non_canonical_list2(resolve, ty, maybe),
             TypeDefKind::Unknown => false,
-            TypeDefKind::FixedSizeList(_, _) => todo!(),
+            TypeDefKind::FixedLengthList(_, _) => todo!(),
             TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
@@ -182,7 +182,7 @@ fn has_non_canonical_list_rust2(resolve: &Resolve, ty: &Type) -> bool {
             TypeDefKind::Future(_) | TypeDefKind::Stream(_) => false,
             TypeDefKind::Type(ty) => has_non_canonical_list_rust2(resolve, ty),
             TypeDefKind::Unknown => false,
-            TypeDefKind::FixedSizeList(ty, _) => has_non_canonical_list_rust2(resolve, ty),
+            TypeDefKind::FixedLengthList(ty, _) => has_non_canonical_list_rust2(resolve, ty),
             TypeDefKind::Map(_, _) => todo!(),
         },
         Type::ErrorContext => todo!(),
@@ -236,6 +236,7 @@ fn add_type(
             docs: Default::default(),
             stability: Default::default(),
             package: old_interface.package,
+            span: Default::default(),
         };
         let new_id = resolve.interfaces.alloc(iface);
         iface_map.insert(old_owner, new_id);
@@ -244,6 +245,7 @@ fn add_type(
             WorldItem::Interface {
                 id: new_id,
                 stability: Default::default(),
+                span: Default::default(),
             },
         );
         new_id
@@ -299,7 +301,9 @@ fn add_type(
                 }
             }
             TypeDefKind::List(tp) => add_type2(resolve, world, &tp, name, iface_map),
-            TypeDefKind::FixedSizeList(tp, _sz) => add_type2(resolve, world, &tp, name, iface_map),
+            TypeDefKind::FixedLengthList(tp, _sz) => {
+                add_type2(resolve, world, &tp, name, iface_map)
+            }
             TypeDefKind::Future(tp) => {
                 if let Some(tp) = tp {
                     add_type2(resolve, world, &tp, name, iface_map);
@@ -330,7 +334,8 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         docs: Default::default(),
         stability: Default::default(),
         includes: Vec::default(),
-        include_names: Vec::default(),
+        //        include_names: Vec::default(),
+        span: Default::default(),
     };
     let interface = Interface {
         name: None,
@@ -339,6 +344,7 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         docs: Default::default(),
         stability: Default::default(),
         package: Default::default(),
+        span: Default::default(),
     };
     let iface_id = resolve2.interfaces.alloc(interface);
     world.package = Some(resolve2.packages.alloc(Package {
@@ -365,6 +371,7 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
             WorldItem::Interface {
                 id: iface_id,
                 stability: Default::default(),
+                span: Default::default(),
             },
         );
     }

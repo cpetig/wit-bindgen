@@ -392,7 +392,7 @@ macro_rules! {macro_name} {{
                     r#"
                 const _: () = {{
                     #[doc(hidden)]
-                    #[cfg_attr(target_arch = "wasm32", export_name = "{export_prefix}{module}#[dtor]{name}")]
+                    #[cfg_attr(target_arch = "wasm32", unsafe(export_name = "{export_prefix}{module}#[dtor]{name}"))]
                     #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
                     #[allow(non_snake_case)]
                     unsafe extern "C" fn {dtor_symbol}(rep: *mut u8) {{
@@ -1360,7 +1360,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         uwrite!(
             self.src,
             "\
-                #[cfg_attr(target_arch = \"wasm32\", export_name = \"{export_prefix}{export_name}\")]
+                #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}{export_name}\"))]
                 #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
                 #[allow(non_snake_case)]
                 unsafe extern \"C\" fn {external_name}\
@@ -1399,7 +1399,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             uwrite!(
                 self.src,
                 "\
-                    #[cfg_attr(target_arch = \"wasm32\", export_name = \"{export_prefix}cabi_post_{export_name}\")]
+                    #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}cabi_post_{export_name}\"))]
                     #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
                     #[allow(non_snake_case)]
                     unsafe extern \"C\" fn {external_name}\

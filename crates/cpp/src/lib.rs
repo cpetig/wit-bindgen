@@ -1733,7 +1733,7 @@ impl CppInterfaceGenerator<'_> {
                             uwriteln!(
                                 self.r#gen.c_src.src,
                                 "{classname}*){});",
-                                func.params.get(0).unwrap().0
+                                func.params.get(0).unwrap().name
                             );
                         } else {
                             let name = self.declare_import(

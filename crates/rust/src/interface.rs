@@ -608,10 +608,13 @@ macro_rules! {macro_name} {{
         func_name: &str,
         payload_type: Option<&Type>,
     ) {
-        let name = if let Some(payload_type) = payload_type {
-            self.type_name_owned(payload_type)
-        } else {
-            "()".into()
+        let name = match payload_type {
+            Some(Type::Id(type_id)) => {
+                let dealiased_id = dealias(self.resolve, *type_id);
+                self.type_name_owned(&Type::Id(dealiased_id))
+            }
+            Some(payload_type) => self.type_name_owned(payload_type),
+            None => "()".into(),
         };
         let map = match payload_for {
             PayloadFor::Future => &mut self.r#gen.future_payloads,
@@ -936,7 +939,11 @@ pub mod vtable{ordinal} {{
         mut params: Vec<String>,
     ) {
         let symmetric = self.r#gen.opts.symmetric;
-        let param_tys = func.params.iter().map(|(_, ty)| *ty).collect::<Vec<_>>();
+        let param_tys = func
+            .params
+            .iter()
+            .map(|Param { ty, .. }| *ty)
+            .collect::<Vec<_>>();
         let async_support = self.r#gen.async_support_path();
         let sig = self.resolve.wasm_signature_symmetric(
             AbiVariant::GuestImportAsync,
@@ -981,7 +988,7 @@ unsafe impl<'a> _Subtask for _MySubtask<'a> {{
 
         // Generate `type Params`
         uwrite!(self.src, "type Params = (");
-        for (_, ty) in func.params.iter() {
+        for Param { ty, .. } in func.params.iter() {
             let mode = self.type_mode_for(ty, TypeOwnershipStyle::Owned, "'a");
             self.print_ty(ty, mode);
             self.src.push_str(", ");
@@ -1101,7 +1108,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         if sig.indirect_params {
             let offsets = self
                 .sizes
-                .field_offsets(func.params.iter().map(|(_, ty)| ty));
+                .field_offsets(func.params.iter().map(|Param { ty, .. }| ty));
             for (i, (offset, ty)) in offsets.into_iter().enumerate() {
                 let name = format!("_lower{i}");
                 let mut start = format!(
@@ -1117,7 +1124,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         } else {
             let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
             let mut results = Vec::new();
-            for (i, (_, ty)) in func.params.iter().enumerate() {
+            for (i, Param { ty, .. }) in func.params.iter().enumerate() {
                 let name = format!("_lower{i}");
                 results.extend(abi::lower_flat(
                     f.r#gen.resolve,
@@ -1543,7 +1550,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         }
     }
 
-    fn rustdoc_params(&mut self, docs: &[(String, Type)], header: &str) {
+    fn rustdoc_params(&mut self, docs: &Vec<Param>, header: &str) {
         let _ = (docs, header);
         // let docs = docs
         //     .iter()
@@ -1643,7 +1650,13 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             self.push_str(",");
         }
         let mut params = Vec::new();
-        for (i, (name, param)) in func.params.iter().enumerate() {
+        for (
+            i,
+            Param {
+                name, ty: param, ..
+            },
+        ) in func.params.iter().enumerate()
+        {
             if i == 0 && sig.self_is_first_param {
                 params.push("self".to_string());
                 continue;
@@ -2619,23 +2632,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
 
     pub fn is_exported_resource(&self, ty: TypeId) -> bool {
         let ty = dealias(self.resolve, ty);
-        let ty = &self.resolve.types[ty];
-        match &ty.kind {
-            TypeDefKind::Resource => {}
-            _ => return false,
-        }
-
-        match ty.owner {
-            // Worlds cannot export types of any kind as of this writing.
-            TypeOwner::World(_) => false,
-
-            // Interfaces are "stateful" currently where whatever we last saw
-            // them as dictates whether it's exported or not.
-            TypeOwner::Interface(i) => !self.r#gen.interface_last_seen_as_import[&i],
-
-            // Shouldn't be the case for resources
-            TypeOwner::None => unreachable!(),
-        }
+        self.r#gen.exported_resources.contains(&ty)
     }
 
     fn push_string_name(&mut self) {
@@ -2769,6 +2766,16 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
     fn type_record(&mut self, id: TypeId, _name: &str, record: &Record, docs: &Docs) {
         self.print_typedef_record(id, record, docs);
+    }
+
+    fn define_type(&mut self, name: &str, id: TypeId) {
+        let equal = self.r#gen.types.get_representative_type(id);
+        if equal == id {
+            wit_bindgen_core::define_type(self, name, id)
+        } else {
+            let docs = &self.resolve.types[id].docs;
+            self.print_typedef_alias(id, &Type::Id(equal), &docs);
+        }
     }
 
     fn type_resource(&mut self, _id: TypeId, name: &str, docs: &Docs) {

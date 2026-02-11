@@ -15,7 +15,7 @@ use wit_bindgen_core::{
     make_external_component, make_external_symbol, name_package_module, symmetric, uwrite,
     uwriteln,
     wit_parser::{
-        Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId,
+        Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Param,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
         WorldKey,
     },
@@ -1408,7 +1408,13 @@ impl CppInterfaceGenerator<'_> {
         {
             res.static_member = true;
         }
-        for (i, (name, param)) in func.params.iter().enumerate() {
+        for (
+            i,
+            Param {
+                name, ty: param, ..
+            },
+        ) in func.params.iter().enumerate()
+        {
             if i == 0
                 && name == "self"
                 && (matches!(&func.kind, FunctionKind::Method(_))
@@ -1679,7 +1685,7 @@ impl CppInterfaceGenerator<'_> {
                             uwriteln!(self.r#gen.c_src.src, "Dtor(*ptr);")
                         } else {
                             let module_name = String::from("[export]")
-                                + &self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+                                + &self.wasm_import_module.clone().unwrap();
                             let wasm_sig = self.declare_import(
                                 &module_name,
                                 &func.name,
@@ -1689,7 +1695,7 @@ impl CppInterfaceGenerator<'_> {
                             uwriteln!(
                                 self.r#gen.c_src.src,
                                 "{wasm_sig}({});",
-                                func.params.get(0).unwrap().0
+                                func.params.get(0).unwrap().name
                             );
                         }
                     }
@@ -1787,7 +1793,7 @@ impl CppInterfaceGenerator<'_> {
                             self.r#gen.c_src.src,
                             "return static_cast<{}>({});",
                             self.r#gen.opts.ptr_type(),
-                            func.params.get(0).unwrap().0
+                            func.params.first().unwrap().name
                         );
                     } else if !self.r#gen.opts.host_side() {
                         let module_name = String::from("[export]")
@@ -1802,7 +1808,7 @@ impl CppInterfaceGenerator<'_> {
                             self.r#gen.c_src.src,
                             "return {wasm_sig}(({}){});",
                             self.r#gen.opts.ptr_type(),
-                            func.params.get(0).unwrap().0
+                            func.params.first().unwrap().name
                         );
                     } else {
                         uwriteln!(self.r#gen.c_src.src, "return ");
@@ -1818,11 +1824,11 @@ impl CppInterfaceGenerator<'_> {
                             self.r#gen.c_src.src,
                             "return static_cast<{}*>({});",
                             classname,
-                            func.params.get(0).unwrap().0
+                            func.params.first().unwrap().name
                         );
                     } else if !self.r#gen.opts.host_side() {
-                        let module_name = String::from("[export]")
-                            + &self.wasm_import_module.as_ref().map(|e| e.clone()).unwrap();
+                        let module_name =
+                            String::from("[export]") + &self.wasm_import_module.clone().unwrap();
                         let wasm_sig = self.declare_import(
                             &module_name,
                             &func.name,
@@ -1834,7 +1840,7 @@ impl CppInterfaceGenerator<'_> {
                             self.r#gen.c_src.src,
                             "return ({}*){wasm_sig}({});",
                             classname,
-                            func.params.get(0).unwrap().0
+                            func.params.first().unwrap().name
                         );
                     } else {
                         uwriteln!(self.r#gen.c_src.src, "return *");
@@ -2498,7 +2504,11 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let func = Function {
                     name,
                     kind: FunctionKind::Static(id),
-                    params: vec![("self".into(), Type::Id(id))],
+                    params: vec![Param {
+                        name: "self".into(),
+                        ty: Type::Id(id),
+                        span: Default::default(),
+                    }],
                     result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,
@@ -2571,7 +2581,11 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let func = Function {
                     name: "[resource-new]".to_string() + name,
                     kind: FunctionKind::Static(id),
-                    params: vec![("self".into(), Type::Id(id))],
+                    params: vec![Param {
+                        name: "self".into(),
+                        ty: Type::Id(id),
+                        span: Default::default(),
+                    }],
                     result: Some(id_type),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
@@ -2582,7 +2596,11 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let func1 = Function {
                     name: "[resource-rep]".to_string() + name,
                     kind: FunctionKind::Static(id),
-                    params: vec![("id".into(), id_type)],
+                    params: vec![Param {
+                        name: "id".into(),
+                        ty: id_type,
+                        span: Default::default(),
+                    }],
                     result: Some(Type::Id(id)),
                     docs: Docs::default(),
                     stability: Stability::Unknown,
@@ -2593,7 +2611,11 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for CppInterfaceGenerator<'a> 
                 let func2 = Function {
                     name: "[resource-drop]".to_string() + name,
                     kind: FunctionKind::Static(id),
-                    params: vec![("id".into(), id_type)],
+                    params: vec![Param {
+                        name: "id".into(),
+                        ty: id_type,
+                        span: Default::default(),
+                    }],
                     result: None,
                     docs: Docs::default(),
                     stability: Stability::Unknown,

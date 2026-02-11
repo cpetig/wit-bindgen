@@ -186,13 +186,18 @@ impl WorldGenerator for C {
         let world = &resolve.worlds[world];
         for (key, _item) in world.imports.iter().chain(world.exports.iter()) {
             let name = resolve.name_world_key(key);
-            interfaces.insert(name, key.clone());
+            interfaces
+                .entry(name)
+                .or_insert(Vec::new())
+                .push(key.clone());
         }
 
         for (from, to) in self.opts.rename.iter() {
             match interfaces.get(from) {
-                Some(key) => {
-                    self.renamed_interfaces.insert(key.clone(), to.clone());
+                Some(keys) => {
+                    for key in keys {
+                        self.renamed_interfaces.insert(key.clone(), to.clone());
+                    }
                 }
                 None => {
                     eprintln!("warning: rename of `{from}` did not match any interfaces");
@@ -728,11 +733,13 @@ void {snake}_context_set_1(void* value);
 uint32_t {snake}_thread_yield_cancellable(void);
 uint32_t {snake}_thread_index(void);
 uint32_t {snake}_thread_new_indirect(void (*start_function)(void*), void* arg);
-void {snake}_thread_switch_to(uint32_t thread);
-uint32_t {snake}_thread_switch_to_cancellable(uint32_t thread);
-void {snake}_thread_resume_later(uint32_t thread);
-void {snake}_thread_yield_to(uint32_t thread);
-uint32_t {snake}_thread_yield_to_cancellable(uint32_t thread);
+void {snake}_thread_suspend_to(uint32_t thread);
+uint32_t {snake}_thread_suspend_to_cancellable(uint32_t thread);
+void {snake}_thread_suspend_to_suspended(uint32_t thread);
+uint32_t {snake}_thread_suspend_to_suspended_cancellable(uint32_t thread);
+void {snake}_thread_unsuspend(uint32_t thread);
+void {snake}_thread_yield_to_suspended(uint32_t thread);
+uint32_t {snake}_thread_yield_to_suspended_cancellable(uint32_t thread);
 void {snake}_thread_suspend(void);
 uint32_t {snake}_thread_suspend_cancellable(void);
             "
@@ -776,39 +783,53 @@ uint32_t {snake}_thread_new_indirect(void (*start_function)(void*), void* arg) {
 );
 }}
 
-__attribute__((__import_module__("$root"), __import_name__("[thread-switch-to]")))
-extern uint32_t __thread_switch_to(uint32_t);
+__attribute__((__import_module__("$root"), __import_name__("[thread-suspend-to-suspended]")))
+extern uint32_t __thread_suspend_to_suspended(uint32_t);
 
-void {snake}_thread_switch_to(uint32_t thread) {{
-    __thread_switch_to(thread);
+void {snake}_thread_suspend_to_suspended(uint32_t thread) {{
+    __thread_suspend_to_suspended(thread);
 }}
 
-__attribute__((__import_module__("$root"), __import_name__("[cancellable][thread-switch-to]")))
-extern uint32_t __thread_switch_to_cancellable(uint32_t);
+__attribute__((__import_module__("$root"), __import_name__("[cancellable][thread-suspend-to-suspended]")))
+extern uint32_t __thread_suspend_to_suspended_cancellable(uint32_t);
 
-uint32_t {snake}_thread_switch_to_cancellable(uint32_t thread) {{
-    return __thread_switch_to_cancellable(thread);
+uint32_t {snake}_thread_suspend_to_suspended_cancellable(uint32_t thread) {{
+    return __thread_suspend_to_suspended_cancellable(thread);
 }}
 
-__attribute__((__import_module__("$root"), __import_name__("[thread-resume-later]")))
-extern void __thread_resume_later(uint32_t);
+__attribute__((__import_module__("$root"), __import_name__("[thread-suspend-to]")))
+extern uint32_t __thread_suspend_to(uint32_t);
 
-void {snake}_thread_resume_later(uint32_t thread) {{
-    __thread_resume_later(thread);
+void {snake}_thread_suspend_to(uint32_t thread) {{
+    __thread_suspend_to(thread);
 }}
 
-__attribute__((__import_module__("$root"), __import_name__("[thread-yield-to]")))
-extern uint32_t __thread_yield_to(uint32_t);
+__attribute__((__import_module__("$root"), __import_name__("[cancellable][thread-suspend-to]")))
+extern uint32_t __thread_suspend_to_cancellable(uint32_t);
 
-void {snake}_thread_yield_to(uint32_t thread) {{
-    __thread_yield_to(thread);
+uint32_t {snake}_thread_suspend_to_cancellable(uint32_t thread) {{
+    return __thread_suspend_to_cancellable(thread);
 }}
 
-__attribute__((__import_module__("$root"), __import_name__("[cancellable][thread-yield-to]")))
-extern uint32_t __thread_yield_to_cancellable(uint32_t);
+__attribute__((__import_module__("$root"), __import_name__("[thread-unsuspend]")))
+extern void __thread_unsuspend(uint32_t);
 
-uint32_t {snake}_thread_yield_to_cancellable(uint32_t thread) {{
-    return __thread_yield_to_cancellable(thread);
+void {snake}_thread_unsuspend(uint32_t thread) {{
+    __thread_unsuspend(thread);
+}}
+
+__attribute__((__import_module__("$root"), __import_name__("[thread-yield-to-suspended]")))
+extern uint32_t __thread_yield_to_suspended(uint32_t);
+
+void {snake}_thread_yield_to_suspended(uint32_t thread) {{
+    __thread_yield_to_suspended(thread);
+}}
+
+__attribute__((__import_module__("$root"), __import_name__("[cancellable][thread-yield-to-suspended]")))
+extern uint32_t __thread_yield_to_suspended_cancellable(uint32_t);
+
+uint32_t {snake}_thread_yield_to_suspended_cancellable(uint32_t thread) {{
+    return __thread_yield_to_suspended_cancellable(thread);
 }}
 
 __attribute__((__import_module__("$root"), __import_name__("[thread-suspend]")))
@@ -2142,7 +2163,7 @@ impl InterfaceGenerator<'_> {
         let mut optional_adapters = String::from("");
         if !self.r#gen.opts.no_sig_flattening {
             for (i, (_, param)) in c_sig.params.iter().enumerate() {
-                let ty = &func.params[i].1;
+                let ty = &func.params[i].ty;
                 if let Type::Id(id) = ty {
                     if let TypeDefKind::Option(_) = &self.resolve.types[*id].kind {
                         let ty = self.r#gen.type_name(ty);
@@ -2216,7 +2237,7 @@ impl InterfaceGenerator<'_> {
             params.push(format!("(uint8_t*) {}", c_sig.params[0].1));
         } else {
             let mut f = FunctionBindgen::new(self, c_sig.clone(), "INVALID");
-            for (i, (_, ty)) in func.params.iter().enumerate() {
+            for (i, Param { ty, .. }) in func.params.iter().enumerate() {
                 let param = &c_sig.params[i].1;
                 params.extend(abi::lower_flat(
                     f.r#gen.resolve,
@@ -2494,7 +2515,7 @@ void {name}_return({return_ty}) {{
 
     fn print_sig_params(&mut self, func: &Function) -> Vec<(bool, String)> {
         let mut params = Vec::new();
-        for (i, (name, ty)) in func.params.iter().enumerate() {
+        for (i, Param { name, ty, .. }) in func.params.iter().enumerate() {
             if i > 0 {
                 self.src.h_fns(", ");
             }
@@ -2544,7 +2565,7 @@ void {name}_return({return_ty}) {{
         if sig.indirect_params {
             match &func.params[..] {
                 [] => {}
-                [(_name, ty)] => {
+                [Param { name: _, ty, .. }] => {
                     printed = true;
                     let name = "arg".to_string();
                     self.print_ty(SourceType::HFns, ty);
@@ -2556,7 +2577,7 @@ void {name}_return({return_ty}) {{
                     printed = true;
                     let names = multiple
                         .iter()
-                        .map(|(name, ty)| (to_c_ident(name), self.r#gen.type_name(ty)))
+                        .map(|Param { name, ty, .. }| (to_c_ident(name), self.r#gen.type_name(ty)))
                         .collect::<Vec<_>>();
                     uwriteln!(self.src.h_defs, "typedef struct {c_func_name}_args {{");
                     for (name, ty) in names {
@@ -2568,7 +2589,7 @@ void {name}_return({return_ty}) {{
                 }
             }
         } else {
-            for (name, ty) in func.params.iter() {
+            for Param { name, ty, .. } in func.params.iter() {
                 let name = to_c_ident(name);
                 if printed {
                     self.src.h_fns(", ");
@@ -3627,7 +3648,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     if i > 0 {
                         args.push_str(", ");
                     }
-                    let ty = &func.params[i].1;
+                    let ty = &func.params[i].ty;
                     if *byref {
                         let name = self.locals.tmp("arg");
                         let ty = self.r#gen.r#gen.type_name(ty);

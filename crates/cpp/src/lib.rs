@@ -1777,11 +1777,11 @@ impl CppInterfaceGenerator<'_> {
                         } else {
                             uwriteln!(
                                 self.r#gen.c_src.src,
-                                "static_cast<{classname}*>(arg0)->handle=-1;"
+                                "reinterpret_cast<{classname}*>(arg0)->handle=-1;"
                             );
                             uwriteln!(
                                 self.r#gen.c_src.src,
-                                "{0}::Dtor(static_cast<{0}*>(arg0));",
+                                "{0}::Dtor(reinterpret_cast<{0}*>(arg0));",
                                 classname
                             );
                         }
@@ -3368,7 +3368,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                 } else {
                     format!(
-                        "wit::vector<{inner}>(static_cast<{inner}*>({}), {len})",
+                        "wit::vector<{inner}>(reiterpret_cast<{inner}*>({}), {len})",
                         operands[0]
                     )
                 };

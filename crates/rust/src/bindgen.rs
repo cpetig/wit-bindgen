@@ -1,6 +1,6 @@
 use crate::{
-    ConstructorReturnType, Identifier, InterfaceGenerator, RustFlagsRepr,
-    classify_constructor_return_type, int_repr, to_rust_ident,
+    ConstructorReturnType, InterfaceGenerator, RustFlagsRepr, classify_constructor_return_type,
+    int_repr, to_rust_ident,
 };
 use heck::*;
 use std::fmt::Write as _;
@@ -437,9 +437,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
                 let dealiased_resource = dealias(resolve, *resource);
 
+                let name = self.r#gen.type_path(dealiased_resource, true);
                 let result = if is_own {
-                    let name = self.r#gen.type_path(dealiased_resource, true);
-
                     format!(
                         "{name}::from_handle({op}{cast})",
                         cast = if self.r#gen.r#gen.opts.symmetric {
@@ -458,7 +457,6 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 } else {
                     let tmp = format!("handle{}", self.tmp());
                     self.handle_decls.push(format!("let {tmp};"));
-                    let name = self.r#gen.type_path(dealiased_resource, true);
                     format!(
                         "{{\n
                             {tmp} = {name}::from_handle({op}{cast});
@@ -487,24 +485,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let async_support = self.r#gen.r#gen.async_support_path();
                 let op = &operands[0];
                 let name = match payload {
-                    Some(Type::Id(type_id)) => {
-                        let dealiased_id = dealias(resolve, *type_id);
-                        self.r#gen.type_name_owned_with_id(
-                            &Type::Id(dealiased_id),
-                            Identifier::StreamOrFuturePayload,
-                        )
-                    }
-                    Some(ty) => self
-                        .r#gen
-                        .type_name_owned_with_id(ty, Identifier::StreamOrFuturePayload),
-                    None => "()".into(),
+                    Some(ty) => self.r#gen.type_name_owned(ty),
+                    None => "()".to_string(),
                 };
-                let ordinal = self
-                    .r#gen
-                    .r#gen
-                    .future_payloads
-                    .get_index_of(&name)
-                    .unwrap();
                 let path = self.r#gen.path_to_root();
                 let recast = if self.r#gen.r#gen.opts.symmetric {
                     ""
@@ -513,7 +496,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 };
                 results.push(format!(
                     "{async_support}::FutureReader::new\
-                        ({op}{recast}, &{path}wit_future::vtable{ordinal}::VTABLE)"
+                        ({op}{recast}, &<{name} as {path}wit_future::FuturePayload>::VTABLE)"
                 ));
             }
 
@@ -530,24 +513,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let async_support = self.r#gen.r#gen.async_support_path();
                 let op = &operands[0];
                 let name = match payload {
-                    Some(Type::Id(type_id)) => {
-                        let dealiased_id = dealias(resolve, *type_id);
-                        self.r#gen.type_name_owned_with_id(
-                            &Type::Id(dealiased_id),
-                            Identifier::StreamOrFuturePayload,
-                        )
-                    }
-                    Some(ty) => self
-                        .r#gen
-                        .type_name_owned_with_id(ty, Identifier::StreamOrFuturePayload),
-                    None => "()".into(),
+                    Some(ty) => self.r#gen.type_name_owned(ty),
+                    None => "()".to_string(),
                 };
-                let ordinal = self
-                    .r#gen
-                    .r#gen
-                    .stream_payloads
-                    .get_index_of(&name)
-                    .unwrap();
                 let path = self.r#gen.path_to_root();
                 let recast = if self.r#gen.r#gen.opts.symmetric {
                     ""
@@ -556,7 +524,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 };
                 results.push(format!(
                     "{async_support}::StreamReader::new\
-                     ({op}{recast}, &{path}wit_stream::vtable{ordinal}::VTABLE)"
+                     ({op}{recast}, &<{name} as {path}wit_stream::StreamPayload>::VTABLE)"
                 ))
             }
 
@@ -1049,14 +1017,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(&prev_src);
                 let constructor_type = match &func.kind {
                     FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
-                        self.push_str(&format!("T::{}", to_rust_ident(func.item_name())));
+                        self.push_str(&format!("T_::{}", to_rust_ident(func.item_name())));
                         None
                     }
                     FunctionKind::Method(_)
                     | FunctionKind::Static(_)
                     | FunctionKind::AsyncMethod(_)
                     | FunctionKind::AsyncStatic(_) => {
-                        self.push_str(&format!("T::{}", to_rust_ident(func.item_name())));
+                        self.push_str(&format!("T_::{}", to_rust_ident(func.item_name())));
                         None
                     }
                     FunctionKind::Constructor(ty) => {
@@ -1070,10 +1038,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
                         match return_type {
                             ConstructorReturnType::Self_ => {
-                                self.push_str(&format!("{ty}::new(T::new"));
+                                self.push_str(&format!("{ty}::new(T_::new"));
                             }
                             ConstructorReturnType::Result { .. } => {
-                                self.push_str(&format!("T::new"));
+                                self.push_str(&format!("T_::new"));
                             }
                         }
 
@@ -1429,7 +1397,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(&format!(
                     " let array{tmp}: [_; {size}] = core::array::from_fn(|{index_var}| {{
                             let base = {base}.add({index_var} * {elemsize});
-                            {body} 
+                            {body}
                         }});"
                 ));
                 let result = format!("array{tmp}");

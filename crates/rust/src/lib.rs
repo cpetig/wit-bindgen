@@ -60,8 +60,8 @@ pub struct RustWasm {
     interface_prefixes: HashMap<(Direction, WorldKey), String>,
     import_prefix: Option<String>,
 
-    future_payloads: IndexMap<String, String>,
-    stream_payloads: IndexMap<String, String>,
+    future_payloads: IndexMap<Option<Type>, String>,
+    stream_payloads: IndexMap<Option<Type>, String>,
 }
 
 #[derive(Default)]

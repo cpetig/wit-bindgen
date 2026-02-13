@@ -4140,7 +4140,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }}
                     {full_type} {resultname} = std::move(*{resultname}_opt);"
                 );
-                results.push(format!("*std::move({resultname})"));
+                results.push(format!("std::move({resultname})"));
             }
             abi::Instruction::CallWasm {
                 name,

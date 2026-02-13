@@ -1,12 +1,16 @@
-include!(env!("BINDINGS"));
+//@ wasmtime-flags = '-Wcomponent-model-async'
 
-use wit_bindgen::rt::async_support;
+include!(env!("BINDINGS"));
 
 use crate::a::b::the_test::f;
 
-fn main() {
-    async_support::block_on(async {
+struct Component;
+
+export!(Component);
+
+impl Guest for Component {
+    async fn run() {
         let result = f().await;
         assert_eq!(result, String::from("Hello"));
-    });
+    }
 }

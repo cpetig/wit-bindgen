@@ -2116,8 +2116,8 @@ impl InterfaceGenerator<'_> {
             },
             func.name
         );
-        let name = self.c_func_name(interface_name, func);
-        let import_name = self.r#gen.names.tmp(&format!("__wasm_import_{name}",));
+        let import_name = self.c_func_name(interface_name, func);
+        //let import_name = self.r#gen.names.tmp(&format!("{name}",));
         self.src.c_fns("extern ");
         match sig.results.len() {
             0 => self.src.c_fns("void"),

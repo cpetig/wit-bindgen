@@ -2304,7 +2304,7 @@ impl CppInterfaceGenerator<'_> {
         result: &str,
         variant: AbiVariant,
     ) -> (String, String) {
-        let mut extern_name = String::from("__wasm_import_");
+        let mut extern_name = String::new(); //from("__wasm_import_");
         extern_name.push_str(&make_external_symbol(module_name, name, variant));
         let import = if self.r#gen.opts.symmetric {
             format!("extern \"C\" {result} {extern_name}({args});\n")
@@ -3243,8 +3243,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {ptr} = {val}.data();\n"));
                     self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
+                    let const_cast = if self.r#gen.r#gen.opts.symmetric {
+                        String::new()
+                    } else {
+                        format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type())
+                    };
                     self.push_str(&format!(
-                        "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
+                        "auto {ptr} = {const_cast}(reinterpret_cast<const {}>({val}.data()));\n",
                         self.r#gen.r#gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
@@ -3274,8 +3279,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {ptr} = {val}.data();\n"));
                     self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
+                    let const_cast = if self.r#gen.r#gen.opts.symmetric {
+                        String::new()
+                    } else {
+                        format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type())
+                    };
                     self.push_str(&format!(
-                        "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
+                        "auto {ptr} = {const_cast}(reinterpret_cast<const {}>({val}.data()));\n",
                         self.r#gen.r#gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
@@ -3307,8 +3317,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {ptr} = {val}.data();\n"));
                     self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
+                    let const_cast = if self.r#gen.r#gen.opts.symmetric {
+                        String::new()
+                    } else {
+                        format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type())
+                    };
                     self.push_str(&format!(
-                        "auto {ptr} = reinterpret_cast<const {}>({val}.data());\n",
+                        "auto {ptr} = {const_cast}(reinterpret_cast<const {}>({val}.data()));\n",
                         self.r#gen.r#gen.opts.ptr_type(),
                     ));
                     self.push_str(&format!(
@@ -3368,7 +3383,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     }
                 } else {
                     format!(
-                        "wit::vector<{inner}>(reiterpret_cast<{inner}*>({}), {len})",
+                        "wit::vector<{inner}>(reinterpret_cast<{inner}*>({}), {len})",
                         operands[0]
                     )
                 };
@@ -3416,8 +3431,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         operands[0]
                     )
                 } else {
+                    let constness = if self.r#gen.r#gen.opts.symmetric {
+                        " const"
+                    } else {
+                        ""
+                    };
                     format!(
-                        "wit::string(reinterpret_cast<char const*>({}), {len})",
+                        "wit::string(reinterpret_cast<char{constness}*>({}), {len})",
                         operands[0]
                     )
                 };

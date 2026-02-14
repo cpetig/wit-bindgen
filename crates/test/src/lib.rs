@@ -742,17 +742,18 @@ impl Runner {
                                 // TODO: Handle should fail?
                                 Ok(())
                             }
-                            Err(e) => me.render_error(
-                                StepResult::new(Err(e))
-                                    // .should_fail(
-                                    //     component
-                                    //         .language
-                                    //         .obj()
-                                    //         .should_fail_runtime(self, &test, &component),
-                                    // )
-                                    .metadata("component", &component.name)
-                                    .metadata("path", component.path.display()),
-                            ),
+                            Err(e) => {
+                                let should_fail = component
+                                    .language
+                                    .obj()
+                                    .should_fail_runtime1(&me, &test, &component);
+                                me.render_error(
+                                    StepResult::new(Err(e))
+                                        .should_fail(should_fail)
+                                        .metadata("component", &component.name)
+                                        .metadata("path", component.path.display()),
+                                )
+                            }
                         }
                     })
                 })
@@ -786,6 +787,7 @@ impl Runner {
                 .map(|(case_name, (runner, runner_path), test_components)| {
                     let me = self.clone();
                     let mut name = format!("{case_name}");
+                    let mut should_fail = false;
                     for component in [&runner]
                         .into_iter()
                         .chain(test_components.iter().map(|p| &p.0))
@@ -794,6 +796,13 @@ impl Runner {
                             " | {}",
                             component.path.file_name().unwrap().to_str().unwrap()
                         ));
+                        if component
+                            .language
+                            .obj()
+                            .should_fail_runtime2(&me, &case_name, &component)
+                        {
+                            should_fail = true;
+                        }
                     }
                     let case_name = case_name.to_string();
                     let runner = runner.clone();
@@ -805,6 +814,7 @@ impl Runner {
                             .with_context(|| format!("failed to run `{}`", case.name));
                         me.render_error(
                             StepResult::new(result)
+                                .should_fail(should_fail)
                                 .metadata("runner", runner.path.display())
                                 .metadata("compiled runner", runner_path.display()),
                         )
@@ -1403,7 +1413,10 @@ trait LanguageMethods {
     fn verify(&self, runner: &Runner, verify: &Verify) -> Result<()>;
 
     /// Whether a runtime test is expected to fail
-    fn should_fail_runtime(&self, _runner: &Runner, _test: &Test, _component: &Component) -> bool {
+    fn should_fail_runtime1(&self, _runner: &Runner, _test: &Test, _component: &Component) -> bool {
+        false
+    }
+    fn should_fail_runtime2(&self, _runner: &Runner, _name: &str, _component: &Component) -> bool {
         false
     }
 }

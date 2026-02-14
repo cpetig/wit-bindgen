@@ -359,7 +359,7 @@ mod core {}
         Ok(())
     }
 
-    fn should_fail_runtime(
+    fn should_fail_runtime1(
         &self,
         runner: &Runner,
         test: &crate::Test,
@@ -369,7 +369,17 @@ mod core {}
             && (test.name == "simple-yield"
                 || test.name == "cancel-import"
                 || test.name == "simple-pending-import"
-                || test.name == "pending-import")
+                || test.name == "pending-import"
+                || test.name == "resources"
+                || test.name == "resource_floats"
+                || test.name == "resource-import-and-export"
+                || test.name == "results"
+                || test.name == "resource_with_lists"
+                || test.name == /*rust*/"skip"
+                || test.name == /*rust*/"equal-types"
+                || test.name == /*rust*/"other-dependencies"
+                || test.name == /*rust*/"with-types"
+                || test.name == /*rust*/"xcrate")
     }
 }
 

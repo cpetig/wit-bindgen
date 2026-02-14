@@ -104,6 +104,52 @@ impl LanguageMethods for Rust {
         let cwd = env::current_dir()?;
         let opts = &runner.opts.rust;
         let dir = cwd.join(&runner.opts.artifacts).join("rust");
+
+        if runner.is_symmetric() {
+            // create a test runner
+            let test_runner = dir.join("symmetric-test");
+
+            super::write_if_different(
+                &test_runner.join("src/main.rs"),
+                r#"
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set LD_LIBRARY_PATH to current directory
+    // doesn't work for some reason ...
+    // unsafe { env::set_var("LD_LIBRARY_PATH", ".") };
+
+    // Load the library from current directory
+    let lib = unsafe { libloading::Library::new("librunner.so")? };
+
+    // Get the "run" function from the loaded library
+    // The function signature is: extern "C" fn()
+    let run: libloading::Symbol<extern "C" fn()> = unsafe { lib.get(b"run")? };
+
+    // Call the run function
+    run();
+    Ok(())
+}
+            "#,
+            )?;
+            super::write_if_different(
+                &test_runner.join("Cargo.toml"),
+                &format!(
+                    r#"
+[package]
+name = "symmetric-test"
+
+[workspace]
+
+[dependencies]
+libloading = "0.8"
+            "#,
+                ),
+            )?;
+            println!("Building `symmetric-test`...");
+            let mut cmd = Command::new("cargo");
+            cmd.current_dir(&test_runner).arg("build");
+            runner.run_command(&mut cmd)?;
+        }
+
         let wit_bindgen = dir.join("wit-bindgen");
 
         let mut symmetric_runtime = String::new();
@@ -152,7 +198,10 @@ path = 'lib.rs'
         )?;
         super::write_if_different(&wit_bindgen.join("lib.rs"), "")?;
 
-        println!("Building `wit-bindgen` from crates.io...");
+        match &opts.rust_wit_bindgen_path {
+            Some(path) => println!("Building `wit-bindgen` from {:?}...", cwd.join(path)),
+            None => println!("Building `wit-bindgen` from crates.io..."),
+        }
         let mut cmd = Command::new("cargo");
         cmd.current_dir(&wit_bindgen)
             .arg("build")

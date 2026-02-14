@@ -1000,7 +1000,7 @@ impl Runner {
             let (_, post) = post.split_at(langextend);
             let newname = format!("{}{}", pre, post);
             new_file.push(&newname);
-//            new_file.push(&(runner_wasm.file_name().unwrap()));
+            //            new_file.push(&(runner_wasm.file_name().unwrap()));
             symlink(runner_wasm, new_file)?;
             for (_c, p) in test_components.iter() {
                 // remove the language extension from the filename
@@ -1027,7 +1027,7 @@ impl Runner {
                 composed_wasm.join("libsymmetric_stream.so"),
             )?;
 
-            let mut cmd = Command::new(runner_wasm);
+            let mut cmd = Command::new("../../rust/symmetric-test/target/debug/symmetric-test");
             cmd.env("LD_LIBRARY_PATH", ".");
             cmd.current_dir(composed_wasm);
             self.run_command(&mut cmd)?;

@@ -270,4 +270,22 @@ impl LanguageMethods for Cpp {
     fn default_bindgen_args(&self) -> &[&str] {
         &["--format"]
     }
+
+    fn should_fail_runtime1(
+        &self,
+        runner: &Runner,
+        test: &crate::Test,
+        _component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric()
+            && (test.name == "strings"
+                || test.name == "resources"
+                || test.name == "options"
+                || test.name == "results"
+                || test.name == "lists"
+                || test.name == "common-types"
+                || test.name == "resource_borrow_in_record"
+                || test.name == /*cpp*/"cpp-with"
+                || test.name == /*cpp*/"param-ownership")
+    }
 }

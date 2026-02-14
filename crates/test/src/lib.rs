@@ -886,10 +886,7 @@ impl Runner {
         let _ = fs::remove_dir_all(&artifacts_dir);
         let bindings_dir = artifacts_dir.join("bindings");
         let output = root_dir.join(if self.is_symmetric() {
-            match &component.kind {
-                Kind::Runner => format!("{}-{}_exe", component.name, component.language),
-                Kind::Test => format!("lib{}-{}.so", component.name, component.language),
-            }
+            format!("lib{}-{}.so", component.name, component.language)
         } else {
             format!("{}-{}.wasm", component.name, component.language)
         });
@@ -994,8 +991,16 @@ impl Runner {
             }
             std::fs::create_dir(composed_wasm.clone())?;
 
+            // remove the language extension from the filename
             let mut new_file = composed_wasm.clone();
-            new_file.push(&(runner_wasm.file_name().unwrap()));
+            let oldname = runner_wasm.file_name().unwrap().to_str().unwrap();
+            let langext = oldname.rfind('-').unwrap();
+            let (pre, post) = oldname.split_at(langext);
+            let langextend = post.find('.').unwrap();
+            let (_, post) = post.split_at(langextend);
+            let newname = format!("{}{}", pre, post);
+            new_file.push(&newname);
+//            new_file.push(&(runner_wasm.file_name().unwrap()));
             symlink(runner_wasm, new_file)?;
             for (_c, p) in test_components.iter() {
                 // remove the language extension from the filename

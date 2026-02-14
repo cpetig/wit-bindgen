@@ -1438,8 +1438,13 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                             });
                         }
                     }
-                    // not right, but avoids trap for now
-                    (_, _, true) => (),
+                    (_, _, true) => {
+                        // not right, but avoids trap for now
+                        self.emit(&Instruction::Return {
+                            func,
+                            amt: sig.results.len(),
+                        });
+                    }
                 }
 
                 self.realloc = None;

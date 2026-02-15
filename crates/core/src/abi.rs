@@ -1438,6 +1438,11 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                             });
                         }
                     }
+                    (AbiVariant::GuestExportAsync, Some(results), true) => {
+                        // let name = &format!("[task-return]{}", func.name);
+                        // let params = results.as_deref().unwrap_or_default();
+                        // self.emit(&Instruction::AsyncTaskReturn { name, params });
+                    }
                     (_, _, true) => {
                         // not right, but avoids trap for now
                         self.emit(&Instruction::Return {

@@ -1,11 +1,15 @@
-include!(env!("BINDINGS"));
+//@ wasmtime-flags = '-Wcomponent-model-async'
 
-use wit_bindgen::rt::async_support;
+include!(env!("BINDINGS"));
 
 use crate::a::b::the_test::f;
 
-fn main() {
-    async_support::block_on(async {
+struct Component;
+
+export!(Component);
+
+impl Guest for Component {
+    async fn run() {
         let mut stream = f();
         let result = stream.next().await;
         assert_eq!(result, Some(String::from("Hello")));
@@ -19,5 +23,5 @@ fn main() {
         assert_eq!(result, Some(String::from("stream.")));
         let result = stream.next().await;
         assert_eq!(result, None);
-    });
+    }
 }

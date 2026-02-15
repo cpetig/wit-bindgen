@@ -1,4 +1,4 @@
-use wit_bindgen_core::wit_parser::{Function, Resolve, Type, TypeDefKind};
+use wit_bindgen_core::wit_parser::{Function, Param, Resolve, Type, TypeDefKind};
 
 #[derive(Debug, Default)]
 pub struct WamrSig {
@@ -135,7 +135,7 @@ fn wamr_add_result(sig: &mut WamrSig, resolve: &Resolve, ty: &Type) {
 
 pub fn wamr_signature(resolve: &Resolve, func: &Function) -> WamrSig {
     let mut result = WamrSig::default();
-    for (_name, param) in func.params.iter() {
+    for Param { ty: param, .. } in func.params.iter() {
         push_wamr(param, resolve, &mut result.wamr_types);
     }
     match &func.result {

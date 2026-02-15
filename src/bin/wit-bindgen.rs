@@ -252,7 +252,7 @@ fn gen_world(
     }
     let mut world = resolve.select_world(&main_packages, opts.world.as_deref())?;
     generator.apply_resolve_options(&mut resolve, &mut world);
-    generator.generate(&resolve, world, files)?;
+    generator.generate(&mut resolve, world, files)?;
 
     Ok(())
 }

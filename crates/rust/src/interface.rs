@@ -392,7 +392,7 @@ macro_rules! {macro_name} {{
                     r#"
                 const _: () = {{
                     #[doc(hidden)]
-                    #[cfg_attr(target_arch = "wasm32", export_name = "{export_prefix}{module}#[dtor]{name}")]
+                    #[cfg_attr(target_arch = "wasm32", unsafe(export_name = "{export_prefix}{module}#[dtor]{name}"))]
                     #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
                     #[allow(non_snake_case)]
                     unsafe extern "C" fn {dtor_symbol}(rep: *mut u8) {{
@@ -608,17 +608,39 @@ macro_rules! {macro_name} {{
         func_name: &str,
         payload_type: Option<&Type>,
     ) {
-        let name = if let Some(payload_type) = payload_type {
-            self.type_name_owned(payload_type)
-        } else {
-            "()".into()
+        let payload_type = match payload_type {
+            // Rust requires one-impl-per-type, so any `id` here is transformed
+            // into its canonical representation using
+            // `get_representative_type`. This ensures that type aliases, uses,
+            // etc, all get canonicalized to the exact same ID regardless of
+            // type structure.
+            //
+            // Note that `get_representative_type` maps ids-to-ids which is 95%
+            // of what we want, but this additionally goes one layer further to
+            // see if the final id is actually itself a typedef, which would
+            // always be to a primitive, and then uses the primitive type
+            // instead of the typedef to canonicalize with other streams/futures
+            // using the primitive type.
+            Some(Type::Id(id)) => {
+                let id = self.r#gen.types.get_representative_type(*id);
+                match self.resolve.types[id].kind {
+                    TypeDefKind::Type(t) => Some(t),
+                    _ => Some(Type::Id(id)),
+                }
+            }
+            other => other.copied(),
+        };
+        let payload_type = payload_type.as_ref();
+        let name = match payload_type {
+            Some(payload_type) => self.type_name_owned(payload_type),
+            None => "()".into(),
         };
         let map = match payload_for {
             PayloadFor::Future => &mut self.r#gen.future_payloads,
             PayloadFor::Stream => &mut self.r#gen.stream_payloads,
         };
 
-        if map.contains_key(&name) {
+        if map.contains_key(&payload_type.copied()) {
             return;
         }
         let ordinal = map.len();
@@ -782,7 +804,7 @@ pub mod vtable{ordinal} {{
             PayloadFor::Future => &mut self.r#gen.future_payloads,
             PayloadFor::Stream => &mut self.r#gen.stream_payloads,
         };
-        map.insert(name, code);
+        map.insert(payload_type.copied(), code);
     }
 
     fn generate_guest_import(&mut self, func: &Function, interface: Option<&WorldKey>) {
@@ -936,7 +958,11 @@ pub mod vtable{ordinal} {{
         mut params: Vec<String>,
     ) {
         let symmetric = self.r#gen.opts.symmetric;
-        let param_tys = func.params.iter().map(|(_, ty)| *ty).collect::<Vec<_>>();
+        let param_tys = func
+            .params
+            .iter()
+            .map(|Param { ty, .. }| *ty)
+            .collect::<Vec<_>>();
         let async_support = self.r#gen.async_support_path();
         let sig = self.resolve.wasm_signature_symmetric(
             AbiVariant::GuestImportAsync,
@@ -981,7 +1007,7 @@ unsafe impl<'a> _Subtask for _MySubtask<'a> {{
 
         // Generate `type Params`
         uwrite!(self.src, "type Params = (");
-        for (_, ty) in func.params.iter() {
+        for Param { ty, .. } in func.params.iter() {
             let mode = self.type_mode_for(ty, TypeOwnershipStyle::Owned, "'a");
             self.print_ty(ty, mode);
             self.src.push_str(", ");
@@ -1101,7 +1127,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         if sig.indirect_params {
             let offsets = self
                 .sizes
-                .field_offsets(func.params.iter().map(|(_, ty)| ty));
+                .field_offsets(func.params.iter().map(|Param { ty, .. }| ty));
             for (i, (offset, ty)) in offsets.into_iter().enumerate() {
                 let name = format!("_lower{i}");
                 let mut start = format!(
@@ -1117,7 +1143,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         } else {
             let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
             let mut results = Vec::new();
-            for (i, (_, ty)) in func.params.iter().enumerate() {
+            for (i, Param { ty, .. }) in func.params.iter().enumerate() {
                 let name = format!("_lower{i}");
                 results.extend(abi::lower_flat(
                     f.r#gen.resolve,
@@ -1188,7 +1214,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             "\
                 #[doc(hidden)]
                 #[allow(non_snake_case, unused_unsafe)]
-                pub unsafe fn _export_{name_snake}_cabi<T: {trait_name}>\
+                pub unsafe fn _export_{name_snake}_cabi<T_: {trait_name}>\
             ",
         );
         let params = self.print_export_sig(func, async_);
@@ -1280,7 +1306,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 "\
                     #[doc(hidden)]
                     #[allow(non_snake_case)]
-                    pub unsafe fn __post_return_{name_snake}<T: {trait_name}>\
+                    pub unsafe fn __post_return_{name_snake}<T_: {trait_name}>\
                 "
             );
             let params = self.print_post_return_sig(func);
@@ -1360,7 +1386,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         uwrite!(
             self.src,
             "\
-                #[cfg_attr(target_arch = \"wasm32\", export_name = \"{export_prefix}{export_name}\")]
+                #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}{export_name}\"))]
                 #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
                 #[allow(non_snake_case)]
                 unsafe extern \"C\" fn {external_name}\
@@ -1399,7 +1425,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             uwrite!(
                 self.src,
                 "\
-                    #[cfg_attr(target_arch = \"wasm32\", export_name = \"{export_prefix}cabi_post_{export_name}\")]
+                    #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}cabi_post_{export_name}\"))]
                     #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
                     #[allow(non_snake_case)]
                     unsafe extern \"C\" fn {external_name}\
@@ -1543,7 +1569,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         }
     }
 
-    fn rustdoc_params(&mut self, docs: &[(String, Type)], header: &str) {
+    fn rustdoc_params(&mut self, docs: &Vec<Param>, header: &str) {
         let _ = (docs, header);
         // let docs = docs
         //     .iter()
@@ -1643,7 +1669,13 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             self.push_str(",");
         }
         let mut params = Vec::new();
-        for (i, (name, param)) in func.params.iter().enumerate() {
+        for (
+            i,
+            Param {
+                name, ty: param, ..
+            },
+        ) in func.params.iter().enumerate()
+        {
             if i == 0 && sig.self_is_first_param {
                 params.push("self".to_string());
                 continue;
@@ -1891,14 +1923,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         }
     }
 
-    pub(crate) fn type_name_owned_with_id(&mut self, ty: &Type, id: Identifier<'i>) -> String {
-        let old_identifier = mem::replace(&mut self.identifier, id);
-        let name = self.type_name_owned(ty);
-        self.identifier = old_identifier;
-        name
-    }
-
-    fn type_name_owned(&mut self, ty: &Type) -> String {
+    pub fn type_name_owned(&mut self, ty: &Type) -> String {
         self.type_name(
             ty,
             TypeMode {
@@ -2619,23 +2644,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
 
     pub fn is_exported_resource(&self, ty: TypeId) -> bool {
         let ty = dealias(self.resolve, ty);
-        let ty = &self.resolve.types[ty];
-        match &ty.kind {
-            TypeDefKind::Resource => {}
-            _ => return false,
-        }
-
-        match ty.owner {
-            // Worlds cannot export types of any kind as of this writing.
-            TypeOwner::World(_) => false,
-
-            // Interfaces are "stateful" currently where whatever we last saw
-            // them as dictates whether it's exported or not.
-            TypeOwner::Interface(i) => !self.r#gen.interface_last_seen_as_import[&i],
-
-            // Shouldn't be the case for resources
-            TypeOwner::None => unreachable!(),
-        }
+        self.r#gen.exported_resources.contains(&ty)
     }
 
     fn push_string_name(&mut self) {
@@ -2769,6 +2778,16 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
 
     fn type_record(&mut self, id: TypeId, _name: &str, record: &Record, docs: &Docs) {
         self.print_typedef_record(id, record, docs);
+    }
+
+    fn define_type(&mut self, name: &str, id: TypeId) {
+        let equal = self.r#gen.types.get_representative_type(id);
+        if !self.r#gen.opts.merge_structurally_equal_types() || equal == id {
+            wit_bindgen_core::define_type(self, name, id)
+        } else {
+            let docs = &self.resolve.types[id].docs;
+            self.print_typedef_alias(id, &Type::Id(equal), &docs);
+        }
     }
 
     fn type_resource(&mut self, _id: TypeId, name: &str, docs: &Docs) {

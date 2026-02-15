@@ -271,7 +271,7 @@ impl Config {
         let mut generator = self.opts.build();
         generator.apply_resolve_options(&mut self.resolve, &mut self.world);
         generator
-            .generate(&self.resolve, self.world, &mut files)
+            .generate(&mut self.resolve, self.world, &mut files)
             .map_err(|e| anyhow_to_syn(Span::call_site(), e))?;
         let (_, src) = files.iter().next().unwrap();
         let mut src = std::str::from_utf8(src).unwrap().to_string();

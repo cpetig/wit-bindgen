@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use rustc_stable_hash::ExtendedHasher;
 use wit_component::DecodedWasm;
 use wit_parser::{
-    Interface, InterfaceId, Package, PackageName, Resolve, Type, TypeDef, TypeDefKind, TypeOwner,
-    World, WorldItem, WorldKey,
+    Interface, InterfaceId, Package, PackageName, Param, Resolve, Type, TypeDef, TypeDefKind,
+    TypeOwner, World, WorldItem, WorldKey,
 };
 
 // figure out whether deallocation is needed in the caller
@@ -56,8 +56,8 @@ fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
     }
 }
 
-pub fn needs_dealloc(resolve: &Resolve, args: &[(String, Type)]) -> bool {
-    for (_n, t) in args {
+pub fn needs_dealloc(resolve: &Resolve, args: &[Param]) -> bool {
+    for Param { ty: t, .. } in args {
         if needs_dealloc2(resolve, t) {
             return true;
         }
@@ -132,9 +132,9 @@ fn has_non_canonical_list2(resolve: &Resolve, ty: &Type, maybe: bool) -> bool {
 //     }
 // }
 
-pub fn has_non_canonical_list(resolve: &Resolve, args: &[(String, Type)]) -> bool {
+pub fn has_non_canonical_list(resolve: &Resolve, args: &[Param]) -> bool {
     args.iter()
-        .any(|(_, ty)| has_non_canonical_list2(resolve, ty, false))
+        .any(|Param { ty, .. }| has_non_canonical_list2(resolve, ty, false))
 }
 
 fn has_non_canonical_list_rust2(resolve: &Resolve, ty: &Type) -> bool {
@@ -189,9 +189,9 @@ fn has_non_canonical_list_rust2(resolve: &Resolve, ty: &Type) -> bool {
     }
 }
 
-pub fn has_non_canonical_list_rust(resolve: &Resolve, args: &[(String, Type)]) -> bool {
+pub fn has_non_canonical_list_rust(resolve: &Resolve, args: &[Param]) -> bool {
     args.iter()
-        .any(|(_, ty)| has_non_canonical_list_rust2(resolve, ty))
+        .any(|Param { ty, .. }| has_non_canonical_list_rust2(resolve, ty))
 }
 
 fn add_type2(
@@ -237,6 +237,7 @@ fn add_type(
             stability: Default::default(),
             package: old_interface.package,
             span: Default::default(),
+            clone_of: Default::default(),
         };
         let new_id = resolve.interfaces.alloc(iface);
         iface_map.insert(old_owner, new_id);
@@ -345,6 +346,7 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         stability: Default::default(),
         package: Default::default(),
         span: Default::default(),
+        clone_of: Default::default(),
     };
     let iface_id = resolve2.interfaces.alloc(interface);
     world.package = Some(resolve2.packages.alloc(Package {
@@ -359,8 +361,8 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
     }));
     let mut iface_map: HashMap<Option<InterfaceId>, InterfaceId> = HashMap::new();
     iface_map.insert(None, iface_id);
-    for (name, tp) in func.params.iter() {
-        add_type2(&mut resolve2, &mut world, tp, name, &mut iface_map);
+    for Param { name, ty, .. } in func.params.iter() {
+        add_type2(&mut resolve2, &mut world, ty, name, &mut iface_map);
     }
     if let Some(tp) = &func.result {
         add_type2(&mut resolve2, &mut world, tp, "result", &mut iface_map);

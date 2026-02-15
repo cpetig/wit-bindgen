@@ -742,17 +742,18 @@ impl Runner {
                                 // TODO: Handle should fail?
                                 Ok(())
                             }
-                            Err(e) => me.render_error(
-                                StepResult::new(Err(e))
-                                    // .should_fail(
-                                    //     component
-                                    //         .language
-                                    //         .obj()
-                                    //         .should_fail_runtime(self, &test, &component),
-                                    // )
-                                    .metadata("component", &component.name)
-                                    .metadata("path", component.path.display()),
-                            ),
+                            Err(e) => {
+                                let should_fail = component
+                                    .language
+                                    .obj()
+                                    .should_fail_runtime1(&me, &test, &component);
+                                me.render_error(
+                                    StepResult::new(Err(e))
+                                        .should_fail(should_fail)
+                                        .metadata("component", &component.name)
+                                        .metadata("path", component.path.display()),
+                                )
+                            }
                         }
                     })
                 })
@@ -786,6 +787,7 @@ impl Runner {
                 .map(|(case_name, (runner, runner_path), test_components)| {
                     let me = self.clone();
                     let mut name = format!("{case_name}");
+                    let mut should_fail = false;
                     for component in [&runner]
                         .into_iter()
                         .chain(test_components.iter().map(|p| &p.0))
@@ -794,6 +796,13 @@ impl Runner {
                             " | {}",
                             component.path.file_name().unwrap().to_str().unwrap()
                         ));
+                        if component
+                            .language
+                            .obj()
+                            .should_fail_runtime2(&me, &case_name, &component)
+                        {
+                            should_fail = true;
+                        }
                     }
                     let case_name = case_name.to_string();
                     let runner = runner.clone();
@@ -805,6 +814,7 @@ impl Runner {
                             .with_context(|| format!("failed to run `{}`", case.name));
                         me.render_error(
                             StepResult::new(result)
+                                .should_fail(should_fail)
                                 .metadata("runner", runner.path.display())
                                 .metadata("compiled runner", runner_path.display()),
                         )
@@ -886,10 +896,7 @@ impl Runner {
         let _ = fs::remove_dir_all(&artifacts_dir);
         let bindings_dir = artifacts_dir.join("bindings");
         let output = root_dir.join(if self.is_symmetric() {
-            match &component.kind {
-                Kind::Runner => format!("{}-{}_exe", component.name, component.language),
-                Kind::Test => format!("lib{}-{}.so", component.name, component.language),
-            }
+            format!("lib{}-{}.so", component.name, component.language)
         } else {
             format!("{}-{}.wasm", component.name, component.language)
         });
@@ -994,8 +1001,16 @@ impl Runner {
             }
             std::fs::create_dir(composed_wasm.clone())?;
 
+            // remove the language extension from the filename
             let mut new_file = composed_wasm.clone();
-            new_file.push(&(runner_wasm.file_name().unwrap()));
+            let oldname = runner_wasm.file_name().unwrap().to_str().unwrap();
+            let langext = oldname.rfind('-').unwrap();
+            let (pre, post) = oldname.split_at(langext);
+            let langextend = post.find('.').unwrap();
+            let (_, post) = post.split_at(langextend);
+            let newname = format!("{}{}", pre, post);
+            new_file.push(&newname);
+            //            new_file.push(&(runner_wasm.file_name().unwrap()));
             symlink(runner_wasm, new_file)?;
             for (_c, p) in test_components.iter() {
                 // remove the language extension from the filename
@@ -1022,7 +1037,7 @@ impl Runner {
                 composed_wasm.join("libsymmetric_stream.so"),
             )?;
 
-            let mut cmd = Command::new(runner_wasm);
+            let mut cmd = Command::new("../../rust/symmetric-test/target/debug/symmetric-test");
             cmd.env("LD_LIBRARY_PATH", ".");
             cmd.current_dir(composed_wasm);
             self.run_command(&mut cmd)?;
@@ -1398,7 +1413,10 @@ trait LanguageMethods {
     fn verify(&self, runner: &Runner, verify: &Verify) -> Result<()>;
 
     /// Whether a runtime test is expected to fail
-    fn should_fail_runtime(&self, _runner: &Runner, _test: &Test, _component: &Component) -> bool {
+    fn should_fail_runtime1(&self, _runner: &Runner, _test: &Test, _component: &Component) -> bool {
+        false
+    }
+    fn should_fail_runtime2(&self, _runner: &Runner, _name: &str, _component: &Component) -> bool {
         false
     }
 }

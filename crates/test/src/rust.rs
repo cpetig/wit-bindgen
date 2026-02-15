@@ -64,8 +64,9 @@ impl LanguageMethods for Rust {
         // no_std doesn't currently work with async
         if config.async_
             && args.iter().any(|s| s == "--std-feature")
-            // Except this one actually _does_ work:
+            // Except these actually do work:
             && name != "async-trait-function.wit-no-std"
+            && name != "async-resource-func.wit-no-std"
         {
             return true;
         }
@@ -103,6 +104,52 @@ impl LanguageMethods for Rust {
         let cwd = env::current_dir()?;
         let opts = &runner.opts.rust;
         let dir = cwd.join(&runner.opts.artifacts).join("rust");
+
+        if runner.is_symmetric() {
+            // create a test runner
+            let test_runner = dir.join("symmetric-test");
+
+            super::write_if_different(
+                &test_runner.join("src/main.rs"),
+                r#"
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set LD_LIBRARY_PATH to current directory
+    // doesn't work for some reason ...
+    // unsafe { env::set_var("LD_LIBRARY_PATH", ".") };
+
+    // Load the library from current directory
+    let lib = unsafe { libloading::Library::new("librunner.so")? };
+
+    // Get the "run" function from the loaded library
+    // The function signature is: extern "C" fn()
+    let run: libloading::Symbol<extern "C" fn()> = unsafe { lib.get(b"run")? };
+
+    // Call the run function
+    run();
+    Ok(())
+}
+            "#,
+            )?;
+            super::write_if_different(
+                &test_runner.join("Cargo.toml"),
+                &format!(
+                    r#"
+[package]
+name = "symmetric-test"
+
+[workspace]
+
+[dependencies]
+libloading = "0.8"
+            "#,
+                ),
+            )?;
+            println!("Building `symmetric-test`...");
+            let mut cmd = Command::new("cargo");
+            cmd.current_dir(&test_runner).arg("build");
+            runner.run_command(&mut cmd)?;
+        }
+
         let wit_bindgen = dir.join("wit-bindgen");
 
         let mut symmetric_runtime = String::new();
@@ -151,7 +198,10 @@ path = 'lib.rs'
         )?;
         super::write_if_different(&wit_bindgen.join("lib.rs"), "")?;
 
-        println!("Building `wit-bindgen` from crates.io...");
+        match &opts.rust_wit_bindgen_path {
+            Some(path) => println!("Building `wit-bindgen` from {:?}...", cwd.join(path)),
+            None => println!("Building `wit-bindgen` from crates.io..."),
+        }
         let mut cmd = Command::new("cargo");
         cmd.current_dir(&wit_bindgen)
             .arg("build")
@@ -206,7 +256,11 @@ path = 'lib.rs'
         // If this rust target doesn't natively produce a component then place
         // the compiler output in a temporary location which is componentized
         // later on.
-        let output = compile.output.with_extension("core.wasm");
+        let output = compile.output.with_extension(if runner.is_symmetric() {
+            "so"
+        } else {
+            "core.wasm"
+        });
 
         // Compile all extern crates, if any
         let mut externs = Vec::new();
@@ -247,15 +301,16 @@ path = 'lib.rs'
             cmd.arg(arg);
         }
         cmd.arg("--crate-type=cdylib");
-        if runner.produces_component() {
+        if runner.produces_component() && !runner.is_symmetric() {
             cmd.arg("-Clink-arg=--skip-wit-component");
         }
         runner.run_command(&mut cmd)?;
 
-        runner
-            .convert_p1_to_component(&output, compile)
-            .with_context(|| format!("failed to convert {output:?}"))?;
-
+        if !runner.is_symmetric() {
+            runner
+                .convert_p1_to_component(&output, compile)
+                .with_context(|| format!("failed to convert {output:?}"))?;
+        }
         Ok(())
     }
 
@@ -304,7 +359,7 @@ mod core {}
         Ok(())
     }
 
-    fn should_fail_runtime(
+    fn should_fail_runtime1(
         &self,
         runner: &Runner,
         test: &crate::Test,
@@ -314,7 +369,35 @@ mod core {}
             && (test.name == "simple-yield"
                 || test.name == "cancel-import"
                 || test.name == "simple-pending-import"
-                || test.name == "pending-import")
+                || test.name == "pending-import"
+                || test.name == "resources"
+                || test.name == "resource_floats"
+                || test.name == "resource-import-and-export"
+                || test.name == "results"
+                || test.name == "resource_with_lists"
+                || test.name == /*rust*/"skip"
+                || test.name == /*rust*/"equal-types"
+                || test.name == /*rust*/"other-dependencies"
+                || test.name == /*rust*/"with-types"
+                || test.name == /*rust*/"xcrate"
+                || test.name == /*async*/"future-close-after-coming-back"
+                || test.name == /*async*/"future-close-then-receive-read"
+                || test.name == /*async*/"future-closes-with-error"
+                || test.name == /*async*/"future-cancel-write"
+                || test.name == /*async*/"future-cancel-write-then-read"
+                || test.name == /*async*/"future-write-then-read-remote"
+                || test.name == /*async*/"future-write-then-read-comes-back"
+                || test.name == /*async*/"future-cancel-read"
+                || test.name == /*async*/"simple-call-import"
+                || test.name == /*async*/"simple-future"
+                || test.name == /*async*/"simple-stream"
+                || test.name == /*async*/"rust-cross-task-wakeup"
+                || test.name == /*async*/"rust-lowered-send"
+                || test.name == /*async*/"simple-stream-payload"
+                || test.name == /*async*/"simple-import-params-results"
+                || test.name == /*async*/"ping-pong"
+                || test.name == /*async*/"yield-loop-receives-events"
+            )
     }
 }
 

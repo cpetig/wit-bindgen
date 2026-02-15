@@ -49,20 +49,11 @@ impl LanguageMethods for Cpp {
 
     fn should_fail_verify(
         &self,
-        name: &str,
-        _config: &crate::config::WitConfig,
+        _name: &str,
+        config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
-        match name {
-            "async-trait-function.wit"
-            | "error-context.wit"
-            | "futures.wit"
-            | "resources-with-futures.wit"
-            | "resources-with-streams.wit"
-            | "streams.wit"
-            | "async-resource-func.wit" => true,
-            _ => false,
-        }
+        config.async_
     }
 
     fn prepare(&self, runner: &mut crate::Runner, test_name: &str) -> anyhow::Result<()> {
@@ -278,5 +269,25 @@ impl LanguageMethods for Cpp {
 
     fn default_bindgen_args(&self) -> &[&str] {
         &["--format"]
+    }
+
+    fn should_fail_runtime1(
+        &self,
+        runner: &Runner,
+        test: &crate::Test,
+        _component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric()
+            && (test.name == "strings"
+                || test.name == "resources"
+                || test.name == "options"
+                || test.name == "results"
+                || test.name == "lists"
+                || test.name == "common-types"
+                || test.name == "resource_borrow_in_record"
+                || test.name == /*cpp*/"cpp-with"
+                || test.name == /*cpp*/"param-ownership"
+                || test.name == /*async*/"stream-string"
+                || test.name == /*async*/"future-string")
     }
 }

@@ -286,6 +286,8 @@ impl LanguageMethods for Cpp {
                 || test.name == "common-types"
                 || test.name == "resource_borrow_in_record"
                 || test.name == /*cpp*/"cpp-with"
-                || test.name == /*cpp*/"param-ownership")
+                || test.name == /*cpp*/"param-ownership"
+                || test.name == /*async*/"stream-string"
+                || test.name == /*async*/"future-string")
     }
 }

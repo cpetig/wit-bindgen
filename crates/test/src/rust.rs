@@ -388,7 +388,6 @@ mod core {}
                 || test.name == /*async*/"future-write-then-read-remote"
                 || test.name == /*async*/"future-write-then-read-comes-back"
                 || test.name == /*async*/"future-cancel-read"
-                || test.name == /*async*/"future-string"
                 || test.name == /*async*/"simple-call-import"
                 || test.name == /*async*/"simple-future"
                 || test.name == /*async*/"simple-stream"

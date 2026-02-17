@@ -711,7 +711,10 @@ impl WorldGenerator for Cpp {
         let namespace = namespace(resolve, &TypeOwner::World(world), true, &r#gen.r#gen.opts);
 
         for (_name, func) in funcs.iter() {
-            if matches!(func.kind, FunctionKind::Freestanding) {
+            if matches!(
+                func.kind,
+                FunctionKind::Freestanding | FunctionKind::AsyncFreestanding
+            ) {
                 r#gen.r#gen.h_src.change_namespace(&namespace);
                 r#gen.generate_function(func, &TypeOwner::World(world), AbiVariant::GuestExport);
             }
@@ -1125,9 +1128,9 @@ impl CppInterfaceGenerator<'_> {
             FunctionKind::Method(i) => Some(i),
             FunctionKind::Static(i) => Some(i),
             FunctionKind::Constructor(i) => Some(i),
-            FunctionKind::AsyncFreestanding => todo!(),
-            FunctionKind::AsyncMethod(_id) => todo!(),
-            FunctionKind::AsyncStatic(_id) => todo!(),
+            FunctionKind::AsyncFreestanding => None,
+            FunctionKind::AsyncMethod(i) => Some(i),
+            FunctionKind::AsyncStatic(i) => Some(i),
         }
         .map(|i| {
             let ty = &self.resolve.types[*i];
@@ -1852,7 +1855,10 @@ impl CppInterfaceGenerator<'_> {
                 SpecialMethod::Allocate => unreachable!(),
                 SpecialMethod::None => {
                     // normal methods
-                    let namespace = if matches!(func.kind, FunctionKind::Freestanding) {
+                    let namespace = if matches!(
+                        func.kind,
+                        FunctionKind::Freestanding | FunctionKind::AsyncFreestanding
+                    ) {
                         namespace(
                             self.resolve,
                             owner,
@@ -1866,8 +1872,8 @@ impl CppInterfaceGenerator<'_> {
                             FunctionKind::Method(id) => *id,
                             FunctionKind::Freestanding => unreachable!(),
                             FunctionKind::AsyncFreestanding => todo!(),
-                            FunctionKind::AsyncMethod(_id) => todo!(),
-                            FunctionKind::AsyncStatic(_id) => todo!(),
+                            FunctionKind::AsyncMethod(id) => *id,
+                            FunctionKind::AsyncStatic(id) => *id,
                         }]
                         .clone();
                         let mut namespace = namespace(

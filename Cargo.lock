@@ -1174,7 +1174,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "wac-graph"
 version = "0.10.0-dev"
-source = "git+https://github.com/cpetig/wac.git?branch=new_wasm_tools#be22e827d3e42901ce711fa6ba3dfc9d0fc467fc"
+source = "git+https://github.com/bytecodealliance/wac.git#991ecf1f06a17a6bf6f4dc1b3aed1a11864c70d6"
 dependencies = [
  "anyhow",
  "id-arena",
@@ -1192,7 +1192,7 @@ dependencies = [
 [[package]]
 name = "wac-parser"
 version = "0.10.0-dev"
-source = "git+https://github.com/cpetig/wac.git?branch=new_wasm_tools#be22e827d3e42901ce711fa6ba3dfc9d0fc467fc"
+source = "git+https://github.com/bytecodealliance/wac.git#991ecf1f06a17a6bf6f4dc1b3aed1a11864c70d6"
 dependencies = [
  "anyhow",
  "id-arena",
@@ -1212,7 +1212,7 @@ dependencies = [
 [[package]]
 name = "wac-types"
 version = "0.10.0-dev"
-source = "git+https://github.com/cpetig/wac.git?branch=new_wasm_tools#be22e827d3e42901ce711fa6ba3dfc9d0fc467fc"
+source = "git+https://github.com/bytecodealliance/wac.git#991ecf1f06a17a6bf6f4dc1b3aed1a11864c70d6"
 dependencies = [
  "anyhow",
  "id-arena",

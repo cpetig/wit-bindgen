@@ -1438,7 +1438,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                             });
                         }
                     }
-                    (AbiVariant::GuestExportAsync, Some(results), true) => {
+                    (AbiVariant::GuestExportAsync, Some(_results), true) => {
                         // let name = &format!("[task-return]{}", func.name);
                         // let params = results.as_deref().unwrap_or_default();
                         // self.emit(&Instruction::AsyncTaskReturn { name, params });

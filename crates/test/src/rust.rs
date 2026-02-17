@@ -408,8 +408,7 @@ mod core {}
                 || test.name == /*async*/"simple-stream-payload"
                 || test.name == /*async*/"simple-import-params-results"
                 || test.name == /*async*/"ping-pong"
-                || test.name == /*async*/"yield-loop-receives-events"
-            )
+                || test.name == /*async*/"yield-loop-receives-events")
     }
 }
 

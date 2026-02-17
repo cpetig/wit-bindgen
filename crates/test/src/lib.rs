@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
-use std::io::Write;
 use std::mem;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};

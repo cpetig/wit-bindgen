@@ -1189,7 +1189,9 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 // Emit the function return
-                if async_ {
+                if async_ && matches!(lift_lower, LiftLower::Symmetric) {
+                    // nothing to do here
+                } else if async_ {
                     self.emit(&Instruction::AsyncTaskReturn {
                         name: &func.name,
                         params: if func.result.is_some() {

@@ -953,7 +953,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 } else {
                     std::borrow::Cow::Borrowed(*module_prefix)
                 };
-                let func = self.declare_import(
+                let funcname = self.declare_import(
                     module_prefix.as_ref(),
                     name,
                     &sig.params,
@@ -962,7 +962,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 );
 
                 // ... then call the function with all our operands
-                let async_ = name.starts_with("[async]")
+                let async_ = matches!(func.kind, FunctionKind::AsyncFreestanding)
                     && !sig.results.is_empty()
                     && self.r#gen.r#gen.opts.symmetric;
                 if async_ {
@@ -972,7 +972,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     self.push_str("let ret = ");
                     results.push("ret".to_string());
                 }
-                self.push_str(&func);
+                self.push_str(&funcname);
                 self.push_str("(");
                 self.push_str(&operands.join(", "));
                 if async_ {

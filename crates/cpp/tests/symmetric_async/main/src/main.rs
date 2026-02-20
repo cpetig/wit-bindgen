@@ -2,7 +2,7 @@ use wit_bindgen_symmetric_rt::{CallbackState, EventSubscription};
 
 #[link(name = "async_module")]
 extern "C" {
-    pub fn testX3AtestX2Fstring_delayX00X5BasyncX5Dforward(
+    pub fn testX3AtestX2Fstring_delayX00forward(
         addr: *const u8,
         len: usize,
         results: *mut (),
@@ -22,7 +22,7 @@ extern "C" fn print_result(obj: *mut ()) -> CallbackState {
 fn main() {
     let mut result1: [usize; 2] = [0, 0];
     let handle1 = unsafe {
-        testX3AtestX2Fstring_delayX00X5BasyncX5Dforward(
+        testX3AtestX2Fstring_delayX00forward(
             "A".as_ptr(),
             1,
             result1.as_mut_ptr().cast(),
@@ -35,7 +35,7 @@ fn main() {
 
     let mut result2: [usize; 2] = [0, 0];
     let handle2 = unsafe {
-        testX3AtestX2Fstring_delayX00X5BasyncX5Dforward(
+        testX3AtestX2Fstring_delayX00forward(
             "B".as_ptr(),
             1,
             result2.as_mut_ptr().cast(),
@@ -50,7 +50,7 @@ fn main() {
 
     let mut result3: [usize; 2] = [0, 0];
     let handle3 = unsafe {
-        testX3AtestX2Fstring_delayX00X5BasyncX5Dforward(
+        testX3AtestX2Fstring_delayX00forward(
             "C".as_ptr(),
             1,
             result3.as_mut_ptr().cast(),

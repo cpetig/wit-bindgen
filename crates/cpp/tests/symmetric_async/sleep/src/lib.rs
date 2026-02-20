@@ -6,7 +6,7 @@ extern "C" {
 }
 
 #[no_mangle]
-unsafe extern "C" fn testX3AtestX2FwaitX00X5BasyncX5Dsleep(
+unsafe extern "C" fn testX3AtestX2FwaitX00sleep(
     nanoseconds: u64,
     // args: *const (),
     // _results: *mut (),

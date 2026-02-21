@@ -11,7 +11,7 @@ use wit_bindgen_core::abi::{
 };
 use wit_bindgen_core::{
     AnonymousTypeGenerator, AsyncFilterSet, Direction, Files, InterfaceGenerator as _, Ns,
-    WorldGenerator, dealias, uwrite, uwriteln, wit_parser::*,
+    WorldGenerator, dealias, make_external_symbol, uwrite, uwriteln, wit_parser::*,
 };
 use wit_component::StringEncoding;
 
@@ -2084,6 +2084,35 @@ impl InterfaceGenerator<'_> {
         }
     }
 
+    fn abi_symbol(&self, interface_id: Option<&WorldKey>, func: &Function) -> String  {
+        let mut name = String::new();
+        match interface_id {
+            Some(id) => name.push_str(&interface_identifier(
+                id,
+                self.resolve,
+                !self.in_import,
+                &self.r#gen.renamed_interfaces,
+            )),
+            None => {
+                // if !in_import {
+                //     name.push_str("exports_");
+                // }
+                name.push_str(&self.r#gen.world);
+            }
+        }
+        // name.push_str("_");
+        // name.push_str(&func.name.to_snake_case().replace('.', "_"));
+        make_external_symbol(
+            &name,
+            &func.name,
+            if self.in_import {
+                AbiVariant::GuestImport
+            } else {
+                AbiVariant::GuestExport
+            },
+        )
+    }
+
     fn c_func_name(&self, interface_id: Option<&WorldKey>, func: &Function) -> String {
         c_func_name(
             self.in_import,
@@ -2127,7 +2156,7 @@ impl InterfaceGenerator<'_> {
             },
             func.name
         );
-        let import_name = self.c_func_name(interface_name, func);
+        let import_name = self.abi_symbol(interface_name, func);
         //let import_name = self.r#gen.names.tmp(&format!("{name}",));
         self.src.c_fns("extern ");
         match sig.results.len() {
@@ -2301,8 +2330,8 @@ impl InterfaceGenerator<'_> {
             self.src.c_adapters,
             "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
         );
-        let name = self.c_func_name(interface_name, func);
-        let import_name = self.r#gen.names.tmp(&format!("__wasm_export_{name}"));
+        let import_name = self.abi_symbol(interface_name, func);
+        //let import_name = self.r#gen.names.tmp(&format!("__wasm_export_{name}"));
 
         let mut f = FunctionBindgen::new(self, h_sig, &import_name);
         match sig.results.len() {
@@ -2370,9 +2399,9 @@ impl InterfaceGenerator<'_> {
             let task_return_body = task_return_body.as_mut_string();
             uwriteln!(
                 self.src.h_fns,
-                "{snake}_callback_code_t {name}_callback({snake}_event_t *event);",
+                "{snake}_callback_code_t {import_name}_callback({snake}_event_t *event);",
             );
-            uwriteln!(self.src.h_helpers, "void {name}_return({return_ty});");
+            uwriteln!(self.src.h_helpers, "void {import_name}_return({return_ty});");
             let import_module = match interface_name {
                 Some(name) => self.resolve.name_world_key(name),
                 None => "$root".to_string(),
@@ -2386,13 +2415,13 @@ uint32_t {import_name}_callback(uint32_t event_raw, uint32_t waitable, uint32_t 
     event.event = ({snake}_event_code_t) event_raw;
     event.waitable = waitable;
     event.code = code;
-    return {name}_callback(&event);
+    return {import_name}_callback(&event);
 }}
 
 __attribute__((__import_module__("[export]{import_module}"), __import_name__("{task_return_name}")))
 void {import_name}__task_return({task_return_param_tys});
 
-void {name}_return({return_ty}) {{
+void {import_name}_return({return_ty}) {{
     {task_return_body}
     {import_name}__task_return({task_return_param_exprs});
 }}

@@ -129,6 +129,11 @@ pub struct Opts {
     /// Generate helpers for threading builtins. Implies `--generate-async-helpers`.
     #[cfg_attr(feature = "clap", arg(long, default_value_t = false))]
     pub generate_threading_helpers: bool,
+
+    /// Symmetric ABI, this enables to directly link components to each
+    /// other and removes the primary distinction between host and guest.
+    #[cfg_attr(feature = "clap", arg(long, default_value_t = bool::default()))]
+    pub symmetric: bool,
 }
 
 #[cfg(feature = "clap")]
@@ -321,20 +326,22 @@ impl WorldGenerator for C {
         let linking_symbol = component_type_object::linking_symbol(&self.world);
         self.c_include("<stdlib.h>");
         let snake = self.world.to_snake_case();
-        uwriteln!(
-            self.src.c_adapters,
-            "\n// Ensure that the *_component_type.o object is linked in"
-        );
-        uwrite!(
-            self.src.c_adapters,
-            "
+        if !self.opts.symmetric {
+            uwriteln!(
+                self.src.c_adapters,
+                "\n// Ensure that the *_component_type.o object is linked in"
+            );
+            uwrite!(
+                self.src.c_adapters,
+                "
                extern void {linking_symbol}(void);
                __attribute__((used))
                void {linking_symbol}_public_use_in_this_compilation_unit(void) {{
                    {linking_symbol}();
                }}
            ",
-        );
+            );
+        }
 
         self.print_intrinsics();
 
@@ -1306,8 +1313,9 @@ impl C {
         self.src.c_fns("\n// Canonical ABI intrinsics");
         self.src.c_fns("\n");
         self.src.c_fns(
-            r#"
+            r#"#ifdef __wasm32__
                 __attribute__((__weak__, __export_name__("cabi_realloc")))
+                #endif
                 void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {
                     (void) old_size;
                     if (new_size == 0) return (void*) align;
@@ -2084,7 +2092,7 @@ impl InterfaceGenerator<'_> {
         }
     }
 
-    fn abi_symbol(&self, interface_id: Option<&WorldKey>, func: &Function) -> String  {
+    fn abi_symbol(&self, interface_id: Option<&WorldKey>, func: &Function) -> String {
         let mut name = String::new();
         match interface_id {
             Some(id) => name.push_str(&interface_identifier(
@@ -2147,15 +2155,17 @@ impl InterfaceGenerator<'_> {
         // In the private C file, print a function declaration which is the
         // actual wasm import that we'll be calling, and this has the raw wasm
         // signature.
-        uwriteln!(
-            self.src.c_fns,
-            "__attribute__((__import_module__(\"{}\"), __import_name__(\"{import_prefix}{}\")))",
-            match interface_name {
-                Some(name) => self.resolve.name_world_key(name),
-                None => "$root".to_string(),
-            },
-            func.name
-        );
+        if !self.r#gen.opts.symmetric {
+            uwriteln!(
+                self.src.c_fns,
+                "__attribute__((__import_module__(\"{}\"), __import_name__(\"{import_prefix}{}\")))",
+                match interface_name {
+                    Some(name) => self.resolve.name_world_key(name),
+                    None => "$root".to_string(),
+                },
+                func.name
+            );
+        }
         let import_name = self.abi_symbol(interface_name, func);
         //let import_name = self.r#gen.names.tmp(&format!("{name}",));
         self.src.c_fns("extern ");
@@ -2326,10 +2336,12 @@ impl InterfaceGenerator<'_> {
 
         // Generate, in the C source file, the raw wasm signature that has the
         // canonical ABI.
-        uwriteln!(
-            self.src.c_adapters,
-            "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
-        );
+        if !self.r#gen.opts.symmetric {
+            uwriteln!(
+                self.src.c_adapters,
+                "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
+            );
+        }
         let import_name = self.abi_symbol(interface_name, func);
         //let import_name = self.r#gen.names.tmp(&format!("__wasm_export_{name}"));
 
@@ -2401,7 +2413,10 @@ impl InterfaceGenerator<'_> {
                 self.src.h_fns,
                 "{snake}_callback_code_t {import_name}_callback({snake}_event_t *event);",
             );
-            uwriteln!(self.src.h_helpers, "void {import_name}_return({return_ty});");
+            uwriteln!(
+                self.src.h_helpers,
+                "void {import_name}_return({return_ty});"
+            );
             let import_module = match interface_name {
                 Some(name) => self.resolve.name_world_key(name),
                 None => "$root".to_string(),

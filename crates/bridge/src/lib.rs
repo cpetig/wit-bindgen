@@ -2,7 +2,7 @@ use std::fmt::Write;
 use wit_bindgen_core::{
     Source, WorldGenerator,
     abi::{AbiVariant, WasmType},
-    make_external_symbol, uwriteln,
+    make_external_symbol, symbol_extensions, uwriteln,
     wit_parser::{self, Function, Resolve, TypeOwner, WorldId, WorldKey},
 };
 
@@ -198,7 +198,7 @@ impl Bridge {
             TypeOwner::Interface(i) => resolve.interfaces[*i].name.clone().unwrap_or_default(),
             TypeOwner::None => todo!(),
         };
-        make_external_symbol(&module_name, &func.name, variant)
+        make_external_symbol(&module_name, &func.name, variant) + symbol_extensions(func)
     }
 }
 

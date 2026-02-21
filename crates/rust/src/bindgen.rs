@@ -7,7 +7,8 @@ use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
 use wit_bindgen_core::{
-    Source, dealias, make_external_component, make_external_symbol, uwrite, uwriteln, wit_parser::*,
+    Source, dealias, make_external_component, make_external_symbol, symbol_extensions, uwrite,
+    uwriteln, wit_parser::*,
 };
 
 pub(super) struct FunctionBindgen<'a, 'b> {
@@ -78,6 +79,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 ) + &format!("H{hash:016x}")
             } else {
                 make_external_symbol(self.wasm_import_module, name, AbiVariant::GuestImport)
+                    + func.map_or("", symbol_extensions)
             };
         if let Some(library) = &self.r#gen.r#gen.opts.link_name {
             self.src.push_str(&format!(

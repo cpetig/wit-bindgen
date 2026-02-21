@@ -12,8 +12,8 @@ use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
     Files, InterfaceGenerator, Source, Types, WorldGenerator,
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
-    make_external_component, make_external_symbol, name_package_module, symmetric, uwrite,
-    uwriteln,
+    make_external_component, make_external_symbol, name_package_module, symbol_extensions,
+    symmetric, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Param,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
@@ -1295,7 +1295,7 @@ impl CppInterfaceGenerator<'_> {
         let export_name = match module_name {
             Some(ref module_name) => make_external_symbol(&module_name, &func_name, symbol_variant),
             None => make_external_component(&func_name),
-        };
+        } + symbol_extensions(func);
         // Add prefix to C ABI export functions to avoid conflicts with C++ namespaces
         self.r#gen.c_src.src.push_str("__wasm_export_");
         if let Some(prefix) = self.r#gen.opts.export_prefix.as_ref() {

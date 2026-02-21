@@ -141,7 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         run();
     } else {
         // try async run
-        let run_async: libloading::Symbol<extern "C" fn() -> *mut ()> = unsafe { lib.get(b"runA") }?;
+        let run_async: libloading::Symbol<extern "C" fn() -> *mut wit_bindgen_symmetric_rt::EventSubscription2> = unsafe { lib.get(b"runA") }?;
         let event = run_async();
         if !event.is_null() {
             unsafe { wit_bindgen_symmetric_rt::wait_for_event(event) };
@@ -166,14 +166,14 @@ name = "symmetric-test"
 [dependencies]
 libloading = "0.8"
 wit-bindgen-symmetric-rt = {{ path = {rt_path:?} }}
-symmetric_executor = {{ path = {executor_path:?}, features = [\"trace\"] }}
-symmetric_stream = {{ path = {stream_path:?}, features = [\"trace\"] }}
+symmetric_executor = {{ path = {executor_path:?}, features = ["trace"] }}
+symmetric_stream = {{ path = {stream_path:?}, features = ["trace"] }}
             "#,
                 ),
             )?;
             // add deps folder to linker path for symmetric_executor
             super::write_if_different(
-                &test_runner.join("Cargo.toml"),
+                &test_runner.join("build.rs"),
                 r#"
 use std::env;
 

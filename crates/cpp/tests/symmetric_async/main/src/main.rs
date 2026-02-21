@@ -2,7 +2,7 @@ use wit_bindgen_symmetric_rt::{CallbackState, EventSubscription};
 
 #[link(name = "async_module")]
 extern "C" {
-    pub fn testX3AtestX2Fstring_delayX00forward(
+    pub fn testX3AtestX2Fstring_delayX00forwardA(
         addr: *const u8,
         len: usize,
         results: *mut (),
@@ -22,11 +22,7 @@ extern "C" fn print_result(obj: *mut ()) -> CallbackState {
 fn main() {
     let mut result1: [usize; 2] = [0, 0];
     let handle1 = unsafe {
-        testX3AtestX2Fstring_delayX00forward(
-            "A".as_ptr(),
-            1,
-            result1.as_mut_ptr().cast(),
-        )
+        testX3AtestX2Fstring_delayX00forwardA("A".as_ptr(), 1, result1.as_mut_ptr().cast())
     };
     assert_eq!(handle1, core::ptr::null_mut());
     let vec = unsafe { Vec::from_raw_parts(result1[0] as *mut u8, result1[1], result1[1]) };
@@ -35,11 +31,7 @@ fn main() {
 
     let mut result2: [usize; 2] = [0, 0];
     let handle2 = unsafe {
-        testX3AtestX2Fstring_delayX00forward(
-            "B".as_ptr(),
-            1,
-            result2.as_mut_ptr().cast(),
-        )
+        testX3AtestX2Fstring_delayX00forwardA("B".as_ptr(), 1, result2.as_mut_ptr().cast())
     };
     assert_ne!(handle2, core::ptr::null_mut());
     wit_bindgen_symmetric_rt::register(
@@ -50,11 +42,7 @@ fn main() {
 
     let mut result3: [usize; 2] = [0, 0];
     let handle3 = unsafe {
-        testX3AtestX2Fstring_delayX00forward(
-            "C".as_ptr(),
-            1,
-            result3.as_mut_ptr().cast(),
-        )
+        testX3AtestX2Fstring_delayX00forwardA("C".as_ptr(), 1, result3.as_mut_ptr().cast())
     };
     assert_ne!(handle3, core::ptr::null_mut());
     wit_bindgen_symmetric_rt::register(

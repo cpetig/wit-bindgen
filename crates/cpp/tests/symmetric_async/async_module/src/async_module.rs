@@ -20,10 +20,10 @@ pub mod test {
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "sleep")]
-                        fn testX3AtestX2FwaitX00sleep(_: i64) -> *mut u8;
+                        fn testX3AtestX2FwaitX00sleepA(_: i64) -> *mut u8;
                     }
                     wit_bindgen::rt::async_support::await_result(move || unsafe {
-                            testX3AtestX2FwaitX00sleep(_rt::as_i64(nanoseconds))
+                            testX3AtestX2FwaitX00sleepA(_rt::as_i64(nanoseconds))
                         })
                         .await;
                 }
@@ -82,7 +82,7 @@ pub mod exports {
                         const _ : () = { #[cfg_attr(target_arch = "wasm32", unsafe
                         (export_name = "forward"))] #[cfg_attr(not(target_arch =
                         "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn testX3AtestX2Fstring_delayX00forward(arg0 : * mut u8, arg1 :
+                        fn testX3AtestX2Fstring_delayX00forwardA(arg0 : * mut u8, arg1 :
                         usize, arg2 : * mut u8,) -> * mut u8 { unsafe {
                         $($path_to_types)*:: _export_forward_cabi::<$ty > (arg0, arg1,
                         arg2) } } };

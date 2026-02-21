@@ -56,6 +56,13 @@ pub unsafe fn activate_event_send_ptr(event_send: *mut EventGenerator2) {
     std::mem::forget(gener);
 }
 
+// wait for an event subscription (e.g. returned from an async function)
+pub unsafe fn wait_for_event(event_subscr: *mut EventSubscription2) {
+    executor_import::symmetric::runtime::symmetric_executor::block_on(
+        EventSubscription::from_handle(event_subscr as usize),
+    );
+}
+
 // stolen from guest-rust/rt/src/lib.rs
 pub struct Cleanup {
     ptr: NonNull<u8>,

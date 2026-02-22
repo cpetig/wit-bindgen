@@ -12,8 +12,8 @@ use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
     Files, InterfaceGenerator, Source, Types, WorldGenerator,
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
-    make_external_component, make_external_symbol, name_package_module, symmetric, uwrite,
-    uwriteln,
+    make_external_component, make_external_symbol, name_package_module, symbol_extensions,
+    symmetric, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Param,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
@@ -108,6 +108,7 @@ struct Cpp {
     dependencies: Includes,
     includes: Vec<String>,
     host_functions: HashMap<String, Vec<HostFunction>>,
+    exported_symbols: Vec<String>,
     world: String,
     world_id: Option<WorldId>,
     imported_interfaces: HashSet<InterfaceId>,
@@ -726,7 +727,10 @@ impl WorldGenerator for Cpp {
         let namespace = namespace(resolve, &TypeOwner::World(world), true, &r#gen.r#gen.opts);
 
         for (_name, func) in funcs.iter() {
-            if matches!(func.kind, FunctionKind::Freestanding) {
+            if matches!(
+                func.kind,
+                FunctionKind::Freestanding | FunctionKind::AsyncFreestanding
+            ) {
                 r#gen.r#gen.h_src.change_namespace(&namespace);
                 r#gen.generate_function(func, &TypeOwner::World(world), AbiVariant::GuestExport);
             }
@@ -958,10 +962,12 @@ impl WorldGenerator for Cpp {
         );
         if self.opts.symmetric {
             // this keeps the symbols down for shared objects, could be more specific
-            files.push(
-                &format!("{}.verscr", world.name),
-                b"{\n  global:\n    *X00*;\n  local: *;\n};\n",
-            );
+            let mut verscr = String::from("{\n  global:\n    *X00*;\n");
+            for i in self.exported_symbols.iter() {
+                verscr.push_str(&format!("    {i};\n"));
+            }
+            verscr.push_str("  local: *;\n};\n");
+            files.push(&format!("{}.verscr", world.name), verscr.as_bytes());
         }
 
         if self.dependencies.needs_wit {
@@ -1144,9 +1150,9 @@ impl CppInterfaceGenerator<'_> {
             FunctionKind::Method(i) => Some(i),
             FunctionKind::Static(i) => Some(i),
             FunctionKind::Constructor(i) => Some(i),
-            FunctionKind::AsyncFreestanding => todo!(),
-            FunctionKind::AsyncMethod(_id) => todo!(),
-            FunctionKind::AsyncStatic(_id) => todo!(),
+            FunctionKind::AsyncFreestanding => None,
+            FunctionKind::AsyncMethod(i) => Some(i),
+            FunctionKind::AsyncStatic(i) => Some(i),
         }
         .map(|i| {
             let ty = &self.resolve.types[*i];
@@ -1311,9 +1317,14 @@ impl CppInterfaceGenerator<'_> {
         let export_name = match module_name {
             Some(ref module_name) => make_external_symbol(&module_name, &func_name, symbol_variant),
             None => make_external_component(&func_name),
-        };
+        } + symbol_extensions(func);
+        if module_name.is_none() {
+            self.r#gen.exported_symbols.push(export_name.clone());
+        }
         // Add prefix to C ABI export functions to avoid conflicts with C++ namespaces
-        self.r#gen.c_src.src.push_str("__wasm_export_");
+        if !self.r#gen.opts.symmetric {
+            self.r#gen.c_src.src.push_str("__wasm_export_");
+        }
         if let Some(prefix) = self.r#gen.opts.export_prefix.as_ref() {
             self.r#gen.c_src.src.push_str(prefix);
         }
@@ -1870,7 +1881,10 @@ impl CppInterfaceGenerator<'_> {
                 SpecialMethod::Allocate => unreachable!(),
                 SpecialMethod::None => {
                     // normal methods
-                    let namespace = if matches!(func.kind, FunctionKind::Freestanding) {
+                    let namespace = if matches!(
+                        func.kind,
+                        FunctionKind::Freestanding | FunctionKind::AsyncFreestanding
+                    ) {
                         namespace(
                             self.resolve,
                             owner,
@@ -1884,8 +1898,8 @@ impl CppInterfaceGenerator<'_> {
                             FunctionKind::Method(id) => *id,
                             FunctionKind::Freestanding => unreachable!(),
                             FunctionKind::AsyncFreestanding => todo!(),
-                            FunctionKind::AsyncMethod(_id) => todo!(),
-                            FunctionKind::AsyncStatic(_id) => todo!(),
+                            FunctionKind::AsyncMethod(id) => *id,
+                            FunctionKind::AsyncStatic(id) => *id,
                         }]
                         .clone();
                         let mut namespace = namespace(

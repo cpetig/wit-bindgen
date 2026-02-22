@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{Compile, LanguageMethods, Runner, Verify};
+use crate::{Compile, Kind, LanguageMethods, Runner, Verify};
 use anyhow::{Context, Result};
 use clap::Parser;
 use heck::ToSnakeCase;
@@ -34,10 +34,14 @@ struct LangConfig {
 }
 
 fn clang(runner: &Runner) -> PathBuf {
-    let target = &runner.opts.c.c_target;
-    match &runner.opts.c.wasi_sdk_path {
-        Some(path) => path.join(format!("bin/{target}-clang")),
-        None => format!("{target}-clang").into(),
+    if runner.is_symmetric() {
+        "clang".into()
+    } else {
+        let target = &runner.opts.c.c_target;
+        match &runner.opts.c.wasi_sdk_path {
+            Some(path) => path.join(format!("bin/{target}-clang")),
+            None => format!("{target}-clang").into(),
+        }
     }
 }
 
@@ -126,15 +130,20 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
 
     // Now compile the runner's source code to with the above object and the
     // component-type object into a final component.
-    let output = compile.output.with_extension("core.wasm");
+    let output = compile.output.with_extension(if runner.is_symmetric() {
+        "so"
+    } else {
+        "core.wasm"
+    });
     let mut cmd = Command::new(compiler);
-    cmd.arg(&compile.component.path)
-        .arg(&bindings_object)
-        .arg(compile.bindings_dir.join(format!(
+    cmd.arg(&compile.component.path).arg(&bindings_object);
+    if !runner.is_symmetric() {
+        cmd.arg(compile.bindings_dir.join(format!(
             "{}_component_type.o",
             compile.component.bindgen.world
-        )))
-        .arg("-I")
+        )));
+    }
+    cmd.arg("-I")
         .arg(&compile.bindings_dir)
         .arg("-Wall")
         .arg("-Wextra")
@@ -150,15 +159,28 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
     for flag in Vec::from(config.ldflags) {
         cmd.arg(flag);
     }
-    cmd.arg("-mexec-model=reactor");
-    if produces_component(runner) {
-        cmd.arg("-Wl,--skip-wit-component");
+    if !runner.is_symmetric() {
+        cmd.arg("-mexec-model=reactor");
+        if produces_component(runner) {
+            cmd.arg("-Wl,--skip-wit-component");
+        }
+    } else {
+        cmd.arg("--shared").arg("-fPIC");
+        if matches!(compile.component.kind, Kind::Runner) {
+            let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+            bindings_parent.pop();
+            cmd.arg("-L")
+                .arg(bindings_parent.to_str().unwrap().to_string());
+            cmd.arg("-ltest");
+        }
     }
     runner.run_command(&mut cmd)?;
 
-    runner
-        .convert_p1_to_component(&output, compile)
-        .with_context(|| format!("failed to convert {output:?}"))?;
+    if !runner.is_symmetric() {
+        runner
+            .convert_p1_to_component(&output, compile)
+            .with_context(|| format!("failed to convert {output:?}"))?;
+    }
     Ok(())
 }
 

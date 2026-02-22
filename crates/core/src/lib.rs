@@ -312,3 +312,17 @@ pub fn make_external_symbol(module_name: &str, name: &str, variant: abi::AbiVari
         res
     }
 }
+
+pub fn symbol_extensions(func: &Function) -> &str {
+    if matches!(
+        func,
+        &Function {
+            kind: FunctionKind::AsyncFreestanding,
+            ..
+        }
+    ) {
+        "A"
+    } else {
+        ""
+    }
+}

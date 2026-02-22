@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, bail};
 use std::{env::consts::DLL_EXTENSION, fmt::Write, path::PathBuf, process::Command};
-use wit_bindgen_core::{Files, WorldGenerator, abi, make_external_symbol, uwriteln, wit_parser};
+use wit_bindgen_core::{
+    Files, WorldGenerator, abi, make_external_symbol, symbol_extensions, uwriteln, wit_parser,
+};
 
 #[derive(Default)]
 struct ImportLib {
@@ -42,7 +44,7 @@ impl ImportLib {
             &core_module_name.unwrap_or("$root".into()),
             &func.name,
             abi::AbiVariant::GuestImport,
-        );
+        ) + symbol_extensions(func);
         uwriteln!(self.src, "#[no_mangle]");
         uwriteln!(
             self.src,

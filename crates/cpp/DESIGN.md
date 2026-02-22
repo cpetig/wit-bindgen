@@ -102,11 +102,25 @@ For now for functions the guest import convention is used in both directions:
   return pointer is added. The returned value is either nullptr (finished)
   or the handle/address of an event subscription (see symmetric_executor crate).
 
-  No need for externally visible callbacks as the code directly registered 
+  No need for externally visible callbacks as the code directly registers 
   its callbacks with the executor. No need for set_results.
 
 - Stream and future handles become pointer size, the internal API is described via
   a WIT file (symmetric_stream)
+
+### Canonical Options
+
+The component binary format defines several options for lifting
+and lowering. As they create binary incompatibility for symmetric
+bindings they become part of the encoded function name. As mixed case
+symbols are invalid in WIT we use upper case letters to encode the
+options:
+
+- String Encoding: "" utf-8, "W" utf-16 (wide), "L" latin1+utf-16
+- "A" async
+- memory isn't meaningful for symmetric
+- realloc can't be specified by the current Rust tooling
+- post_return and callback already have a naming convention
 
 ## Structs proposal
 

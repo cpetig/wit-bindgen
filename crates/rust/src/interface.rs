@@ -12,7 +12,7 @@ use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
 use wit_bindgen_core::{
     AnonymousTypeGenerator, Source, TypeInfo, dealias, make_external_component,
-    make_external_symbol, symmetric, uwrite, uwriteln, wit_parser::*,
+    make_external_symbol, symbol_extensions, symmetric, uwrite, uwriteln, wit_parser::*,
 };
 
 pub struct InterfaceGenerator<'a> {
@@ -1366,7 +1366,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                     &wasm_module_export_name.unwrap_or_default(),
                     &func.name,
                     AbiVariant::GuestImport,
-                );
+                ) + symbol_extensions(func);
                 if let Some(export_prefix) = self.r#gen.opts.export_prefix.as_ref() {
                     external_name.insert_str(0, export_prefix);
                 }

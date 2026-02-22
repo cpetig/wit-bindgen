@@ -1189,7 +1189,9 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 }
 
                 // Emit the function return
-                if async_ {
+                if async_ && matches!(lift_lower, LiftLower::Symmetric) {
+                    // nothing to do here
+                } else if async_ {
                     self.emit(&Instruction::AsyncTaskReturn {
                         name: &func.name,
                         params: if func.result.is_some() {
@@ -1438,7 +1440,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                             });
                         }
                     }
-                    (AbiVariant::GuestExportAsync, Some(results), true) => {
+                    (AbiVariant::GuestExportAsync, Some(_results), true) => {
                         // let name = &format!("[task-return]{}", func.name);
                         // let params = results.as_deref().unwrap_or_default();
                         // self.emit(&Instruction::AsyncTaskReturn { name, params });

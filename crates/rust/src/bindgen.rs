@@ -7,7 +7,8 @@ use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{AbiVariant, Bindgen, Instruction, LiftLower, WasmType};
 use wit_bindgen_core::{
-    Source, dealias, make_external_component, make_external_symbol, uwrite, uwriteln, wit_parser::*,
+    Source, dealias, make_external_component, make_external_symbol, symbol_extensions, uwrite,
+    uwriteln, wit_parser::*,
 };
 
 pub(super) struct FunctionBindgen<'a, 'b> {
@@ -78,6 +79,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
                 ) + &format!("H{hash:016x}")
             } else {
                 make_external_symbol(self.wasm_import_module, name, AbiVariant::GuestImport)
+                    + func.map_or("", symbol_extensions)
             };
         if let Some(library) = &self.r#gen.r#gen.opts.link_name {
             self.src.push_str(&format!(
@@ -953,7 +955,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 } else {
                     std::borrow::Cow::Borrowed(*module_prefix)
                 };
-                let func = self.declare_import(
+                let funcname = self.declare_import(
                     module_prefix.as_ref(),
                     name,
                     &sig.params,
@@ -962,7 +964,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 );
 
                 // ... then call the function with all our operands
-                let async_ = name.starts_with("[async]")
+                let async_ = matches!(func.kind, FunctionKind::AsyncFreestanding)
                     && !sig.results.is_empty()
                     && self.r#gen.r#gen.opts.symmetric;
                 if async_ {
@@ -972,7 +974,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     self.push_str("let ret = ");
                     results.push("ret".to_string());
                 }
-                self.push_str(&func);
+                self.push_str(&funcname);
                 self.push_str("(");
                 self.push_str(&operands.join(", "));
                 if async_ {

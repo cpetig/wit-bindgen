@@ -134,14 +134,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get the "run" function from the loaded library
     // The function signature is: extern "C" fn()
-    let run: libloading::Symbol<extern "C" fn()> = unsafe { lib.get(b"run")? };
+    let run: Result<libloading::Symbol<extern "C" fn()>, _> = unsafe { lib.get(b"run") };
 
     // Call the run function
-    run();
+    if let Ok(run) = run {
+        run();
+    } else {
+        // try async run
+        let run_async: libloading::Symbol<extern "C" fn() -> *mut wit_bindgen_symmetric_rt::EventSubscription2> = unsafe { lib.get(b"runA") }?;
+        let event = run_async();
+        if !event.is_null() {
+            unsafe { wit_bindgen_symmetric_rt::wait_for_event(event) };
+        }
+    }
     Ok(())
 }
             "#,
             )?;
+            let executor_path = cwd.join("crates/symmetric_executor");
+            let stream_path = cwd.join("crates/symmetric_executor/symmetric_stream");
+            let rt_path = cwd.join("crates/symmetric_executor/rust-client");
             super::write_if_different(
                 &test_runner.join("Cargo.toml"),
                 &format!(
@@ -153,8 +165,26 @@ name = "symmetric-test"
 
 [dependencies]
 libloading = "0.8"
+wit-bindgen-symmetric-rt = {{ path = {rt_path:?} }}
+symmetric_executor = {{ path = {executor_path:?}, features = ["trace"] }}
+symmetric_stream = {{ path = {stream_path:?}, features = ["trace"] }}
             "#,
                 ),
+            )?;
+            // add deps folder to linker path for symmetric_executor
+            super::write_if_different(
+                &test_runner.join("build.rs"),
+                r#"
+use std::env;
+
+fn main() {
+    let out = env::var_os("OUT_DIR").unwrap();
+    println!(
+        r"cargo:rustc-link-search={}/../../../deps",
+        out.into_string().unwrap()
+    );
+}
+            "#,
             )?;
             println!("Building `symmetric-test`...");
             let mut cmd = Command::new("cargo");
@@ -408,8 +438,7 @@ mod core {}
                 || test.name == /*async*/"simple-stream-payload"
                 || test.name == /*async*/"simple-import-params-results"
                 || test.name == /*async*/"ping-pong"
-                || test.name == /*async*/"yield-loop-receives-events"
-            )
+                || test.name == /*async*/"yield-loop-receives-events")
     }
 }
 

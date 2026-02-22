@@ -108,6 +108,7 @@ struct Cpp {
     dependencies: Includes,
     includes: Vec<String>,
     host_functions: HashMap<String, Vec<HostFunction>>,
+    exported_symbols: Vec<String>,
     world: String,
     world_id: Option<WorldId>,
     imported_interfaces: HashSet<InterfaceId>,
@@ -942,10 +943,12 @@ impl WorldGenerator for Cpp {
         );
         if self.opts.symmetric {
             // this keeps the symbols down for shared objects, could be more specific
-            files.push(
-                &format!("{}.verscr", world.name),
-                b"{\n  global:\n    *X00*;\n  local: *;\n};\n",
-            );
+            let mut verscr = String::from("{\n  global:\n    *X00*;\n");
+            for i in self.exported_symbols.iter() {
+                verscr.push_str(&format!("    {i};\n"));
+            }
+            verscr.push_str("  local: *;\n};\n");
+            files.push(&format!("{}.verscr", world.name), verscr.as_bytes());
         }
 
         if self.dependencies.needs_wit {
@@ -1296,8 +1299,13 @@ impl CppInterfaceGenerator<'_> {
             Some(ref module_name) => make_external_symbol(&module_name, &func_name, symbol_variant),
             None => make_external_component(&func_name),
         } + symbol_extensions(func);
+        if module_name.is_none() {
+            self.r#gen.exported_symbols.push(export_name.clone());
+        }
         // Add prefix to C ABI export functions to avoid conflicts with C++ namespaces
-        self.r#gen.c_src.src.push_str("__wasm_export_");
+        if !self.r#gen.opts.symmetric {
+            self.r#gen.c_src.src.push_str("__wasm_export_");
+        }
         if let Some(prefix) = self.r#gen.opts.export_prefix.as_ref() {
             self.r#gen.c_src.src.push_str(prefix);
         }

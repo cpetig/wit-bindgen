@@ -165,7 +165,8 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
             cmd.arg("-Wl,--skip-wit-component");
         }
     } else {
-        cmd.arg("--shared");
+        cmd.arg("--shared")
+            .arg("-fPIC");
     }
     runner.run_command(&mut cmd)?;
 

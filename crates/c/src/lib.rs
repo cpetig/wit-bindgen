@@ -11,7 +11,8 @@ use wit_bindgen_core::abi::{
 };
 use wit_bindgen_core::{
     AnonymousTypeGenerator, AsyncFilterSet, Direction, Files, InterfaceGenerator as _, Ns,
-    WorldGenerator, dealias, make_external_symbol, uwrite, uwriteln, wit_parser::*,
+    WorldGenerator, dealias, make_external_component, make_external_symbol, uwrite, uwriteln,
+    wit_parser::*,
 };
 use wit_component::StringEncoding;
 
@@ -2342,7 +2343,8 @@ impl InterfaceGenerator<'_> {
                 "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
             );
         }
-        let import_name = self.abi_symbol(interface_name, func);
+        let import_name = make_external_component(&export_name);
+        //        self.abi_symbol(interface_name, func);
         //let import_name = self.r#gen.names.tmp(&format!("__wasm_export_{name}"));
 
         let mut f = FunctionBindgen::new(self, h_sig, &import_name);

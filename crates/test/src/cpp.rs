@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{LanguageMethods, Runner};
+use crate::{Kind, LanguageMethods, Runner};
 use anyhow::Context;
 use heck::ToSnakeCase;
 use serde::Deserialize;
@@ -220,15 +220,14 @@ impl LanguageMethods for Cpp {
             for i in runner.cpp_state.as_ref().unwrap().native_deps.iter() {
                 cmd.arg(format!("-L{}", i.as_os_str().to_str().unwrap()));
             }
-            //            if !matches!(compile.component.kind, Kind::Runner) {
             cmd.arg("-shared");
-            // } else {
-            //     let mut bindings_parent: PathBuf = compile.bindings_dir.into();
-            //     bindings_parent.pop();
-            //     cmd.arg("-L")
-            //         .arg(bindings_parent.to_str().unwrap().to_string());
-            //     cmd.arg("-ltest");
-            // }
+            if matches!(compile.component.kind, Kind::Runner) {
+                let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+                bindings_parent.pop();
+                cmd.arg("-L")
+                    .arg(bindings_parent.to_str().unwrap().to_string());
+                cmd.arg("-ltest");
+            }
             cmd.arg("-L")
                 .arg(helper_dir3.to_str().unwrap().to_string())
                 .arg("-lruntime")
@@ -290,7 +289,6 @@ impl LanguageMethods for Cpp {
                 || test.name == "resource_borrow_in_record"
                 || test.name == /*cpp*/"cpp-with"
                 || test.name == /*cpp*/"param-ownership"
-                || test.name == /*async*/"stream-string"
                 || test.name == /*async*/"future-string")
     }
 }

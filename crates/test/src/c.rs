@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{Compile, LanguageMethods, Runner, Verify};
+use crate::{Compile, Kind, LanguageMethods, Runner, Verify};
 use anyhow::{Context, Result};
 use clap::Parser;
 use heck::ToSnakeCase;
@@ -165,8 +165,14 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
             cmd.arg("-Wl,--skip-wit-component");
         }
     } else {
-        cmd.arg("--shared")
-            .arg("-fPIC");
+        cmd.arg("--shared").arg("-fPIC");
+        if matches!(compile.component.kind, Kind::Runner) {
+            let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+            bindings_parent.pop();
+            cmd.arg("-L")
+                .arg(bindings_parent.to_str().unwrap().to_string());
+            cmd.arg("-ltest");
+        }
     }
     runner.run_command(&mut cmd)?;
 

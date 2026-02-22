@@ -2096,25 +2096,15 @@ impl InterfaceGenerator<'_> {
     fn abi_symbol(&self, interface_id: Option<&WorldKey>, func: &Function) -> String {
         let mut name = String::new();
         match interface_id {
-            Some(id) => name.push_str(&interface_identifier(
-                id,
-                self.resolve,
-                !self.in_import,
-                &self.r#gen.renamed_interfaces,
-            )),
+            Some(id) => name.push_str(&self.resolve.name_world_key(id)),
             None => {
-                // if !in_import {
-                //     name.push_str("exports_");
-                // }
                 name.push_str(&self.r#gen.world);
             }
         }
-        // name.push_str("_");
-        // name.push_str(&func.name.to_snake_case().replace('.', "_"));
         make_external_symbol(
             &name,
             &func.name,
-            if self.in_import {
+            if self.in_import || self.r#gen.opts.symmetric {
                 AbiVariant::GuestImport
             } else {
                 AbiVariant::GuestExport
@@ -2343,7 +2333,19 @@ impl InterfaceGenerator<'_> {
                 "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
             );
         }
-        let import_name = make_external_component(&export_name);
+        let import_name = if let Some(module) = core_module_name {
+            make_external_symbol(
+                &module,
+                &func.name,
+                if self.r#gen.opts.symmetric {
+                    AbiVariant::GuestImport
+                } else {
+                    AbiVariant::GuestExport
+                },
+            )
+        } else {
+            make_external_component(&export_name)
+        };
         //        self.abi_symbol(interface_name, func);
         //let import_name = self.r#gen.names.tmp(&format!("__wasm_export_{name}"));
 

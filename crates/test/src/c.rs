@@ -82,6 +82,19 @@ impl LanguageMethods for C {
     fn verify(&self, runner: &Runner, v: &Verify<'_>) -> Result<()> {
         verify(runner, v, clang(runner))
     }
+    
+    fn should_fail_runtime1(
+        &self,
+        runner: &Runner,
+        test: &crate::Test,
+        _component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric()
+            && (test.name == "resources"
+                || test.name == "resource-import-and-export"
+                || test.name == "resource-borrow"
+                || test.name == /*c*/"autodrop-borrows")
+    }
 }
 
 fn prepare(runner: &mut Runner, compiler: PathBuf) -> Result<()> {

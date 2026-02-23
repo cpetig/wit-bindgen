@@ -282,9 +282,7 @@ impl LanguageMethods for Cpp {
         runner.is_symmetric()
             && (test.name == "strings"
                 || test.name == "resources"
-                || test.name == "options"
                 || test.name == "results"
-                || test.name == "lists"
                 || test.name == "common-types"
                 || test.name == "resource_borrow_in_record"
                 || test.name == /*cpp*/"cpp-with"

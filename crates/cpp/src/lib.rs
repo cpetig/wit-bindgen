@@ -3312,11 +3312,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {ptr} = {val}.data();\n"));
                     self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
-                    let const_cast = if self.r#gen.r#gen.opts.symmetric {
-                        String::new()
-                    } else {
-                        format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type())
-                    };
+                    let const_cast = format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type());
                     self.push_str(&format!(
                         "auto {ptr} = {const_cast}(reinterpret_cast<const {}>({val}.data()));\n",
                         self.r#gen.r#gen.opts.ptr_type(),
@@ -3348,11 +3344,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {ptr} = {val}.data();\n"));
                     self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
-                    let const_cast = if self.r#gen.r#gen.opts.symmetric {
-                        String::new()
-                    } else {
-                        format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type())
-                    };
+                    let const_cast = format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type());
                     self.push_str(&format!(
                         "auto {ptr} = {const_cast}(reinterpret_cast<const {}>({val}.data()));\n",
                         self.r#gen.r#gen.opts.ptr_type(),
@@ -3386,11 +3378,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     self.push_str(&format!("auto {ptr} = {val}.data();\n"));
                     self.push_str(&format!("auto {len} = {val}.size();\n"));
                 } else {
-                    let const_cast = if self.r#gen.r#gen.opts.symmetric {
-                        String::new()
-                    } else {
-                        format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type())
-                    };
+                    let const_cast = format!("const_cast<{}>", self.r#gen.r#gen.opts.ptr_type());
                     self.push_str(&format!(
                         "auto {ptr} = {const_cast}(reinterpret_cast<const {}>({val}.data()));\n",
                         self.r#gen.r#gen.opts.ptr_type(),

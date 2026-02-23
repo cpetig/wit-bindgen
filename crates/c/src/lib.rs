@@ -2449,7 +2449,7 @@ void {import_name}_return({return_ty}) {{
         } else if abi::guest_export_needs_post_return(self.resolve, func) {
             uwriteln!(
                 self.src.c_fns,
-                "__attribute__((__weak__, __export_name__(\"cabi_post_{export_name}\")))"
+                "#ifdef __wasm32__\n__attribute__((__weak__, __export_name__(\"cabi_post_{export_name}\")))\n#endif"
             );
             uwrite!(self.src.c_fns, "void {import_name}_post_return(");
 

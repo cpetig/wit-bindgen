@@ -405,40 +405,52 @@ mod core {}
         &self,
         runner: &Runner,
         test: &crate::Test,
-        _component: &crate::Component,
+        component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
-            && (test.name == "simple-yield"
-                || test.name == "cancel-import"
-                || test.name == "simple-pending-import"
-                || test.name == "pending-import"
-                || test.name == "resources"
-                || test.name == "resource_floats"
-                || test.name == "resource-import-and-export"
-                || test.name == "results"
-                || test.name == "resource_with_lists"
-                || test.name == /*rust*/"skip"
-                || test.name == /*rust*/"equal-types"
-                || test.name == /*rust*/"other-dependencies"
-                || test.name == /*rust*/"with-types"
-                || test.name == /*rust*/"xcrate"
-                || test.name == /*async*/"future-close-after-coming-back"
-                || test.name == /*async*/"future-close-then-receive-read"
-                || test.name == /*async*/"future-closes-with-error"
-                || test.name == /*async*/"future-cancel-write"
-                || test.name == /*async*/"future-cancel-write-then-read"
-                || test.name == /*async*/"future-write-then-read-remote"
-                || test.name == /*async*/"future-write-then-read-comes-back"
-                || test.name == /*async*/"future-cancel-read"
-                || test.name == /*async*/"simple-call-import"
-                || test.name == /*async*/"simple-future"
-                || test.name == /*async*/"simple-stream"
-                || test.name == /*async*/"rust-cross-task-wakeup"
-                || test.name == /*async*/"rust-lowered-send"
-                || test.name == /*async*/"simple-stream-payload"
-                || test.name == /*async*/"simple-import-params-results"
-                || test.name == /*async*/"ping-pong"
-                || test.name == /*async*/"yield-loop-receives-events")
+            && ((test.name == /*rust*/"other-dependencies"
+                || (test.name == "resource_floats" && component.name != "leaf")
+                || test.name == /*rust*/"with-types")
+                || (test.name == /*async*/"yield-loop-receives-events"
+                    && component.name != "middle")
+                || (matches!(component.kind, crate::Kind::Test)
+                    && (
+                        test.name == "skip"
+                            || test.name == /*async*/"simple-pending-import"
+                            || test.name == "simple-yield"
+                            || test.name == /*async*/"cancel-import"
+                        // || test.name == /*async*/"future-write-then-read-comes-back"
+                    ))
+                || (matches!(component.kind, crate::Kind::Runner)
+                    && (test.name == "cancel-import"
+                        // || test.name == "simple-pending-import"
+                        || test.name == "pending-import"
+                        || test.name == "results"
+                        || test.name == "resources"
+                        || test.name == "resource-import-and-export"
+                        || test.name == "resource_with_lists"
+                        || test.name == /*rust*/"equal-types"
+                        || test.name == /*rust*/"xcrate"
+                        // || test.name == /*async*/"future-close-after-coming-back"
+                        // || test.name == /*async*/"future-close-then-receive-read"
+                        // || test.name == /*async*/"future-closes-with-error"
+                        // || test.name == /*async*/"future-cancel-write"
+                        // || test.name == /*async*/"future-cancel-write-then-read"
+                        // || test.name == /*async*/"future-write-then-read-remote"
+                        // || test.name == /*async*/"future-write-then-read-comes-back"
+                        // || test.name == /*async*/"future-cancel-read"
+                        // || test.name == /*async*/"future-closes-with-error"
+                        // || test.name == /*async*/"future-string"
+                        // || test.name == /*async*/"simple-call-import"
+                        // || test.name == /*async*/"simple-future"
+                        // || test.name == /*async*/"simple-stream"
+                        // || test.name == /*async*/"stream-string"
+                        // || test.name == /*async*/"simple-stream-payload"
+                        || test.name == /*async*/"rust-cross-task-wakeup"
+                        || test.name == /*async*/"rust-lowered-send"
+//                        || test.name == /*async*/"simple-stream-payload"
+                        || test.name == /*async*/"simple-import-params-results"
+                        || test.name == /*async*/"ping-pong")))
     }
 }
 

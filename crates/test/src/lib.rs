@@ -737,9 +737,20 @@ impl Runner {
                         });
                         match result {
                             Ok(path) => {
-                                compilations.lock().unwrap().push((test, component, path));
-                                // TODO: Handle should fail?
-                                Ok(())
+                                if component
+                                    .language
+                                    .obj()
+                                    .should_fail_runtime1(&me, &test, &component)
+                                {
+                                    me.render_error(StepResult::new(Err(anyhow::anyhow!(
+                                        "Test {} should fail {:?}",
+                                        component.name,
+                                        component.kind
+                                    ))))
+                                } else {
+                                    compilations.lock().unwrap().push((test, component, path));
+                                    Ok(())
+                                }
                             }
                             Err(e) => {
                                 let should_fail = component

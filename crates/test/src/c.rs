@@ -82,7 +82,7 @@ impl LanguageMethods for C {
     fn verify(&self, runner: &Runner, v: &Verify<'_>) -> Result<()> {
         verify(runner, v, clang(runner))
     }
-    
+
     fn should_fail_runtime1(
         &self,
         runner: &Runner,

@@ -417,7 +417,6 @@ mod core {}
                 || test.name == "resource-import-and-export"
                 || test.name == "results"
                 || test.name == "resource_with_lists"
-                || test.name == /*rust*/"skip"
                 || test.name == /*rust*/"equal-types"
                 || test.name == /*rust*/"other-dependencies"
                 || test.name == /*rust*/"with-types"

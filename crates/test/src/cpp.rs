@@ -283,9 +283,11 @@ impl LanguageMethods for Cpp {
             && ((matches!(component.kind, crate::Kind::Test)
                 && (test.name == "resources"
                     || test.name == "resource_borrow_in_record"
-                    || test.name == /*cpp*/"param-ownership"
-                    || test.name == /*async*/"future-string"))
+                    || test.name == /*cpp*/"param-ownership"))
                 || (matches!(component.kind, crate::Kind::Runner)
-                    && (test.name == "results" || test.name == "common-types")))
+                    && (test.name == "results"
+                        || test.name == "common-types"
+                        || test.name == /*async*/"future-string"
+                        || test.name == /*async*/"stream-string")))
     }
 }

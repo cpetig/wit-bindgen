@@ -87,14 +87,34 @@ impl LanguageMethods for C {
         &self,
         runner: &Runner,
         test: &crate::Test,
-        _component: &crate::Component,
+        component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
-            //&& matches!(component.kind, crate::Kind::Test)
-            && (test.name == "resources"
+            //&& 
+            && ((test.name == "resources"
                 || test.name == "resource-import-and-export"
                 || test.name == "resource-borrow"
-                || test.name == /*c*/"autodrop-borrows")
+                || test.name == /*c*/"autodrop-borrows"
+                                || test.name == /*async*/"simple-future"
+                                || test.name == /*async*/"simple-pending"
+                                || test.name == /*async*/"cancel-import"
+                                || test.name == /*async*/"simple-stream"
+                                || test.name == /*async*/"simple-yield"
+                                || test.name == /*async*/"simple-import-params-results"
+                                || test.name == /*async*/"pending-import"
+                                || test.name == /*async*/"future-write-then-read-comes-back"
+                                || test.name == /*async*/"future-write-then-read-remote"
+                                || test.name == /*async*/"future-write-then-read"
+                                || test.name == /*async*/"future-cancel-write"
+                                || test.name == /*async*/"future-cancel-read"
+                                || test.name == /*async*/"simple-pending-import"
+                                || test.name == /*async*/"simple-call-import"
+                                || test.name == /*async*/"simple-stream-payload"
+                                || test.name == /*async*/"threading-builtins"
+                                || test.name == /*async*/"ping-pong"
+            )
+                || (matches!(component.kind, crate::Kind::Test) && false)
+    )
     }
 }
 

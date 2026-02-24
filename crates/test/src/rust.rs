@@ -346,6 +346,12 @@ path = 'lib.rs'
         if runner.produces_component() && !runner.is_symmetric() {
             cmd.arg("-Clink-arg=--skip-wit-component");
         }
+        if runner.is_symmetric() && matches!(compile.component.kind, crate::Kind::Runner) {
+            let mut bindings_parent: PathBuf = compile.bindings_dir.into();
+            bindings_parent.pop();
+            cmd.arg("-L")
+                .arg(bindings_parent.to_str().unwrap().to_string());
+        }
         runner.run_command(&mut cmd)?;
 
         if !runner.is_symmetric() {

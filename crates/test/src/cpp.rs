@@ -281,9 +281,7 @@ impl LanguageMethods for Cpp {
     ) -> bool {
         runner.is_symmetric()
             && ((matches!(component.kind, crate::Kind::Test)
-                && (test.name == "resources"
-                    || test.name == "resource_borrow_in_record"
-                    || test.name == /*cpp*/"param-ownership"))
+                && (test.name == "resources" || test.name == "resource_borrow_in_record"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "results"
                         || test.name == "common-types"

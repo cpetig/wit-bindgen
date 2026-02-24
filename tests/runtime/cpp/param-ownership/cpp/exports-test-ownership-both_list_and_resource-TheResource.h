@@ -32,9 +32,15 @@ public:
     }
     return result;
   }
+#ifdef WIT_SYMMETRIC
+  static uint8_t* ResourceNew(both_list_and_resource::TheResource *self);
+  static TheResource *ResourceRep(uint8_t* id);
+  static void ResourceDrop(uint8_t* id);
+#else
   static int32_t ResourceNew(both_list_and_resource::TheResource *self);
   static TheResource *ResourceRep(int32_t id);
   static void ResourceDrop(int32_t id);
+#endif
 
 private:
   wit::vector<wit::string> the_list_;

@@ -90,6 +90,7 @@ impl LanguageMethods for C {
         _component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
+            //&& matches!(component.kind, crate::Kind::Test)
             && (test.name == "resources"
                 || test.name == "resource-import-and-export"
                 || test.name == "resource-borrow"

@@ -277,16 +277,15 @@ impl LanguageMethods for Cpp {
         &self,
         runner: &Runner,
         test: &crate::Test,
-        _component: &crate::Component,
+        component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
-            && (test.name == "strings"
-                || test.name == "resources"
-                || test.name == "results"
-                || test.name == "common-types"
-                || test.name == "resource_borrow_in_record"
-                || test.name == /*cpp*/"cpp-with"
-                || test.name == /*cpp*/"param-ownership"
-                || test.name == /*async*/"future-string")
+            && ((matches!(component.kind, crate::Kind::Test)
+                && (test.name == "resources"
+                    || test.name == "resource_borrow_in_record"
+                    || test.name == /*cpp*/"param-ownership"
+                    || test.name == /*async*/"future-string"))
+                || (matches!(component.kind, crate::Kind::Runner)
+                    && (test.name == "results" || test.name == "common-types")))
     }
 }

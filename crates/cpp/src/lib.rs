@@ -430,7 +430,7 @@ impl Cpp {
             }
             Bitcast::P64ToI64 | Bitcast::None | Bitcast::I64ToP64 => op.to_string(),
             Bitcast::P64ToP | Bitcast::I32ToP | Bitcast::LToP => {
-                format!("static_cast<uint8_t*>({op})")
+                format!("reinterpret_cast<uint8_t*>({op})")
             }
             Bitcast::PToL | Bitcast::I32ToL | Bitcast::I64ToL => {
                 format!("static_cast<size_t>({op})")
@@ -1802,7 +1802,7 @@ impl CppInterfaceGenerator<'_> {
                     if self.r#gen.opts.symmetric {
                         uwriteln!(
                             self.r#gen.c_src.src,
-                            "return static_cast<{}>({});",
+                            "return reinterpret_cast<{}>({});",
                             self.r#gen.opts.ptr_type(),
                             func.params.first().unwrap().name
                         );
@@ -1833,7 +1833,7 @@ impl CppInterfaceGenerator<'_> {
                         let classname = class_namespace(self, func, variant).join("::");
                         uwriteln!(
                             self.r#gen.c_src.src,
-                            "return static_cast<{}*>({});",
+                            "return reinterpret_cast<{}*>({});",
                             classname,
                             func.params.first().unwrap().name
                         );

@@ -420,8 +420,7 @@ mod core {}
                 || (test.name == /*async*/"yield-loop-receives-events"
                     && component.name != "middle")
                 || (matches!(component.kind, crate::Kind::Test)
-                    && (test.name == "skip"
-                        || test.name == /*async*/"simple-pending-import"
+                    && (test.name == /*async*/"simple-pending-import"
                         || test.name == "simple-yield"
                         || test.name == /*async*/"cancel-import"))
                 || (matches!(component.kind, crate::Kind::Runner)

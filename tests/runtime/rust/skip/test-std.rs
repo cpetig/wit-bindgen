@@ -10,5 +10,5 @@ impl exports::exports::Guest for Test {
     fn bar() {}
 }
 
-#[unsafe(export_name = "exports#foo")]
+#[cfg_attr(target_arch = "wasm32", unsafe(export_name = "exports#foo"))]
 pub extern "C" fn foo() {}

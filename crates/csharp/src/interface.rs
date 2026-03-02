@@ -646,6 +646,7 @@ impl InterfaceGenerator<'_> {
                             &mut bindgen,
                             name.clone(),
                             &param.ty,
+                            false,
                         )
                     })
                     .collect();
@@ -676,6 +677,7 @@ var {async_status_var} = {raw_name}({wasm_params});
                     &mut bindgen,
                     buffer.clone(),
                     &ty,
+                    false,
                 );
                 let return_type = self.type_name_with_qualifier(&ty, true);
 

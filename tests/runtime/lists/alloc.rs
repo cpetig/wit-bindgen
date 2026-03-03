@@ -26,5 +26,8 @@ unsafe impl GlobalAlloc for A {
     }
 }
 pub fn get() -> usize {
+    #[cfg(not(target_arch = "wasm32"))]
+    return 0;
+    #[cfg(target_arch = "wasm32")]
     ALLOC_AMT.load(SeqCst)
 }

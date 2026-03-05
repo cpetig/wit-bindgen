@@ -1011,26 +1011,12 @@ impl Runner {
             }
             std::fs::create_dir(composed_wasm.clone())?;
 
-            // remove the language extension from the filename
             let mut new_file = composed_wasm.clone();
-            let oldname = runner_wasm.file_name().unwrap().to_str().unwrap();
-            let langext = oldname.rfind('-').unwrap();
-            let (pre, post) = oldname.split_at(langext);
-            let langextend = post.find('.').unwrap();
-            let (_, post) = post.split_at(langextend);
-            let newname = format!("{}{}", pre, post);
-            new_file.push(&newname);
-            //            new_file.push(&(runner_wasm.file_name().unwrap()));
+            new_file.push("librunner.so");
             symlink(runner_wasm, new_file)?;
-            for (_c, p) in test_components.iter() {
-                // remove the language extension from the filename
+            for (c, p) in test_components.iter() {
+                let newname = format!("lib{}.so", c.bindgen.world);
                 let mut new_file = composed_wasm.clone();
-                let oldname = p.file_name().unwrap().to_str().unwrap();
-                let langext = oldname.rfind('-').unwrap();
-                let (pre, post) = oldname.split_at(langext);
-                let langextend = post.find('.').unwrap();
-                let (_, post) = post.split_at(langextend);
-                let newname = format!("{}{}", pre, post);
                 new_file.push(&newname);
                 symlink(p, new_file)?;
             }

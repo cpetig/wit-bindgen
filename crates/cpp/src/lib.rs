@@ -3380,31 +3380,29 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         operands[0]
                     );
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
-                } else if self.r#gen.r#gen.opts.api_style == APIStyle::Symmetric
-                    && matches!(self.variant, AbiVariant::GuestExport)
-                {
-                    if self.r#gen.r#gen.opts.symmetric {
-                        format!(
+                } else {
+                    match (
+                        self.variant,
+                        self.r#gen.r#gen.opts.api_style,
+                        self.r#gen.r#gen.opts.symmetric,
+                    ) {
+                        (AbiVariant::GuestExport, APIStyle::Symmetric, true) => format!(
                             "wit::span<{inner} const>(reinterpret_cast<{inner}*>({}), {len})",
                             operands[0]
-                        )
-                    } else {
-                        format!(
+                        ),
+                        (AbiVariant::GuestExport, APIStyle::Symmetric, false) => format!(
                             "wit::vector<{inner} const>(reinterpret_cast<{inner}*>({}), {len}).get_view()",
                             operands[0]
-                        )
-                    }
-                } else {
-                    if self.r#gen.r#gen.opts.symmetric {
-                        format!(
-                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(reinterpret_cast<{inner}*>({}), {len}))",
+                        ),
+                        (AbiVariant::GuestExport, APIStyle::Asymmetric, true) => format!(
+                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(reinterpret_cast<{inner} const *>({}), {len}))",
                             operands[0]
-                        )
-                    } else {
-                        format!(
-                            "wit::vector<{inner}>(reinterpret_cast<{inner}*>({}), {len})",
-                            operands[0]
-                        )
+                        ),
+                        (AbiVariant::GuestImport, _, _)
+                        | (AbiVariant::GuestExport, APIStyle::Asymmetric, false) => {
+                            format!("wit::vector<{inner}>(({inner}*)({}), {len})", operands[0])
+                        }
+                        (_, _, _) => todo!(),
                     }
                 };
                 results.push(result);

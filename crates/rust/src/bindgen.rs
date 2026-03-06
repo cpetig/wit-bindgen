@@ -746,20 +746,24 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::ListCanonLift { .. } => {
                 let tmp = self.tmp();
                 let len = format!("len{tmp}");
-                self.push_str(&format!("let {} = {};\n", len, operands[1]));
+                self.push_str(&format!("let {len} = {};\n", operands[1]));
+                let ptr = operands[0].clone();
                 let vec = self.r#gen.path_to_vec();
                 let result = if !self.r#gen.r#gen.opts.symmetric || self.r#gen.in_import {
                     format!(
-                        "<_ as From<{vec}<_>>>::from({vec}::from_raw_parts({}.cast(), {1}, {1}))",
-                        operands[0], len
+                        "<_ as From<{vec}<_>>>::from({vec}::from_raw_parts({ptr}.cast(), {0}, {0}))",
+                        len
                     )
                 } else {
-                    format!(
-                        "unsafe {{ std::slice::from_raw_parts({}.cast(), {1}) }}.to_vec()",
-                        operands[0], len
-                    )
+                    format!("unsafe {{ std::slice::from_raw_parts({ptr}.cast(), {len}) }}.to_vec()")
                 };
-                results.push(result);
+                if self.r#gen.r#gen.opts.symmetric {
+                    results.push(format!(
+                        "if {len} == 0 {{ {vec}::new() }} else {{ {result} }}"
+                    ));
+                } else {
+                    results.push(result);
+                }
             }
 
             Instruction::StringLower { realloc } => {

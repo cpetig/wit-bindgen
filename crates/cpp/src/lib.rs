@@ -3439,7 +3439,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             operands[0]
                         ),
                         (AbiVariant::GuestExport, APIStyle::Asymmetric, true) => format!(
-                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(static_cast<{inner} const *>({}), {len}))",
+                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(reinterpret_cast<{inner} const *>({}), {len}))",
                             operands[0]
                         ),
                         (AbiVariant::GuestImport, _, _)

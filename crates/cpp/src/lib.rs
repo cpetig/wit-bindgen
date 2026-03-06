@@ -3395,10 +3395,17 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         )
                     }
                 } else {
-                    format!(
-                        "wit::vector<{inner}>(reinterpret_cast<{inner}*>({}), {len})",
-                        operands[0]
-                    )
+                    if self.r#gen.r#gen.opts.symmetric {
+                        format!(
+                            "wit::vector<{inner}>::from_view(wit::span<{inner} const>(reinterpret_cast<{inner}*>({}), {len}))",
+                            operands[0]
+                        )
+                    } else {
+                        format!(
+                            "wit::vector<{inner}>(reinterpret_cast<{inner}*>({}), {len})",
+                            operands[0]
+                        )
+                    }
                 };
                 results.push(result);
             }

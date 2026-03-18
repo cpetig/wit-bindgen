@@ -428,6 +428,32 @@ impl symmetric_executor::Guest for Guest {
         symmetric_executor::CallbackRegistration::new(CallbackRegistrationInternal(id))
     }
 
+    fn register_unique(
+        trigger: symmetric_executor::EventSubscription,
+        callback: symmetric_executor::CallbackFunction,
+        data: symmetric_executor::CallbackData,
+    ) -> Option<symmetric_executor::CallbackRegistration> {
+        match EXECUTOR.try_lock() {
+            Ok(lock) => {
+                let cb: CallbackType = unsafe { transmute(callback.handle()) };
+                let data2 = data.handle() as *mut OpaqueData;
+                if lock
+                    .active_tasks
+                    .iter()
+                    .any(|e| e.callback == Some(CallbackEntry(cb, data2)))
+                {
+                    _ = callback.take_handle();
+                    _ = data.take_handle();
+                    None
+                } else {
+                    drop(lock);
+                    Some(Self::register(trigger, callback, data))
+                }
+            }
+            Err(_) => Some(Self::register(trigger, callback, data)),
+        }
+    }
+
     fn block_on(trigger: symmetric_executor::EventSubscription) {
         let trigger: EventSubscriptionInternal = trigger.into_inner();
         if DEBUGGING {
@@ -548,6 +574,9 @@ struct EventInner {
 struct EventGenerator(Arc<Mutex<EventInner>>);
 
 type CallbackType = fn(*mut OpaqueData) -> CallbackState;
+
+#[allow(unpredictable_function_pointer_comparisons)]
+#[derive(PartialEq)]
 struct CallbackEntry(CallbackType, *mut OpaqueData);
 
 unsafe impl Send for CallbackEntry {}

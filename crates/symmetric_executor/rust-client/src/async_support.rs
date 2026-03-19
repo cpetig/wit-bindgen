@@ -148,7 +148,12 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
             drop(state_inner);
             // now the mutex is unlocked
             for waiting_for in events_to_register_to.drain(..) {
-                super::register(waiting_for, symmetric_callback::<F>, obj);
+                if super::register_unique(waiting_for, symmetric_callback::<F>, obj).is_none() {
+                    #[cfg(feature = "trace")]
+                    println!("already registered");
+                    let mut state_inner = unsafe { &mut *state }.lock().unwrap();
+                    state_inner.instances -= 1;
+                }
             }
             #[cfg(feature = "trace")]
             println!(" chain {:x?}", wait_chain);

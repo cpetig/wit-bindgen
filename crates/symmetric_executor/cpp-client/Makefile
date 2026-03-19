@@ -2,7 +2,7 @@ CXXFLAGS=-I../../cpp/helper-types -I../../cpp/test_headers -g -fPIC -std=c++20
 
 all: libruntime.a
 
-libruntime.a: module.o
+libruntime.a: module.o executor_import.o
 	${AR} rcuvs $@ $^
 
 clean:

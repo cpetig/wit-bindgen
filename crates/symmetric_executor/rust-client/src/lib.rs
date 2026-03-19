@@ -24,10 +24,20 @@ pub fn register<T>(
     event: EventSubscription,
     f: extern "C" fn(*mut T) -> CallbackState,
     data: *mut T,
-) {
+) -> symmetric_executor::CallbackRegistration {
     let callback = unsafe { CallbackFunction::from_handle(f as *const () as usize) };
     let cb_data = unsafe { CallbackData::from_handle(data as usize) };
-    symmetric_executor::register(event, callback, cb_data);
+    symmetric_executor::register(event, callback, cb_data)
+}
+
+pub fn register_unique<T>(
+    event: EventSubscription,
+    f: extern "C" fn(*mut T) -> CallbackState,
+    data: *mut T,
+) -> Option<symmetric_executor::CallbackRegistration> {
+    let callback = unsafe { CallbackFunction::from_handle(f as *const () as usize) };
+    let cb_data = unsafe { CallbackData::from_handle(data as usize) };
+    symmetric_executor::register_unique(event, callback, cb_data)
 }
 
 // #[no_mangle]

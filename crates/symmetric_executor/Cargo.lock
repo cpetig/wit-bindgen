@@ -177,6 +177,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
+name = "macro-string"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59a9dbbfc75d2688ed057456ce8a3ee3f48d12eec09229f560f3643b9f275653"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -372,7 +383,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "bitflags",
  "futures",
@@ -381,7 +392,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "anyhow",
  "heck",
@@ -393,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "anyhow",
  "heck",
@@ -407,9 +418,10 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.53.1"
+version = "0.54.0"
 dependencies = [
  "anyhow",
+ "macro-string",
  "prettyplease",
  "proc-macro2",
  "quote",

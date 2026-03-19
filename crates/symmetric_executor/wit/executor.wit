@@ -62,6 +62,8 @@ interface symmetric-executor {
     run: func();
     /// Register a callback for an event
     register: func(trigger: event-subscription, callback: callback-function, data: callback-data) -> callback-registration;
+    /// Register a callback for an event, skip if already active
+    register-unique: func(trigger: event-subscription, callback: callback-function, data: callback-data) -> option<callback-registration>;
     /// Wait for a specific event
     block-on: func(trigger: event-subscription);
 }

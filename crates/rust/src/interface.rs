@@ -27,6 +27,7 @@ pub struct InterfaceGenerator<'a> {
     pub return_pointer_area_align: Alignment,
     pub(super) needs_runtime_module: bool,
     pub(super) needs_deallocate: bool,
+    pub(super) needs_wit_map: bool,
 }
 
 /// A description of the "mode" in which a type is printed.
@@ -476,7 +477,12 @@ macro_rules! {macro_name} {{
         if self.needs_runtime_module {
             let root = self.path_to_root();
             if !root.is_empty() {
-                return format!("use {root}_rt;\n{src}");
+                let wit_map_use = if self.needs_wit_map {
+                    format!("use {root}_rt::WitMap;\n")
+                } else {
+                    String::new()
+                };
+                return format!("use {root}_rt;\n{wit_map_use}{src}");
             }
         }
         src
@@ -873,7 +879,7 @@ pub mod vtable{ordinal} {{
 
     fn lower_to_memory(&mut self, address: &str, value: &str, ty: &Type, module: &str) -> String {
         let symmetric = self.r#gen.opts.symmetric;
-        let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
+        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, false);
         abi::lower_to_memory(
             f.r#gen.resolve,
             &mut f,
@@ -892,7 +898,7 @@ pub mod vtable{ordinal} {{
         indirect: bool,
         module: &str,
     ) -> String {
-        let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
+        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, false);
         abi::deallocate_lists_in_types(f.r#gen.resolve, types, operands, indirect, &mut f);
         format!("unsafe {{ {} }}", String::from(f.src))
     }
@@ -904,14 +910,14 @@ pub mod vtable{ordinal} {{
         indirect: bool,
         module: &str,
     ) -> String {
-        let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
+        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, false);
         abi::deallocate_lists_and_own_in_types(f.r#gen.resolve, types, operands, indirect, &mut f);
         format!("unsafe {{ {} }}", String::from(f.src))
     }
 
     fn lift_from_memory(&mut self, address: &str, ty: &Type, module: &str) -> String {
         let symmetric = self.r#gen.opts.symmetric;
-        let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
+        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, false);
         let result = abi::lift_from_memory(f.r#gen.resolve, &mut f, address.into(), ty, symmetric);
         format!("unsafe {{ {}\n{result} }}", String::from(f.src))
     }
@@ -923,7 +929,13 @@ pub mod vtable{ordinal} {{
         params: Vec<String>,
         async_: bool,
     ) {
-        let mut f = FunctionBindgen::new(self, params, module, false);
+        let mut f = FunctionBindgen::new(
+            self,
+            params,
+            module,
+            false,
+            self.r#gen.should_return_self(func),
+        );
         abi::call(
             f.r#gen.resolve,
             if async_ {
@@ -1157,7 +1169,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             }
             lowers.push("ParamsLower(_ptr,)".to_string());
         } else {
-            let mut f = FunctionBindgen::new(self, Vec::new(), module, true);
+            let mut f = FunctionBindgen::new(self, Vec::new(), module, true, false);
             let mut results = Vec::new();
             for (i, Param { ty, .. }) in func.params.iter().enumerate() {
                 let name = format!("_lower{i}");
@@ -1209,8 +1221,13 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         }
         uwriteln!(
             self.src,
-            "_MySubtask {{ _unused: core::marker::PhantomData }}.call(({})).await",
-            params.join(" ")
+            "_MySubtask {{ _unused: core::marker::PhantomData }}.call(({})).await{}",
+            params.join(" "),
+            if self.r#gen.should_return_self(func) {
+                ";\nself"
+            } else {
+                ""
+            }
         );
     }
 
@@ -1252,7 +1269,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             );
         }
 
-        let mut f = FunctionBindgen::new(self, params, self.wasm_import_module, false);
+        let mut f = FunctionBindgen::new(self, params, self.wasm_import_module, false, false);
         let variant = if async_ {
             AbiVariant::GuestExportAsync
         } else {
@@ -1328,7 +1345,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             let params = self.print_post_return_sig(func);
             self.src.push_str("{ unsafe {\n");
 
-            let mut f = FunctionBindgen::new(self, params, self.wasm_import_module, false);
+            let mut f = FunctionBindgen::new(self, params, self.wasm_import_module, false, false);
             abi::post_return(f.r#gen.resolve, func, &mut f);
             let FunctionBindgen {
                 needs_cleanup_list,
@@ -1636,7 +1653,11 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 }
             }
         } else {
-            self.print_result_type(&func.result);
+            if self.r#gen.should_return_self(func) {
+                self.push_str("&Self");
+            } else {
+                self.print_result_type(&func.result);
+            }
         }
         params
     }
@@ -1957,10 +1978,11 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
     }
 
     fn print_ty(&mut self, ty: &Type, mode: TypeMode) {
-        // If we have a typedef of a string or a list, the typedef is an alias
-        // for `String` or `Vec<T>`. If this is a borrow, instead of borrowing
-        // them as `&String` or `&Vec<T>`, use `&str` or `&[T]` so that callers
-        // don't need to create owned copies.
+        // If we have a typedef of a string, list, or map, the typedef is an
+        // alias for `String`, `Vec<T>`, or `Map<K, V>`. If this is a borrow,
+        // instead of borrowing them as `&String` or `&Vec<T>`, use `&str` or
+        // `&[T]` so that callers don't need to create owned copies. Maps are
+        // borrowed as `&Map<K, V>`.
         if let Type::Id(id) = ty {
             let id = dealias(self.resolve, *id);
             let typedef = &self.resolve.types[id];
@@ -1974,6 +1996,12 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 TypeDefKind::List(element) => {
                     if mode.lifetime.is_some() {
                         self.print_list(element, mode);
+                        return;
+                    }
+                }
+                TypeDefKind::Map(key, value) => {
+                    if mode.lifetime.is_some() {
+                        self.print_map(key, value, mode);
                         return;
                     }
                 }
@@ -2120,6 +2148,26 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             self.print_ty(ty, next_mode);
             self.push_str(">");
         }
+    }
+
+    fn print_map(&mut self, key: &Type, value: &Type, mode: TypeMode) {
+        let key_mode = self.filter_mode(key, mode);
+        let value_mode = self.filter_mode(value, mode);
+        if mode.lists_borrowed {
+            let lifetime = mode.lifetime.unwrap();
+            self.push_str("&");
+            if lifetime != "'_" {
+                self.push_str(lifetime);
+                self.push_str(" ");
+            }
+        }
+        let path = self.r#gen.map_type_path();
+        self.push_str(&path);
+        self.push_str("::<");
+        self.print_ty(key, key_mode);
+        self.push_str(", ");
+        self.print_ty(value, value_mode);
+        self.push_str(">");
     }
 
     fn print_generics(&mut self, lifetime: Option<&str>) {
@@ -3131,6 +3179,17 @@ impl<'a> {camel}Borrow<'a>{{
         }
     }
 
+    fn type_map(&mut self, id: TypeId, _name: &str, key: &Type, value: &Type, docs: &Docs) {
+        for (name, mode) in self.modes_of(id) {
+            self.rustdoc(docs);
+            self.push_str(&format!("pub type {name}"));
+            self.print_generics(mode.lifetime);
+            self.push_str(" = ");
+            self.print_map(key, value, mode);
+            self.push_str(";\n");
+        }
+    }
+
     fn type_fixed_length_list(
         &mut self,
         id: TypeId,
@@ -3269,6 +3328,10 @@ impl<'a, 'b> wit_bindgen_core::AnonymousTypeGenerator<'a> for AnonTypeGenerator<
 
     fn anonymous_type_list(&mut self, _id: TypeId, ty: &Type, _docs: &Docs) {
         self.interface.print_list(ty, self.mode)
+    }
+
+    fn anonymous_type_map(&mut self, _id: TypeId, key: &Type, value: &Type, _docs: &Docs) {
+        self.interface.print_map(key, value, self.mode);
     }
 
     fn anonymous_type_future(&mut self, _id: TypeId, ty: &Option<Type>, _docs: &Docs) {

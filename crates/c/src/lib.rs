@@ -1755,6 +1755,10 @@ void __wasm_export_{ns}_{snake}_dtor({ns}_{snake}_t* arg) {{
         todo!("named fixed-length list types are not yet supported in the C backend")
     }
 
+    fn type_map(&mut self, _id: TypeId, _name: &str, _key: &Type, _value: &Type, _docs: &Docs) {
+        todo!("map types are not yet supported in the C backend")
+    }
+
     fn type_future(&mut self, id: TypeId, _name: &str, _ty: &Option<Type>, docs: &Docs) {
         self.src.h_defs("\n");
         self.docs(docs, SourceType::HDefs);
@@ -1875,6 +1879,10 @@ impl<'a> wit_bindgen_core::AnonymousTypeGenerator<'a> for InterfaceGenerator<'a>
         _docs: &Docs,
     ) {
         todo!("print_anonymous_type for fixed length list");
+    }
+
+    fn anonymous_type_map(&mut self, _id: TypeId, _key: &Type, _value: &Type, _docs: &Docs) {
+        todo!("anonymous map types are not yet supported in the C backend");
     }
 }
 

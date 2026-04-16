@@ -413,7 +413,7 @@ impl WorldGenerator for MoonBit {
         r#gen.types(id);
 
         for (_, func) in resolve.interfaces[id].functions.iter() {
-            r#gen.export(func);
+            r#gen.export(None, func, None);
         }
 
         let fragment = r#gen.finish();
@@ -694,7 +694,7 @@ impl InterfaceGenerator<'_> {
         );
     }
 
-    fn export(&mut self, interface: Option<&WorldKey>, func: &Function, _: Option<String>) {
+    fn export(&mut self, _interface: Option<&WorldKey>, func: &Function, _: Option<String>) {
         // Determine if is async
         let async_ = self
             .world_gen
@@ -2350,7 +2350,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
             Instruction::IterBasePointer => results.push("iter_base".into()),
 
-            Instruction::CallWasm { sig, name } => {
+            Instruction::CallWasm { sig, name, .. } => {
                 let assignment = match &sig.results[..] {
                     [result] => {
                         let ty = wasm_type(*result);

@@ -806,7 +806,7 @@ pub mod vtable{ordinal} {{
         {vtable_part1}
         {dealloc_lists_arg}
         layout: unsafe {{
-            ::std::alloc::Layout::from_size_align_unchecked({size}, {align})
+            ::core::alloc::Layout::from_size_align_unchecked({size}, {align})
         }},
         {lift_arg},
         {lower_arg},
@@ -2077,6 +2077,11 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             if let Some(path) = self.path_to_interface(id) {
                 return format!("{path}::{name}");
             }
+        }
+        // World-level aliases live at macro root. `path_to_root()` is
+        // `""` at root, `"super::super::"` in stream/future payload mode.
+        if let TypeOwner::World(_) = self.resolve.types[id].owner {
+            return format!("{}{name}", self.path_to_root());
         }
         name
     }

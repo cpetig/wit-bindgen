@@ -114,6 +114,21 @@ impl LanguageMethods for C {
                 || test.name == /*async*/"threading-builtins"
                 || test.name == /*async*/"ping-pong")
     }
+
+    fn should_fail_runtime2(
+        &self,
+        runner: &Runner,
+        name: &str,
+        component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric()
+            && (name == "strings"/* utf-16 */
+                || matches!(component.kind, crate::Kind::Test) && (
+                    name == "variants"
+                    || name == "records"
+                    || name == "flavorful"
+                    || name == "lists"))
+    }
 }
 
 fn prepare(runner: &mut Runner, compiler: PathBuf) -> Result<()> {

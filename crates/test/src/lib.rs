@@ -814,6 +814,15 @@ impl Runner {
                             should_fail = true;
                         }
                     }
+                    for (component, _path) in test_components.iter() {
+                        if component
+                            .language
+                            .obj()
+                            .should_fail_runtime2(&me, &case_name, component)
+                        {
+                            should_fail = true;
+                        }
+                    }
                     let case_name = case_name.to_string();
                     let runner = runner.clone();
                     let runner_path = runner_path.to_path_buf();

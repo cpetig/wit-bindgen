@@ -20,7 +20,9 @@ void assert_str(test_string_t* str, const char16_t* expected) {
 
 void exports_test_strings_to_test_take_basic(test_string_t *str1) {
   assert_str(str1, u"latin utf16");
+#ifdef __wasm32__
   test_string_free(str1);
+#endif
 }
 
 void exports_test_strings_to_test_return_unicode(test_string_t *ret) {
@@ -36,5 +38,7 @@ void exports_test_strings_to_test_roundtrip(test_string_t *str, test_string_t *r
   ret->len = str->len;
   ret->ptr = (uint16_t *) malloc(ret->len * 2);
   memcpy(ret->ptr, str->ptr, 2 * ret->len);
+#ifdef __wasm32__
   test_string_free(str);
+#endif
 }

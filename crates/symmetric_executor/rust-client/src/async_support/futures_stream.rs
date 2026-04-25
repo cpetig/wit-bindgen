@@ -12,21 +12,19 @@ use super::StreamReader;
 ///
 /// Obtain one via [`StreamReader::into_stream`]
 pub struct RawStreamReaderStream<O: 'static> {
-    //    reader: StreamReader<O>,
     state: StreamAdapterState<O>,
 }
 
 // /// Convenience alias for the common vtable-based case.
-pub type StreamReaderStream<T> = StreamReader<T>;
-//RawStreamReaderStream<&'static StreamVtable<T>>;
+//pub type StreamReaderStream<T> = StreamReader<T>;
 
-type ReadNextFut<O> = Pin<Box<dyn Future<Output = (StreamResult, Vec<O>)>>>;
+type ReadNextFut<O> = Pin<Box<dyn Future<Output = (StreamReader<O>, StreamResult, Vec<O>)>>>;
 
 enum StreamAdapterState<O: 'static> {
     /// The reader is idle and ready for the next read.
     Idle(StreamReader<O>),
     /// A read is in progress.
-    Reading(StreamReader<O>, ReadNextFut<O>),
+    Reading(ReadNextFut<O>),
     /// Results to draw from
     Results(StreamReader<O>, Vec<O>),
     /// The stream has been exhausted.
@@ -42,20 +40,20 @@ impl<O: Send + Unpin + 'static> futures::stream::Stream for RawStreamReaderStrea
         loop {
             match core::mem::replace(&mut self.state, StreamAdapterState::Complete) {
                 StreamAdapterState::Idle(mut reader) => {
-                    let read = reader.read(Vec::new());
                     let fut: ReadNextFut<O> = Box::pin(async move {
-                        let item = read.await;
-                        item
+                        let read = reader.read(Vec::with_capacity(3));
+                        let (res, item) = read.await;
+                        (reader, res, item)
                     });
-                    self.state = StreamAdapterState::Reading(reader, fut);
+                    self.state = StreamAdapterState::Reading(fut);
                     // Loop to immediately poll the new future.
                 }
-                StreamAdapterState::Reading(reader, mut fut) => match fut.as_mut().poll(cx) {
+                StreamAdapterState::Reading(mut fut) => match fut.as_mut().poll(cx) {
                     Poll::Pending => {
-                        self.state = StreamAdapterState::Reading(reader, fut);
+                        self.state = StreamAdapterState::Reading(fut);
                         return Poll::Pending;
                     }
-                    Poll::Ready((StreamResult::Complete(_v), mut vec)) => {
+                    Poll::Ready((reader, StreamResult::Complete(_v), mut vec)) => {
                         if !vec.is_empty() {
                             let item = vec.remove(0);
                             self.state = StreamAdapterState::Results(reader, vec);
@@ -64,7 +62,7 @@ impl<O: Send + Unpin + 'static> futures::stream::Stream for RawStreamReaderStrea
                             self.state = StreamAdapterState::Idle(reader);
                         }
                     }
-                    Poll::Ready((_reader, _vec)) => {
+                    Poll::Ready((_reader, _, _vec)) => {
                         self.state = StreamAdapterState::Complete;
                         return Poll::Ready(None);
                     }

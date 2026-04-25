@@ -406,6 +406,7 @@ mod core {}
                 || (matches!(component.kind, crate::Kind::Test)
                     && (test.name == /*async*/"simple-pending-import"
                         || test.name == "simple-yield"
+//                        || test.name == /*async*/"stream-to-futures-stream"
                         || test.name == /*async*/"cancel-import"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "cancel-import"

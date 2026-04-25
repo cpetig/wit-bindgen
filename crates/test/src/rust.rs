@@ -422,8 +422,13 @@ mod core {}
                         || test.name == /*async*/"ping-pong")))
     }
 
-    fn should_fail_runtime2(&self, _runner: &Runner, name: &str, _component: &crate::Component) -> bool {
-        name == "skip" || name == "with-only-affects-imports"
+    fn should_fail_runtime2(
+        &self,
+        runner: &Runner,
+        name: &str,
+        _component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric() && (name == "skip" || name == "with-only-affects-imports")
     }
 }
 
@@ -457,7 +462,7 @@ impl Runner {
             cmd.arg(&format!("-Ldependency={}", dep.display()));
         }
         for dep in state.native_deps.iter() {
-             cmd.arg(&format!("-Lnative={}", dep.display()));
+            cmd.arg(&format!("-Lnative={}", dep.display()));
         }
         cmd
     }

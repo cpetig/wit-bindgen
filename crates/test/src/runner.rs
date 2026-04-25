@@ -4,6 +4,7 @@ use std::process::Command;
 
 /// Helper structure representing a test runner, which is a program argument
 /// followed by a number of optional arguments.
+#[derive(Debug)]
 pub struct TestRunner {
     path: OsString,
     args: Vec<String>,

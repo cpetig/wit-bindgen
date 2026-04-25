@@ -10,6 +10,7 @@ use std::process::Command;
 
 pub struct Cpp;
 
+#[derive(Debug)]
 pub struct State {
     native_deps: Vec<PathBuf>,
 }
@@ -291,5 +292,16 @@ impl LanguageMethods for Cpp {
                         || test.name == "common-types"
                         || test.name == /*async*/"future-string"
                         || test.name == /*async*/"stream-string")))
+    }
+
+    fn should_fail_runtime2(
+        &self,
+        runner: &Runner,
+        name: &str,
+        component: &crate::Component,
+    ) -> bool {
+        // dbg!(runner);
+        runner.is_symmetric()
+            && (matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
     }
 }

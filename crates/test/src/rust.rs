@@ -25,7 +25,7 @@ pub struct RustOpts {
 
 pub struct Rust;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct State {
     wit_bindgen_rlib: PathBuf,
     futures_rlib: PathBuf,

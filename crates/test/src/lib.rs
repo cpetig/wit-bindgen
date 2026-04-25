@@ -257,6 +257,7 @@ struct Verify<'a> {
 }
 
 /// Helper structure to package up runtime state associated with executing tests.
+#[derive(Debug)]
 struct Runner {
     opts: Opts,
     rust_state: Option<rust::State>,

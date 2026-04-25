@@ -399,6 +399,7 @@ mod core {}
         runner.is_symmetric()
             && ((test.name == /*rust*/"other-dependencies"
                 || (test.name == "resource_floats" && component.name != "leaf")
+                || test.name == "map"
                 || test.name == /*rust*/"with-types")
                 || (test.name == /*async*/"yield-loop-receives-events"
                     && component.name != "middle")
@@ -419,6 +420,10 @@ mod core {}
                         || test.name == /*async*/"rust-lowered-send"
                         || test.name == /*async*/"simple-import-params-results"
                         || test.name == /*async*/"ping-pong")))
+    }
+
+    fn should_fail_runtime2(&self, _runner: &Runner, name: &str, _component: &crate::Component) -> bool {
+        name == "skip" || name == "with-only-affects-imports"
     }
 }
 

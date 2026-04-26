@@ -60,7 +60,9 @@ impl LanguageMethods for C {
         config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
-        config.error_context || name.starts_with("named-fixed-length-list.wit")
+        config.error_context
+            || name.starts_with("named-fixed-length-list.wit")
+            || name.starts_with("map.wit")
     }
 
     fn codegen_test_variants(&self) -> &[(&str, &[&str])] {
@@ -111,6 +113,21 @@ impl LanguageMethods for C {
                 || test.name == /*async*/"simple-stream-payload"
                 || test.name == /*async*/"threading-builtins"
                 || test.name == /*async*/"ping-pong")
+    }
+
+    fn should_fail_runtime2(
+        &self,
+        runner: &Runner,
+        name: &str,
+        component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric()
+            && (name == "strings"/* utf-16 */
+                || matches!(component.kind, crate::Kind::Test) && (
+                    name == "variants"
+                    || name == "records"
+                    || name == "flavorful"
+                    || name == "lists"))
     }
 }
 

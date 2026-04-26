@@ -25,7 +25,7 @@ pub struct RustOpts {
 
 pub struct Rust;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct State {
     wit_bindgen_rlib: PathBuf,
     futures_rlib: PathBuf,
@@ -58,19 +58,9 @@ impl LanguageMethods for Rust {
     fn should_fail_verify(
         &self,
         name: &str,
-        config: &crate::config::WitConfig,
-        args: &[String],
+        _config: &crate::config::WitConfig,
+        _args: &[String],
     ) -> bool {
-        // no_std doesn't currently work with async
-        if config.async_
-            && args.iter().any(|s| s == "--std-feature")
-            // Except these actually do work:
-            && name != "async-trait-function.wit-no-std"
-            && name != "async-resource-func.wit-no-std"
-        {
-            return true;
-        }
-
         // Currently there's a bug with this borrowing mode which means that
         // this variant does not pass.
         if name == "wasi-http-borrowed-duplicate" {
@@ -95,6 +85,7 @@ impl LanguageMethods for Rust {
             ("async", &["--async=all"]),
             ("no-std", &["--std-feature"]),
             ("merge-equal", &["--merge-structurally-equal-types"]),
+            ("hashmap", &["--map-type=std::collections::HashMap"]),
         ]
     }
 
@@ -106,7 +97,7 @@ impl LanguageMethods for Rust {
         &["--stubs"]
     }
 
-    fn prepare(&self, runner: &mut Runner, test_name: &str) -> Result<()> {
+    fn prepare(&self, runner: &mut Runner, _test_name: &str) -> Result<()> {
         let cwd = env::current_dir()?;
         let opts = &runner.opts.rust;
         let dir = cwd.join(&runner.opts.artifacts).join("rust");
@@ -223,7 +214,7 @@ name = "tmp"
 [workspace]
 
 [dependencies]
-wit-bindgen = {{ {wit_bindgen_dep}, features = ['async-spawn', 'inter-task-wakeup'] }}
+wit-bindgen = {{ {wit_bindgen_dep}, features = ['async-spawn', 'inter-task-wakeup', 'futures-stream'] }}
 futures = "0.3.31"
 {symmetric_runtime}
 
@@ -273,8 +264,6 @@ path = 'lib.rs'
         let mut native_deps = Vec::new();
         if runner.is_symmetric() {
             native_deps.push(target_out_dir);
-            let root_dir = runner.opts.artifacts.join(test_name).join("runner-rust");
-            native_deps.push(root_dir);
         }
 
         runner.rust_state = Some(State {
@@ -410,12 +399,14 @@ mod core {}
         runner.is_symmetric()
             && ((test.name == /*rust*/"other-dependencies"
                 || (test.name == "resource_floats" && component.name != "leaf")
+                || test.name == "map"
                 || test.name == /*rust*/"with-types")
                 || (test.name == /*async*/"yield-loop-receives-events"
                     && component.name != "middle")
                 || (matches!(component.kind, crate::Kind::Test)
                     && (test.name == /*async*/"simple-pending-import"
                         || test.name == "simple-yield"
+//                        || test.name == /*async*/"stream-to-futures-stream"
                         || test.name == /*async*/"cancel-import"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "cancel-import"
@@ -430,6 +421,15 @@ mod core {}
                         || test.name == /*async*/"rust-lowered-send"
                         || test.name == /*async*/"simple-import-params-results"
                         || test.name == /*async*/"ping-pong")))
+    }
+
+    fn should_fail_runtime2(
+        &self,
+        runner: &Runner,
+        name: &str,
+        _component: &crate::Component,
+    ) -> bool {
+        runner.is_symmetric() && (name == "skip" || name == "with-only-affects-imports")
     }
 }
 

@@ -169,6 +169,7 @@ pub trait InterfaceGenerator<'a> {
     fn type_alias(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs);
     fn type_list(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs);
     fn type_fixed_length_list(&mut self, id: TypeId, name: &str, ty: &Type, size: u32, docs: &Docs);
+    fn type_map(&mut self, id: TypeId, name: &str, key: &Type, value: &Type, docs: &Docs);
     fn type_builtin(&mut self, id: TypeId, name: &str, ty: &Type, docs: &Docs);
     fn type_future(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs);
     fn type_stream(&mut self, id: TypeId, name: &str, ty: &Option<Type>, docs: &Docs);
@@ -206,7 +207,7 @@ where
         TypeDefKind::FixedLengthList(t, size) => {
             generator.type_fixed_length_list(id, name, t, *size, &ty.docs)
         }
-        TypeDefKind::Map(..) => todo!(),
+        TypeDefKind::Map(key, value) => generator.type_map(id, name, key, value, &ty.docs),
         TypeDefKind::Unknown => unreachable!(),
     }
 }
@@ -220,6 +221,7 @@ pub trait AnonymousTypeGenerator<'a> {
     fn anonymous_type_result(&mut self, id: TypeId, ty: &Result_, docs: &Docs);
     fn anonymous_type_list(&mut self, id: TypeId, ty: &Type, docs: &Docs);
     fn anonymous_type_fixed_length_list(&mut self, id: TypeId, ty: &Type, size: u32, docs: &Docs);
+    fn anonymous_type_map(&mut self, id: TypeId, key: &Type, value: &Type, docs: &Docs);
     fn anonymous_type_future(&mut self, id: TypeId, ty: &Option<Type>, docs: &Docs);
     fn anonymous_type_stream(&mut self, id: TypeId, ty: &Option<Type>, docs: &Docs);
     fn anonymous_type_type(&mut self, id: TypeId, ty: &Type, docs: &Docs);
@@ -245,7 +247,7 @@ pub trait AnonymousTypeGenerator<'a> {
             TypeDefKind::FixedLengthList(t, size) => {
                 self.anonymous_type_fixed_length_list(id, t, *size, &ty.docs)
             }
-            TypeDefKind::Map(..) => todo!(),
+            TypeDefKind::Map(key, value) => self.anonymous_type_map(id, key, value, &ty.docs),
             TypeDefKind::Unknown => unreachable!(),
         }
     }

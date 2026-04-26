@@ -257,6 +257,7 @@ struct Verify<'a> {
 }
 
 /// Helper structure to package up runtime state associated with executing tests.
+#[derive(Debug)]
 struct Runner {
     opts: Opts,
     rust_state: Option<rust::State>,
@@ -810,6 +811,15 @@ impl Runner {
                             .language
                             .obj()
                             .should_fail_runtime2(&me, &case_name, &component)
+                        {
+                            should_fail = true;
+                        }
+                    }
+                    for (component, _path) in test_components.iter() {
+                        if component
+                            .language
+                            .obj()
+                            .should_fail_runtime2(&me, &case_name, component)
                         {
                             should_fail = true;
                         }

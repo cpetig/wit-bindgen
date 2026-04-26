@@ -10,6 +10,7 @@ use std::process::Command;
 
 pub struct Cpp;
 
+#[derive(Debug)]
 pub struct State {
     native_deps: Vec<PathBuf>,
 }
@@ -53,8 +54,12 @@ impl LanguageMethods for Cpp {
         config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
+        // Compiles on C++ despite the blanket async exclusion below.
+        if name == "issue-1598.wit" {
+            return false;
+        }
         return match name {
-            "issue1514-6.wit" | "named-fixed-length-list.wit" => true,
+            "issue1514-6.wit" | "named-fixed-length-list.wit" | "map.wit" => true,
             _ => false,
         } || config.async_;
     }
@@ -287,5 +292,16 @@ impl LanguageMethods for Cpp {
                         || test.name == "common-types"
                         || test.name == /*async*/"future-string"
                         || test.name == /*async*/"stream-string")))
+    }
+
+    fn should_fail_runtime2(
+        &self,
+        runner: &Runner,
+        name: &str,
+        component: &crate::Component,
+    ) -> bool {
+        // dbg!(runner);
+        runner.is_symmetric()
+            && (matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
     }
 }

@@ -19,6 +19,7 @@ pub use stream_support::{
 pub use subtask::Subtask;
 
 pub mod future_support;
+mod futures_stream;
 pub mod rust_buffer;
 pub mod stream_support;
 mod subtask;

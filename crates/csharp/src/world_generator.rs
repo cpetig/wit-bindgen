@@ -585,14 +585,25 @@ impl WorldGenerator for CSharp {
             )
         }
 
+        if self.needs_async_support {
+            self.needs_export_return_area = true;
+        }
+
         // Declare a statically-allocated return area, if needed. We only do
         // this for export bindings, because import bindings allocate their
         // return-area on the stack.
         if self.needs_export_return_area {
             let mut ret_area_str = String::new();
 
-            let (array_size, element_type) =
-                dotnet_aligned_array(self.return_area_size, self.return_area_align);
+            //TODO: only generate if used.  Currently we need this for any async function, even if it returns void.
+            let (array_size, element_type) = if self.return_area_size == 0 {
+                (1, "byte".to_owned())
+            } else {
+                crate::world_generator::dotnet_aligned_array(
+                    self.return_area_size,
+                    self.return_area_align,
+                )
+            };
 
             uwrite!(
                 ret_area_str,
@@ -813,14 +824,6 @@ impl WorldGenerator for CSharp {
                     .as_bytes(),
                 );
             }
-
-            // For the time being, we generate both a .wit file and a .o file to
-            // represent the component type.  Newer releases of the .NET runtime
-            // will be able to use the former, but older ones will need the
-            // latter.
-            //
-            // TODO: stop generating the .o file once a new-enough release is
-            // available for us to test using only the .wit file.
 
             {
                 // When generating a WIT file, we first round-trip through the

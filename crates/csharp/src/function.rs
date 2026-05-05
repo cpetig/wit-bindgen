@@ -2,6 +2,7 @@ use crate::csharp_ident::ToCSharpIdent;
 use crate::interface::{InterfaceGenerator, ParameterType, variant_new_func_name};
 use crate::world_generator::CSharp;
 use heck::ToUpperCamelCase;
+use regex::Regex;
 use std::fmt::Write;
 use std::mem;
 use std::ops::Deref;
@@ -299,6 +300,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         target: String,
         func_name: String,
         oper: String,
+        use_await: bool,
     ) -> String {
         let ret = self.locals.tmp("ret");
         if self.interface_gen.csharp_gen.opts.with_wit_results {
@@ -312,7 +314,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             .type_name_with_qualifier(&func.result.unwrap(), true);
         let is_async = InterfaceGenerator::is_async(&func.kind);
 
-        if is_async {
+        if is_async && !use_await {
             uwriteln!(self.src, "Task<{ty}> {ret};");
         } else {
             uwriteln!(self.src, "{ty} {ret};");
@@ -362,7 +364,11 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         } else {
             format!("{target}.{func_name}({oper})")
         };
-        uwriteln!(self.src, "{ret} = {head}{val}{tail};");
+        uwriteln!(
+            self.src,
+            "{ret} = {}{head}{val}{tail};",
+            if use_await { "await " } else { "" }
+        );
         if !self.results.is_empty() {
             self.interface_gen.csharp_gen.needs_wit_exception = true;
             let cases = cases.join("\n");
@@ -1011,6 +1017,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     results: block_results,
                     element: block_element,
                     base,
+                    ..
                 } = self.blocks.pop().unwrap();
                 assert!(block_results.is_empty());
 
@@ -1229,6 +1236,71 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
 
                 let is_async = InterfaceGenerator::is_async(self.kind);
+                if is_async && self.interface_gen.direction == Direction::Export {
+                    // The UCO method cannot be async so we create and call another async method.
+                    // This allows us to follow the same codegen pattern as other languages.
+                    self.interface_gen.csharp_gen.needs_async_support = true;
+                    let async_func_name = format!("{}Async", self.func_name.to_upper_camel_case());
+
+                    uwriteln!(
+                        self.src,
+                        r#"var task = {async_func_name}({oper});
+                        if (task.IsCompletedSuccessfully)
+                        {{
+                            return (int)CallbackCode.Exit;
+                        }}
+
+                        // TODO: Defer dropping borrowed resources until a result is returned.
+                        ContextTask* contextTaskPtr = AsyncSupport.ContextGet();
+
+                        return (int)CallbackCode.Wait | (int)(contextTaskPtr->WaitableSetHandle << 4);
+                }}
+                    "#
+                    );
+
+                    // Start the Async function
+                    uwriteln!(
+                        self.src,
+                        r#"public static async Task {async_func_name}({})
+                    {{
+                        var cleanups = new global::System.Collections.Generic.List<global::System.Action>();
+
+                    "#,
+                        func.params
+                            .iter()
+                            .enumerate()
+                            .map(|(i, p)| {
+                                let mut param_type =
+                                    self.interface_gen.type_name_with_qualifier(&p.ty, false);
+
+                                // Resource types need the Impl class to be distinguised.
+                                match p.ty {
+                                    Type::Id(type_id) => {
+                                        let id = dealias(self.interface_gen.resolve, type_id);
+
+                                        let kind = &self.interface_gen.resolve.types[id].kind;
+                                        match kind {
+                                            TypeDefKind::Handle(handle) => {
+                                                let (Handle::Own(ty) | Handle::Borrow(ty)) = handle;
+                                                param_type =
+                                                    self.interface_gen.csharp_gen.all_resources
+                                                        [&ty]
+                                                        .export_impl_name();
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    _ => {}
+                                }
+
+                                format!("{} {}", param_type, strip_lift(&operands[i]))
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                    self.needs_cleanup = true;
+                }
+
                 match self.kind {
                     FunctionKind::Constructor(id) => {
                         let target =
@@ -1251,20 +1323,26 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         match func.result {
                             None => {
                                 if is_async {
-                                    uwriteln!(self.src, "var ret = {target}.{func_name}({oper});");
+                                    uwriteln!(self.src, "await {target}.{func_name}({oper});");
                                 } else {
                                     uwriteln!(self.src, "{target}.{func_name}({oper});");
                                 }
                             }
                             Some(_ty) => {
-                                let ret = self.handle_result_call(func, target, func_name, oper);
+                                let ret = self.handle_result_call(
+                                    func,
+                                    target,
+                                    func_name,
+                                    oper,
+                                    is_async && self.interface_gen.direction == Direction::Export,
+                                );
                                 results.push(ret);
                             }
                         }
                     }
                 }
 
-                if is_async {
+                if is_async && self.interface_gen.direction == Direction::Import {
                     self.interface_gen.csharp_gen.needs_async_support = true;
                     let name = self.func_name.to_upper_camel_case();
                     let ret_param = match func.result {
@@ -1414,6 +1492,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     results: block_results,
                     base,
                     element: _,
+                    ..
                 } = self.blocks.pop().unwrap();
                 assert!(block_results.is_empty());
 
@@ -1557,11 +1636,17 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::FutureLower { payload, ty: _ }
             | Instruction::StreamLower { payload, ty: _ } => {
                 let op = &operands[0];
-                let generic_type_name = match payload {
-                    Some(generic_type) => &self
-                        .interface_gen
-                        .type_name_with_qualifier(generic_type, false),
-                    None => "",
+                let (generic_type_name, generic_type_name_with_qualifier) = match payload {
+                    Some(generic_type) => {
+                        let name = self
+                            .interface_gen
+                            .type_name_with_qualifier(generic_type, false);
+                        let qualified_name = self
+                            .interface_gen
+                            .type_name_with_qualifier(generic_type, true);
+                        (name, qualified_name)
+                    }
+                    None => (String::new(), String::new()),
                 };
 
                 match inst {
@@ -1569,6 +1654,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         self.interface_gen.add_future(
                             self.func_name,
                             &generic_type_name,
+                            &generic_type_name_with_qualifier,
                             **payload,
                         );
                     }
@@ -1576,6 +1662,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         self.interface_gen.add_stream(
                             self.func_name,
                             &generic_type_name,
+                            &generic_type_name_with_qualifier,
                             **payload,
                         );
                     }
@@ -1584,8 +1671,26 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 results.push(format!("{op}.TakeHandle()"));
             }
 
-            Instruction::AsyncTaskReturn { name: _, params: _ } => {
+            Instruction::AsyncTaskReturn { name, params: _ } => {
+                let name = name
+                    .strip_prefix("[task-return]")
+                    .unwrap()
+                    .to_upper_camel_case();
                 uwriteln!(self.src, "// TODO: task_cancel.forget();");
+                if self.interface_gen.direction == Direction::Export {
+                    uwriteln!(self.src, "{name}TaskReturn({});", operands.join(", "));
+
+                    if self.needs_cleanup {
+                        uwriteln!(
+                            self.src,
+                            "
+                        foreach (var cleanup in cleanups)
+                        {{
+                            cleanup();
+                        }}"
+                        );
+                    }
+                }
             }
 
             Instruction::FutureLift { payload, ty: _ }
@@ -1636,6 +1741,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         self.interface_gen.add_future(
                             self.func_name,
                             &generic_type_name,
+                            &generic_type_name_with_qualifier,
                             **payload,
                         );
                     }
@@ -1643,6 +1749,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         self.interface_gen.add_stream(
                             self.func_name,
                             &generic_type_name,
+                            &generic_type_name_with_qualifier,
                             **payload,
                         );
                     }
@@ -1651,18 +1758,193 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.interface_gen.csharp_gen.needs_async_support = true;
             }
 
+            Instruction::MapLower {
+                key,
+                value,
+                realloc,
+            } => {
+                let Block {
+                    body,
+                    results: block_results,
+                    base,
+                    map_key,
+                    map_value,
+                    ..
+                } = self.blocks.pop().unwrap();
+                assert!(block_results.is_empty());
+
+                let map = &operands[0];
+                let entry = self
+                    .interface_gen
+                    .csharp_gen
+                    .sizes
+                    .record([*key, *value].iter().copied());
+                let size = entry.size.size_wasm32();
+                let align = entry.align.align_wasm32();
+                let key_ty = self.interface_gen.type_name_with_qualifier(key, true);
+                let value_ty = self.interface_gen.type_name_with_qualifier(value, true);
+
+                let index = self.locals.tmp("index");
+                let address = self.locals.tmp("address");
+                let buffer_size = self.locals.tmp("bufferSize");
+                let entry_var = self.locals.tmp("entry");
+
+                let (array_size, element_type) =
+                    crate::world_generator::dotnet_aligned_array(size, align);
+                let ret_area = self.locals.tmp("retArea");
+
+                let array_size = if align > 1 {
+                    format!("{array_size} * {map}.Count + 1")
+                } else {
+                    format!("{array_size} * {map}.Count")
+                };
+
+                match realloc {
+                    None => {
+                        self.needs_cleanup = true;
+                        self.interface_gen.csharp_gen.needs_align_stack_ptr = true;
+                        uwrite!(
+                            self.src,
+                            "
+                            void* {address};
+                            if (({size} * {map}.Count) < 1024) {{
+                                var {ret_area} = stackalloc {element_type}[{array_size}];
+                                {address} = MemoryHelper.AlignStackPtr({ret_area}, {align});
+                            }}
+                            else
+                            {{
+                                var {buffer_size} = {size} * (nuint){map}.Count;
+                                {address} = global::System.Runtime.InteropServices.NativeMemory.AlignedAlloc({buffer_size}, {align});
+                                cleanups.Add(() => global::System.Runtime.InteropServices.NativeMemory.AlignedFree({address}));
+                            }}
+                            "
+                        );
+                    }
+                    Some(_) => {
+                        uwrite!(
+                            self.src,
+                            "
+                            var {buffer_size} = {size} * (nuint){map}.Count;
+                            void* {address} = global::System.Runtime.InteropServices.NativeMemory.AlignedAlloc({buffer_size}, {align});
+                            "
+                        );
+                    }
+                }
+
+                uwrite!(
+                    self.src,
+                    "
+                    int {index} = 0;
+                    foreach (var {entry_var} in {map}) {{
+                        {key_ty} {map_key} = {entry_var}.Key;
+                        {value_ty} {map_value} = {entry_var}.Value;
+                        int {base} = (int){address} + ({index} * {size});
+                        {body}
+                        ++{index};
+                    }}
+                    "
+                );
+
+                results.push(format!("(int){address}"));
+                results.push(format!("{map}.Count"));
+            }
+
+            Instruction::MapLift { key, value, .. } => {
+                let Block {
+                    body,
+                    results: block_results,
+                    base,
+                    ..
+                } = self.blocks.pop().unwrap();
+                let address = &operands[0];
+                let length = &operands[1];
+                let map = self.locals.tmp("map");
+                let key_ty = self.interface_gen.type_name_with_qualifier(key, true);
+                let value_ty = self.interface_gen.type_name_with_qualifier(value, true);
+                let entry = self
+                    .interface_gen
+                    .csharp_gen
+                    .sizes
+                    .record([*key, *value].iter().copied());
+                let size = entry.size.size_wasm32();
+                let index = self.locals.tmp("index");
+
+                let body_key = &block_results[0];
+                let body_value = &block_results[1];
+
+                uwrite!(
+                    self.src,
+                    "
+                    var {map} = new global::System.Collections.Generic.Dictionary<{key_ty}, {value_ty}>((int){length});
+                    for (int {index} = 0; {index} < {length}; ++{index}) {{
+                        nint {base} = {address} + ({index} * {size});
+                        {body}
+                        {map}[{body_key}] = {body_value};
+                    }}
+
+                    if ({length} > 0) {{
+                        global::System.Runtime.InteropServices.NativeMemory.Free((void*){address});
+                    }}
+                    "
+                );
+
+                results.push(map);
+            }
+
+            Instruction::IterMapKey { .. } => {
+                results.push(self.block_storage.last().unwrap().map_key.clone())
+            }
+
+            Instruction::IterMapValue { .. } => {
+                results.push(self.block_storage.last().unwrap().map_value.clone())
+            }
+
+            Instruction::GuestDeallocateMap { key, value } => {
+                let Block {
+                    body,
+                    results: block_results,
+                    base,
+                    ..
+                } = self.blocks.pop().unwrap();
+                assert!(block_results.is_empty());
+
+                let address = &operands[0];
+                let length = &operands[1];
+                let entry = self
+                    .interface_gen
+                    .csharp_gen
+                    .sizes
+                    .record([*key, *value].iter().copied());
+                let size = entry.size.size_wasm32();
+
+                if !body.trim().is_empty() {
+                    let index = self.locals.tmp("index");
+
+                    uwrite!(
+                        self.src,
+                        "
+                        for (int {index} = 0; {index} < {length}; ++{index}) {{
+                            int {base} = (int){address} + ({index} * {size});
+                            {body}
+                        }}
+                        "
+                    );
+                }
+
+                uwriteln!(
+                    self.src,
+                    r#"global::System.Runtime.InteropServices.NativeMemory.Free((void*){});"#,
+                    operands[0]
+                );
+            }
+
             Instruction::ErrorContextLower { .. }
             | Instruction::ErrorContextLift { .. }
             | Instruction::DropHandle { .. }
             | Instruction::FixedLengthListLift { .. }
             | Instruction::FixedLengthListLower { .. }
             | Instruction::FixedLengthListLowerToMemory { .. }
-            | Instruction::FixedLengthListLiftFromMemory { .. }
-            | Instruction::MapLower { .. }
-            | Instruction::MapLift { .. }
-            | Instruction::IterMapKey { .. }
-            | Instruction::IterMapValue { .. }
-            | Instruction::GuestDeallocateMap { .. } => {
+            | Instruction::FixedLengthListLiftFromMemory { .. } => {
                 dbg!(inst);
                 todo!()
             }
@@ -1738,6 +2020,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             body: mem::take(&mut self.src),
             element: self.locals.tmp("element"),
             base: self.locals.tmp("basePtr"),
+            map_key: self.locals.tmp("mapKey"),
+            map_value: self.locals.tmp("mapValue"),
         });
 
         self.is_block = true;
@@ -1748,6 +2032,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             body,
             element,
             base,
+            map_key,
+            map_value,
         } = self.block_storage.pop().unwrap();
 
         self.blocks.push(Block {
@@ -1755,6 +2041,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             results: mem::take(operands),
             element,
             base,
+            map_key,
+            map_value,
         });
         self.is_block = false;
     }
@@ -1766,6 +2054,14 @@ impl Bindgen for FunctionBindgen<'_, '_> {
     fn is_list_canonical(&self, _resolve: &Resolve, element: &Type) -> bool {
         crate::world_generator::is_primitive(element)
     }
+}
+
+// TODO: this is not great, we want the underlying parameter, but it is passed in operands already lifted.
+// This regex will transform unchecked((uint)(p0)) -> p0
+pub fn strip_lift(lifted_param: &String) -> String {
+    let re = Regex::new(r"(?x)unchecked\(\s*\(\s*\w+\s*\)\s*\(\s*(\w+)\s*\)\s*\)").unwrap();
+    let out = re.replace_all(lifted_param, "$1");
+    out.into_owned()
 }
 
 /// Dereference any number `TypeDefKind::Type` aliases to retrieve the target type.
@@ -1827,6 +2123,8 @@ struct Block {
     results: Vec<String>,
     element: String,
     base: String,
+    map_key: String,
+    map_value: String,
 }
 
 struct Fixed {
@@ -1838,6 +2136,8 @@ struct BlockStorage {
     body: String,
     element: String,
     base: String,
+    map_key: String,
+    map_value: String,
 }
 
 #[derive(Clone)]

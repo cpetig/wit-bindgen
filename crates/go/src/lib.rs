@@ -1329,7 +1329,10 @@ func {camel}({go_params}) {go_results} {{
 
             (
                 if abi::guest_export_needs_post_return(resolve, func) {
-                    format!("{PINNER} := &runtime.Pinner{{}}")
+                    format!(
+                        "{PINNER} := &runtime.Pinner{{}}
+                    defer {PINNER}.Unpin()"
+                    )
                 } else {
                     String::new()
                 },

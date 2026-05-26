@@ -256,6 +256,30 @@ impl<'i> InterfaceGenerator<'i> {
             } else {
                 " as i32"
             };
+            let box_path = self.path_to_box();
+            uwriteln!(
+                self.src,
+                r#"#[doc(hidden)]
+/// Place the value on the heap or in an arena, return the raw pointer.
+/// Override for custom resource allocators.
+fn _resource_into_raw(val: Option<Self>) -> *mut Option<Self> where Self: Sized
+{{
+    {box_path}::into_raw({box_path}::new(val))
+}}
+
+#[doc(hidden)]
+/// Consumes the value from the handle, handle is invalid afterwards.
+/// 
+/// # Safety
+/// 
+/// See Box::from_raw
+unsafe fn _resource_from_raw(handle: *mut Option<Self>) -> Option<Self> where Self: Sized
+{{
+    *unsafe {{ {box_path}::from_raw(handle) }}
+}}
+
+                    "#
+            );
             if self.r#gen.opts.symmetric {
                 uwriteln!(
                     self.src,
@@ -2912,7 +2936,6 @@ impl<'a> wit_bindgen_core::InterfaceGenerator<'a> for InterfaceGenerator<'a> {
                 Identifier::World(_) => unimplemented!("resource exports from worlds"),
                 Identifier::StreamOrFuturePayload => unreachable!(),
             };
-            let box_path = self.path_to_box();
             uwriteln!(
                 self.src,
                 r#"
@@ -2933,8 +2956,7 @@ impl {camel} {{
     pub fn new<T: Guest{camel}>(val: T) -> Self {{
         Self::type_guard::<T>();
         let val: _{camel}Rep<T> = Some(val);
-        let ptr: *mut _{camel}Rep<T> =
-            {box_path}::into_raw({box_path}::new(val));
+        let ptr: *mut _{camel}Rep<T> = T::_resource_into_raw(val);
         unsafe {{
             Self::from_handle(T::_resource_new(ptr.cast()))
         }}
@@ -2993,9 +3015,9 @@ impl {camel} {{
     }}
 
     #[doc(hidden)]
-    pub unsafe fn dtor<T: 'static>(handle: *mut u8) {{
+    pub unsafe fn dtor<T: 'static + Guest{camel}>(handle: *mut u8) {{
         Self::type_guard::<T>();
-        let _ = unsafe {{ {box_path}::from_raw(handle as *mut _{camel}Rep<T>) }};
+        let _ = unsafe {{ T::_resource_from_raw(handle as *mut _{camel}Rep<T>) }};
     }}
 
     fn as_ptr<T: Guest{camel}>(&self) -> *mut _{camel}Rep<T> {{

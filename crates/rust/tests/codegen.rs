@@ -218,7 +218,7 @@ mod retyped_list {
 }
 
 #[allow(unused, reason = "testing codegen, not functionality")]
-mod method_chaining {
+mod owning_method_chaining {
     wit_bindgen::generate!({
         inline: r#"
         package test:method-chaining;
@@ -232,6 +232,193 @@ mod method_chaining {
         }
         "#,
         generate_all,
-        enable_method_chaining: true
+        chainable_methods: ["all"]
     });
+}
+
+#[allow(unused, reason = "testing codegen, not functionality")]
+mod borrowing_method_chaining {
+    wit_bindgen::generate!({
+        inline: r#"
+        package test:method-chaining;
+        world test {
+            resource a {
+                constructor();
+                set-a: func(arg: u32);
+                set-b: func(arg: bool);
+                do: func();
+            }
+        }
+        "#,
+        generate_all,
+        chainable_methods: ["&all"]
+    });
+}
+
+#[allow(unused, reason = "testing codegen, not functionality")]
+mod merge_structurally_equal_types {
+    wit_bindgen::generate!({
+        inline: r#"
+        package test:merge-structurally-equal-types;
+
+        interface blag {
+            variant kind1 { a, b(u64), c }
+            variant kind2 { a, b(u64), c }
+            record kind3 { a: input-stream }
+            record kind4 { a: input-stream }
+            record tree { l: t1, r: t1  }
+            record t1 { l: t2, r: t2 }
+            record t2 { l: t3, r: t3 }
+            record t3 { l: kind1, r: kind2 }
+            record t-stream  { tree: tree, %stream: option<borrow<input-stream>> }
+            resource input-stream {
+                read: func(len: u64) -> list<u8>;
+            }
+            f: func(x: kind1) -> kind2;
+            g: func(x: kind3) -> kind4;
+            h: func(x: t-stream) -> tree;
+        }
+
+        interface blah {
+            use blag.{input-stream, kind4, t-stream};
+            variant kind5 { a, b(u64), c }
+            variant kind6 { a, c, b(u64) }
+            record kind7 { a: borrow<input-stream> }
+            record tt { l: t2, r: t2  }
+            record t1 { l: t3, r: t3 }
+            record t2 { l: t1, r: t1 }
+            record t3 { l: kind5, r: kind5 }
+            variant custom-result { ok(tt), err }
+            f: func(x: kind6) -> kind5;
+            g: func(x: kind7) -> kind4;
+            h: func(x: t-stream) -> custom-result;
+
+            record r1 { a: u8 }
+            type a1 = u8;
+            record r2 { a: a1 }
+            alias-type: func(x: r1) -> r2;
+        }
+
+        interface resources {
+            resource r1;
+            type r2 = r1;
+
+            record t1 { a: r1 }
+            record t2 { a: r2 }
+            alias-own: func(x: t1) -> t2;
+            alias-aggregate: func(x: option<t1>) -> option<t2>;
+        }
+
+        world proxy {
+            import blag;
+            export blag;
+            import blah;
+            export blah;
+        }
+        "#,
+        generate_all,
+        merge_structurally_equal_types: true
+    });
+}
+
+mod targeted_attributes {
+    wit_bindgen::generate!({
+        inline: r#"
+        package test:attrs;
+
+        interface iface {
+            record point { x: u32, y: u32 }
+            enum color { red, green, blue }
+            variant shape { circle(u32), square(point), a-b }
+
+            // used as both return and param, so `duplicate_if_necessary` generates
+            // an owned `String` form and a borrowed `&str` form
+            record label { text: string }
+
+            paint: func(c: color) -> color;
+            draw: func(s: shape) -> shape;
+            round: func(p: point) -> point;
+            make-label: func() -> label;
+            use-label: func(l: label) -> u32;
+        }
+
+        world test {
+            import iface;
+        }
+        "#,
+        generate_all,
+        ownership: Borrowing { duplicate_if_necessary: true },
+        additional_type_attributes: {
+            // two entries for one selector, both apply
+            "test:attrs/iface/point": [#[derive(PartialEq, Eq)] #[derive(Hash)]],
+            "test:attrs/iface/color": [#[doc = "a primary color"] #[derive(Hash)]],
+            "test:attrs/iface/shape": [#[derive(PartialEq)]],
+            "test:attrs/iface/label": [#[derive(PartialEq, Eq)]],
+        },
+        additional_member_attributes: {
+            "test:attrs/iface/point.x": [#[allow(dead_code)]],
+            "test:attrs/iface/color.red": [#[doc = "the primary color"]],
+            "test:attrs/iface/shape.circle": [#[doc = "a round shape"]],
+            // `a-b` upper-camels to `AB`, so this matches only via the raw wit name
+            "test:attrs/iface/shape.a-b": [#[allow(dead_code)]],
+            "test:attrs/iface/label.text": [#[allow(dead_code)]],
+        },
+    });
+
+    #[test]
+    fn injected_derives_are_usable() {
+        use test::attrs::iface::{Color, LabelParam, LabelResult, Point, Shape};
+
+        let a = Point { x: 1, y: 2 };
+        assert_eq!(a, a.clone());
+        let mut set = std::collections::HashSet::new();
+        set.insert(a);
+        assert!(set.contains(&Point { x: 1, y: 2 }));
+
+        let mut colors = std::collections::HashSet::new();
+        colors.insert(Color::Red);
+        assert!(colors.contains(&Color::Red));
+        assert!(!colors.contains(&Color::Blue));
+
+        assert_eq!(Shape::Circle(3), Shape::Circle(3).clone());
+        assert_ne!(Shape::Circle(3), Shape::Circle(4));
+
+        // both the owned `String` form and the borrowed `&str` form got the derives
+        assert_eq!(
+            LabelResult { text: "hi".into() },
+            LabelResult { text: "hi".into() }
+        );
+        assert_eq!(LabelParam { text: "hi" }, LabelParam { text: "hi" });
+        assert_ne!(LabelParam { text: "hi" }, LabelParam { text: "bye" });
+    }
+}
+
+// Guards where `@version` lands in a qualified selector: after the interface,
+// before the type.
+mod versioned_selectors {
+    wit_bindgen::generate!({
+        inline: r#"
+        package test:hier@1.2.3;
+        interface types {
+            record alpha { x: u32 }
+            get-alpha: func() -> alpha;
+        }
+        world w { import types; }
+        "#,
+        generate_all,
+        additional_type_attributes: {
+            "test:hier/types@1.2.3/alpha": [#[derive(PartialEq, Eq)] #[derive(PartialOrd, Ord)]],
+        },
+        additional_member_attributes: {
+            "test:hier/types@1.2.3/alpha.x": [#[allow(dead_code)]],
+        },
+    });
+
+    #[test]
+    fn versioned_selectors_resolve() {
+        use test::hier::types::Alpha;
+
+        assert_eq!(Alpha { x: 1 }, Alpha { x: 1 });
+        assert!(Alpha { x: 1 } < Alpha { x: 2 });
+    }
 }

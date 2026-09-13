@@ -79,7 +79,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         # moonbit removed from language matrix for now - causing CI failures
-        lang: [c, rust, csharp, cpp, go]
+        # csharp removed from language matrix for now - causing CI failures
+        lang: [c, rust, cpp, go, d]
         exclude:
           # For now csharp doesn't work on macos, so exclude it from testing.
           - os: macos-latest
@@ -104,11 +105,28 @@ jobs:
         dotnet-version: '9.x'
       if: matrix.lang == 'csharp'
 
+    # As of this writing async tests require [a patched build of
+    # Go](https://github.com/dicej/go/releases/tag/go1.25.5-wasi-on-idle).
+    # Install this on Linux to get coverage, but don't install it on
+    # macOS/Windows to also get coverage for test-without-a-patched-toolchain.
+    - name: Install Patched Go
+      run: |
+        curl -OL https://github.com/dicej/go/releases/download/go1.25.5-wasi-on-idle/go-linux-amd64-bootstrap.tbz
+        tar xf go-linux-amd64-bootstrap.tbz
+        echo "$(pwd)/go-linux-amd64-bootstrap/bin" >> $GITHUB_PATH
+      if: matrix.lang == 'go' && matrix.os == 'ubuntu-latest'
+
     - name: Setup Go
       uses: actions/setup-go@v5
       with:
         go-version: 1.25.4
-      if: matrix.lang == 'go'
+      if: matrix.lang == 'go' && matrix.os != 'ubuntu-latest'
+
+    - name: Setup D
+      uses: dlang-community/setup-dlang@v2
+      with:
+        compiler: ldc-1.42
+      if: matrix.lang == 'd'
 
       # Hacky work-around for https://github.com/dotnet/runtime/issues/80619
     - run: dotnet new console -o /tmp/foo
@@ -130,39 +148,10 @@ jobs:
           --artifacts target/artifacts \
           --rust-wit-bindgen-path ./crates/guest-rust
 
-    # Run all runtime tests for this language, and also enable Rust in case this
-    # language only implements either the runner or test component
+    # Run all runtime tests for this language, and also enable Rust & C in case
+    # this language only implements either the runner or test component
     - run: |
-        cargo run test --languages rust,${{ matrix.lang }} tests/runtime \
-          --artifacts target/artifacts \
-          --rust-wit-bindgen-path ./crates/guest-rust
-
-  # While async is off-by-default and toolchains are percolating this is a
-  # separate job to get configured slightly differently.
-  async:
-    name: Test Async (allowed to fail)
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
-
-    - name: Install Rust
-      run: rustup update stable --no-self-update && rustup default stable
-    - run: rustup target add wasm32-wasip2
-
-    # As of this writing, we need [a patched build of
-    # Go](https://github.com/dicej/go/releases/tag/go1.25.5-wasi-on-idle) to
-    # support async.
-    - name: Install Patched Go
-      run: |
-        curl -OL https://github.com/dicej/go/releases/download/go1.25.5-wasi-on-idle/go-linux-amd64-bootstrap.tbz
-        tar xf go-linux-amd64-bootstrap.tbz
-        echo "$(pwd)/go-linux-amd64-bootstrap/bin" >> $GITHUB_PATH
-
-    - uses: ./.github/actions/install-wasi-sdk
-    - run: |
-        cargo run test --languages rust,c,go tests/runtime-async \
+        cargo run test --languages rust,c,${{ matrix.lang }} tests/runtime \
           --artifacts target/artifacts \
           --rust-wit-bindgen-path ./crates/guest-rust
 
@@ -176,11 +165,12 @@ jobs:
     - name: Install Rust
       run: rustup update stable --no-self-update && rustup default stable
     - run: rustup target add wasm32-wasip1
-    - run: cargo test
+    - run: cargo test --locked
     - run: cargo test -p wit-bindgen-core
     - run: cargo test -p wit-bindgen
     - run: cargo test -p wit-bindgen --all-features
     - run: cargo test -p wit-bindgen-rust
+    - run: cargo test -p wit-bindgen-markdown
     - run: cargo test --workspace --exclude 'wit-bindgen*'
     - run: rustup update nightly-2025-11-10 --no-self-update
     - run: rustup default nightly-2025-11-10
@@ -254,11 +244,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    # Verify MSRV for the whole workspace
     - run: rustup update 1.88.0 && rustup default 1.88.0
     - run: cargo check
-    # Verify the tighter MSRV of the `wit-bindgen` crate.
-    - run: rustup update 1.85.0 && rustup default 1.85.0
     - run: cargo check -p wit-bindgen --all-features
 
   verify-publish:
@@ -287,7 +274,6 @@ jobs:
       - verify-publish
       - check
       - msrv
-      # - async
     if: always()
 
     steps:

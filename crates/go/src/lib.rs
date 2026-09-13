@@ -45,12 +45,24 @@ fn remote_pkg(name: &str) -> String {
 }
 
 /// The version of github.com/bytecodealliance/go-pkg that's being used
-const REMOTE_PKG_VERSION: &str = "v0.2.1";
+const REMOTE_PKG_VERSION: &str = "v0.2.3";
 
 /// If a user specifies the `pkg_name` flag, the required version for the
 /// shared remote package isn't recorded. This enables downstream users to retrieve the version programmatically.
 pub fn remote_pkg_version() -> String {
     format!("go.bytecodealliance.org/pkg {REMOTE_PKG_VERSION}")
+}
+
+/// Appends `_` to `name` if it collides with a Go keyword.
+/// Source: https://go.dev/ref/spec#Keywords
+fn escape_go_keyword(name: String) -> String {
+    match name.as_str() {
+        "break" | "case" | "chan" | "const" | "continue" | "default" | "defer" | "else"
+        | "fallthrough" | "for" | "func" | "go" | "goto" | "if" | "import" | "interface"
+        | "map" | "package" | "range" | "return" | "select" | "struct" | "switch" | "type"
+        | "var" => format!("{name}_"),
+        _ => name,
+    }
 }
 
 #[derive(Default, Debug, Copy, Clone)]
@@ -221,9 +233,12 @@ struct Go {
     interface_names: HashMap<InterfaceId, WorldKey>,
     interfaces: BTreeMap<String, InterfaceData>,
     export_interfaces: BTreeMap<String, InterfaceData>,
-    types: HashSet<TypeId>,
+    // Add String to the types to allow for implements of the same type in different interfaces to be generated.
+    types: HashSet<(String, TypeId)>,
     resources: HashMap<TypeId, Direction>,
     futures_and_streams: HashMap<(TypeId, bool), Option<WorldKey>>,
+    // Tracks which `future`/`stream` declarations have already been generated.
+    generated_futures_and_streams: HashSet<FutureStreamDedup>,
 }
 
 impl Go {
@@ -251,7 +266,7 @@ impl Go {
         if local == owner && (exported ^ in_import) {
             String::new()
         } else {
-            let package = self.interface_name(resolve, owner);
+            let package = self.go_package_name(resolve, owner);
             let package = if exported {
                 format!("export_{package}")
             } else {
@@ -571,16 +586,16 @@ func wasm_{kind}_drop_writable_{snake}(handle int32)
 {lower}
 
 var wasm_{kind}_vtable_{snake} = witTypes.{upper_kind}Vtable[{payload}]{{
-	{size},
-	{align},
-	wasm_{kind}_read_{snake},
-	wasm_{kind}_write_{snake},
-	nil,
-	nil,
-	wasm_{kind}_drop_readable_{snake},
-	wasm_{kind}_drop_writable_{snake},
-	{lift_name},
-	{lower_name},
+	Size: {size},
+	Align: {align},
+	Read: wasm_{kind}_read_{snake},
+	Write: wasm_{kind}_write_{snake},
+	CancelRead: nil,
+	CancelWrite: nil,
+	DropReadable: wasm_{kind}_drop_readable_{snake},
+	DropWritable: wasm_{kind}_drop_writable_{snake},
+	Lift: {lift_name},
+	Lower: {lower_name},
 }}
 
 func Make{upper_kind}{camel}() (*witTypes.{upper_kind}Writer[{payload}], *witTypes.{upper_kind}Reader[{payload}]) {{
@@ -638,7 +653,7 @@ func Lift{upper_kind}{camel}(handle int32) *witTypes.{upper_kind}Reader[{payload
                                 } else {
                                     format!(
                                         "{}_",
-                                        self.interface_name(
+                                        self.go_package_name(
                                             resolve,
                                             Some(
                                                 &self
@@ -725,10 +740,11 @@ impl WorldGenerator for Go {
         false
     }
 
-    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
+    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) -> Result<()> {
         _ = world;
-        self.sizes.fill(resolve);
+        self.sizes.fill(resolve)?;
         self.imports.insert(remote_pkg("runtime"));
+        Ok(())
     }
 
     fn import_interface(
@@ -738,15 +754,17 @@ impl WorldGenerator for Go {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
-        if let WorldKey::Name(_) = name {
-            self.interface_names.insert(id, name.clone());
-        }
+        self.interface_names.insert(id, name.clone());
 
+        let go_package_name = self.go_package_name(resolve, Some(name));
         let mut data = {
             let mut generator = InterfaceGenerator::new(self, resolve, Some((id, name)), true);
             for (name, ty) in resolve.interfaces[id].types.iter() {
-                if !generator.generator.types.contains(ty) {
-                    generator.generator.types.insert(*ty);
+                if generator
+                    .generator
+                    .types
+                    .insert((go_package_name.clone(), *ty))
+                {
                     generator.define_type(name, *ty);
                 }
             }
@@ -757,7 +775,7 @@ impl WorldGenerator for Go {
             data.extend(self.import(resolve, func, Some(name)));
         }
         self.interfaces
-            .entry(self.interface_name(resolve, Some(name)))
+            .entry(go_package_name)
             .or_default()
             .extend(data);
 
@@ -770,15 +788,16 @@ impl WorldGenerator for Go {
         _world: WorldId,
         funcs: &[(&str, &Function)],
         _files: &mut Files,
-    ) {
+    ) -> Result<()> {
         let mut data = InterfaceData::default();
         for (_, func) in funcs {
             data.extend(self.import(resolve, func, None));
         }
         self.interfaces
-            .entry(self.interface_name(resolve, None))
+            .entry(self.go_package_name(resolve, None))
             .or_default()
             .extend(data);
+        Ok(())
     }
 
     fn export_interface(
@@ -788,30 +807,32 @@ impl WorldGenerator for Go {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
-        if let WorldKey::Name(_) = name {
-            self.interface_names.insert(id, name.clone());
-        }
+        self.interface_names.insert(id, name.clone());
 
+        let go_package_name = self.go_package_name(resolve, Some(name));
         for (type_name, ty) in &resolve.interfaces[id].types {
             let exported = matches!(resolve.types[*ty].kind, TypeDefKind::Resource)
                 || self.has_exported_resource(resolve, Type::Id(*ty));
 
             let mut generator = InterfaceGenerator::new(self, resolve, Some((id, name)), false);
 
-            if exported || !generator.generator.types.contains(ty) {
-                generator.generator.types.insert(*ty);
+            if generator
+                .generator
+                .types
+                .insert((go_package_name.clone(), *ty))
+                || exported
+            {
                 generator.define_type(type_name, *ty);
             }
 
             let data = generator.into();
 
-            let name = self.interface_name(resolve, Some(name));
             if exported {
                 &mut self.export_interfaces
             } else {
                 &mut self.interfaces
             }
-            .entry(name)
+            .entry(go_package_name.clone())
             .or_default()
             .extend(data);
         }
@@ -844,23 +865,24 @@ impl WorldGenerator for Go {
         _world: WorldId,
         types: &[(&str, TypeId)],
         _files: &mut Files,
-    ) {
+    ) -> Result<()> {
+        let package = self.go_package_name(resolve, None);
         let mut generator = InterfaceGenerator::new(self, resolve, None, true);
         for (name, ty) in types {
-            if !generator.generator.types.contains(ty) {
-                generator.generator.types.insert(*ty);
+            if generator.generator.types.insert((package.clone(), *ty)) {
                 generator.define_type(name, *ty);
             }
         }
         let data = generator.into();
-        self.interfaces
-            .entry(self.interface_name(resolve, None))
-            .or_default()
-            .extend(data);
+        self.interfaces.entry(package).or_default().extend(data);
+        Ok(())
     }
 
     fn finish(&mut self, resolve: &Resolve, id: WorldId, files: &mut Files) -> Result<()> {
         _ = (resolve, id);
+        // Error about unused async configuration to help catch configuration
+        // errors.
+        self.opts.async_.ensure_all_used()?;
 
         let version = env!("CARGO_PKG_VERSION");
         let packages = resolve
@@ -1060,7 +1082,7 @@ impl Go {
                 func.params
                     .iter()
                     .skip(if has_self { 1 } else { 0 })
-                    .map(|Param { name, .. }| name.to_lower_camel_case()),
+                    .map(|Param { name, .. }| escape_go_keyword(name.to_lower_camel_case())),
             )
             .collect::<Vec<_>>();
 
@@ -1379,7 +1401,7 @@ func wasm_export_post_return_{name}(result {results}) {{
             let results = self.func_results(resolve, func, interface, false, &mut imports);
 
             self.export_interfaces
-                .entry(self.interface_name(resolve, interface))
+                .entry(self.go_package_name(resolve, interface))
                 .or_default()
                 .extend(InterfaceData {
                     code: format!(
@@ -1422,7 +1444,7 @@ func wasm_export_{name}({params}) {results} {{
             .iter()
             .skip(if has_self { 1 } else { 0 })
             .map(|Param { name, ty, .. }| {
-                let name = name.to_lower_camel_case();
+                let name = escape_go_keyword(name.to_lower_camel_case());
                 let ty = self.type_name(resolve, *ty, interface, in_import, imports);
                 format!("{prefix}{name} {ty}")
             })
@@ -1488,6 +1510,36 @@ func wasm_export_{name}({params}) {results} {{
             if let hash_map::Entry::Vacant(e) = self.futures_and_streams.entry((ty, exported)) {
                 e.insert(interface.cloned());
 
+                let name = self.go_package_name(resolve, interface);
+
+                // Distinct `future`/`stream` types may share a
+                // payload type (e.g. when one payload is a type alias of the
+                // other, or when two anonymous payloads are structurally
+                // identical).  Since the names of the generated declarations
+                // are derived from the payload type, generating code for each
+                // of them would produce duplicate declarations, so dedupe on
+                // the mangled payload name instead.
+                let kind = match &resolve.types[ty].kind {
+                    TypeDefKind::Future(_) => "future",
+                    TypeDefKind::Stream(_) => "stream",
+                    _ => unreachable!(),
+                };
+                let snake = payload_type
+                    .map(|ty| self.mangle_name(resolve, ty, interface))
+                    .unwrap_or_else(|| "unit".into());
+
+                if !self
+                    .generated_futures_and_streams
+                    .insert(FutureStreamDedup {
+                        in_import,
+                        is_exported: exported,
+                        pkg_name: name.clone(),
+                        mangled_name: format!("{kind}_{snake}"),
+                    })
+                {
+                    continue;
+                }
+
                 let data = self.future_or_stream(
                     resolve,
                     ty,
@@ -1498,7 +1550,6 @@ func wasm_export_{name}({params}) {results} {{
                     &func.name,
                 );
 
-                let name = self.interface_name(resolve, interface);
                 if in_import || !exported {
                     &mut self.interfaces
                 } else {
@@ -1524,8 +1575,8 @@ func wasm_export_{name}({params}) {results} {{
         })
     }
 
-    fn interface_name(&self, resolve: &Resolve, interface: Option<&WorldKey>) -> String {
-        match interface {
+    fn go_package_name(&self, resolve: &Resolve, interface: Option<&WorldKey>) -> String {
+        let name = match interface {
             Some(WorldKey::Name(name)) => name.to_snake_case(),
             Some(WorldKey::Interface(id)) => {
                 let interface = &resolve.interfaces[*id];
@@ -1550,7 +1601,9 @@ func wasm_export_{name}({params}) {results} {{
                 format!("{namespace}_{package}_{version}{interface}")
             }
             None => "wit_world".into(),
-        }
+        };
+
+        escape_go_keyword(name)
     }
 
     fn func_name(
@@ -1559,7 +1612,7 @@ func wasm_export_{name}({params}) {results} {{
         interface: Option<&WorldKey>,
         func: &Function,
     ) -> String {
-        let prefix = self.interface_name(resolve, interface);
+        let prefix = self.go_package_name(resolve, interface);
         let name = func.name.to_snake_case().replace('.', "_");
 
         format!("{prefix}_{name}")
@@ -1855,7 +1908,7 @@ for index := 0; index < int({length}); index++ {{
                 let name = func.item_name().to_upper_camel_case();
                 let package = format!(
                     "export_{}",
-                    self.generator.interface_name(resolve, self.interface)
+                    self.generator.go_package_name(resolve, self.interface)
                 );
 
                 let call = match &func.kind {
@@ -1897,11 +1950,16 @@ for index := 0; index < int({length}); index++ {{
                         self.generator.tuples.insert(count);
                         self.imports.insert(remote_pkg("types"));
 
-                        let results = (0..count)
+                        let names = (0..count)
                             .map(|_| self.locals.tmp("result"))
+                            .collect::<Vec<_>>();
+                        let bindings = names.join(", ");
+                        let fields = names
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, name)| format!("F{idx}: {name}"))
                             .collect::<Vec<_>>()
                             .join(", ");
-
                         let types = tuple
                             .types
                             .iter()
@@ -1911,8 +1969,8 @@ for index := 0; index < int({length}); index++ {{
 
                         uwriteln!(
                             self.src,
-                            "{results} := {call}
-{result} := witTypes.Tuple{count}[{types}]{{{results}}}"
+                            "{bindings} := {call}
+{result} := witTypes.Tuple{count}[{types}]{{{fields}}}"
                         );
                     } else {
                         uwriteln!(self.src, "{result} := {call}");
@@ -2088,7 +2146,12 @@ if {value} {{
                     .map(|&ty| self.type_name(resolve, ty))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let fields = operands.join(", ");
+                let fields = operands
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, val)| format!("F{idx}: {val}"))
+                    .collect::<Vec<String>>()
+                    .join(", ");
                 self.imports.insert(remote_pkg("types"));
                 results.push(format!("witTypes.Tuple{count}[{types}]{{{fields}}}"));
             }
@@ -2108,9 +2171,15 @@ if {value} {{
                     results.push(format!("({op}).{field}"));
                 }
             }
-            Instruction::RecordLift { ty, .. } => {
+            Instruction::RecordLift { record, ty, .. } => {
                 let name = self.type_name(resolve, Type::Id(*ty));
-                let fields = operands.join(", ");
+                let fields = record
+                    .fields
+                    .iter()
+                    .zip(operands.iter())
+                    .map(|(field, op)| format!("{}: {op}", field.name.to_upper_camel_case()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 results.push(format!("{name}{{{fields}}}"));
             }
             Instruction::OptionLower {
@@ -3285,4 +3354,12 @@ fn maybe_gofmt<'a>(format: Format, code: &'a [u8]) -> Cow<'a, [u8]> {
 
         Cow::Borrowed(code)
     })
+}
+
+#[derive(Eq, PartialEq, Hash)]
+struct FutureStreamDedup {
+    in_import: bool,
+    is_exported: bool,
+    pkg_name: String,
+    mangled_name: String,
 }

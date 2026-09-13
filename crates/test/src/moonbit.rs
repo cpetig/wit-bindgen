@@ -33,7 +33,11 @@ impl LanguageMethods for MoonBit {
         ]
     }
 
-    fn prepare(&self, runner: &mut crate::Runner, _: &str) -> anyhow::Result<()> {
+    fn codegen_test_variants(&self) -> &[(&str, &[&str])] {
+        &[("async", &["--async=all"])]
+    }
+
+    fn prepare(&self, runner: &mut Runner, _: &str) -> anyhow::Result<()> {
         println!("Testing if MoonBit toolchain exists...");
         if runner
             .run_command(Command::new("moon").arg("version"))
@@ -120,13 +124,12 @@ impl LanguageMethods for MoonBit {
 
     fn should_fail_verify(
         &self,
+        _runner: &Runner,
         name: &str,
         config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
-        // async-resource-func actually works, but most other async tests
-        // fail during codegen or verification
-        config.async_ && name != "async-resource-func.wit"
+        name == "named-fixed-length-list.wit-async" || config.error_context
     }
 
     fn verify(&self, runner: &Runner, verify: &crate::Verify) -> anyhow::Result<()> {

@@ -18,6 +18,7 @@ mod config;
 mod cpp;
 mod csharp;
 mod custom;
+mod d;
 mod go;
 mod moonbit;
 mod runner;
@@ -143,6 +144,7 @@ impl Opts {
             opts: self.clone(),
             rust_state: None,
             cpp_state: None,
+            go_state: None,
             wit_bindgen: wit_bindgen.to_path_buf(),
             test_runner: runner::TestRunner::new(&self.runner)?,
         }
@@ -234,6 +236,7 @@ enum Language {
     Csharp,
     MoonBit,
     Go,
+    D,
     Custom(custom::Language),
 }
 
@@ -262,6 +265,7 @@ struct Runner {
     opts: Opts,
     rust_state: Option<rust::State>,
     cpp_state: Option<cpp::State>,
+    go_state: Option<go::State>,
     wit_bindgen: PathBuf,
     test_runner: runner::TestRunner,
 }
@@ -457,6 +461,7 @@ impl Runner {
             "cs" => Language::Csharp,
             "mbt" => Language::MoonBit,
             "go" => Language::Go,
+            "d" => Language::D,
             other => Language::Custom(custom::Language::lookup(self, other)?),
         };
 
@@ -607,7 +612,7 @@ impl Runner {
                     let me = self.clone();
                     let should_fail = language
                         .obj()
-                        .should_fail_verify(&args_kind, &config, &args);
+                        .should_fail_verify(self, &args_kind, &config, &args);
 
                     let name = format!("{language} {args_kind} {test:?}");
                     Trial::test(&name, move || {
@@ -732,6 +737,11 @@ impl Runner {
                     let compilations = compilations.clone();
                     let test = test.clone();
                     let component = component.clone();
+                    let should_fail = component.language.obj().should_fail_compile(
+                        self,
+                        &component.path,
+                        &component.bindgen.wit_config,
+                    );
                     Trial::test(&component.path.display().to_string(), move || {
                         let result = me.compile_component(&test, &component).with_context(|| {
                             format!("failed to compile component {:?}", component.path)
@@ -1163,7 +1173,7 @@ impl Runner {
 
     /// Helper to execute an external process and generate a helpful error
     /// message on failure.
-    fn run_command(&self, cmd: &mut Command) -> Result<()> {
+    fn run_command(&self, cmd: &mut Command) -> Result<String> {
         if self.opts.inherit_stderr {
             cmd.stderr(Stdio::inherit());
         }
@@ -1174,7 +1184,7 @@ impl Runner {
             if std::env::var("WIT_BINDGEN_TRACE").is_ok() {
                 eprintln!("$ {cmd:?}");
             }
-            return Ok(());
+            return Ok(String::from_utf8_lossy(&output.stdout).into());
         }
 
         let mut error = format!(
@@ -1199,6 +1209,29 @@ status: {}",
         }
 
         bail!("{error}")
+    }
+
+    /// Converts the list of dynamic libraries in `dylibs` into a component and places it
+    /// in the destination specified by `compile`.
+    ///
+    /// This is similar to `convert_p1_to_component` except usese a
+    /// `wit_component::Linker` instead of a `wit_component::ComponentEncoder`.
+    fn link_dylibs_to_component(&self, dylibs: &[PathBuf], compile: &Compile<'_>) -> Result<()> {
+        let mut linker = wit_component::Linker::default();
+        for dylib in dylibs {
+            let dylib_bytes =
+                fs::read(dylib).with_context(|| format!("failed to read dylib file {dylib:?}"))?;
+            let name = dylib
+                .file_name()
+                .and_then(|s| s.to_str())
+                .context("non-utf-8 dylib filename")?;
+            linker
+                .library(name, &dylib_bytes, false)
+                .with_context(|| format!("failed to register {name}"))?;
+        }
+        let component = linker.encode().context("failed to link")?;
+        write_if_different(compile.output, component)?;
+        Ok(())
     }
 
     /// Converts the WASIp1 module at `p1` to a component using the information
@@ -1380,7 +1413,8 @@ trait LanguageMethods {
             cmd.arg(arg);
         }
 
-        runner.run_command(&mut cmd)
+        runner.run_command(&mut cmd)?;
+        Ok(())
     }
 
     /// Returns the default set of arguments that will be passed to
@@ -1412,7 +1446,25 @@ trait LanguageMethods {
 
     /// Returns whether this language is supposed to fail this codegen tests
     /// given the `config` and `args` for the test.
-    fn should_fail_verify(&self, name: &str, config: &config::WitConfig, args: &[String]) -> bool;
+    fn should_fail_verify(
+        &self,
+        runner: &Runner,
+        name: &str,
+        config: &config::WitConfig,
+        args: &[String],
+    ) -> bool;
+
+    /// Returns whether this language is expected to fail to compile the
+    /// runtime test component described by `config`.
+    fn should_fail_compile(
+        &self,
+        runner: &Runner,
+        path: &Path,
+        config: &config::WitConfig,
+    ) -> bool {
+        let _ = (runner, path, config);
+        false
+    }
 
     /// Performs a "check" or a verify that the generated bindings described by
     /// `Verify` are indeed valid.
@@ -1436,6 +1488,7 @@ impl Language {
         Language::Csharp,
         Language::MoonBit,
         Language::Go,
+        Language::D,
     ];
 
     fn obj(&self) -> &dyn LanguageMethods {
@@ -1447,6 +1500,7 @@ impl Language {
             Language::Csharp => &csharp::Csharp,
             Language::MoonBit => &moonbit::MoonBit,
             Language::Go => &go::Go,
+            Language::D => &d::D,
             Language::Custom(custom) => custom,
         }
     }

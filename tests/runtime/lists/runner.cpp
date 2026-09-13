@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <cmath>
 #include <limits.h>
 #include <math.h>
 #include <float.h>
@@ -24,18 +25,6 @@ static bool equal(std::span<R> const&a, std::span<S> const& b) {
     return true;
 }
 template<class R>
-static bool equal(wit::vector<R> const&a, std::span<R> const& b) {
-    return equal(a.get_view(), b);
-}
-template<class R>
-static bool equal(std::span<const R> const&a, wit::vector<R> const& b) {
-    return equal(b, a);
-}
-template<class R>
-static bool equal(std::span<const R> const&a, std::vector<R> const& b) {
-    return equal(a, std::span<R>(b));
-}
-template<class R>
 static bool equal(wit::vector<R> const&a, std::vector<R> const& b) {
     return equal(a.get_view(), std::span<R const>(b));
 }
@@ -45,11 +34,6 @@ static bool equal(wit::vector<wit::string> const&a, std::vector<std::string_view
 template<class R,class S, class T, class U>
 static bool equal(std::tuple<R,S> const&a, std::tuple<T,U> const& b) {
     return equal(std::get<0>(a), std::get<0>(b)) && equal(std::get<1>(a), std::get<1>(b));
-}
-
-template <class T>
-static bool equal(T const& a, T const& b) {
-    return a==b;
 }
 
 void exports::runner::Run()

@@ -1,6 +1,8 @@
 use core::alloc::Layout;
 use core::ptr::{self, NonNull};
 
+pub use crate::resource::{Resource, ResourceRep};
+
 // Re-export `bitflags` so that we can reference it from macros.
 #[cfg(feature = "bitflags")]
 pub use bitflags;
@@ -109,7 +111,7 @@ impl<K: core::hash::Hash + Eq, V> WitMap<K, V> for std::collections::HashMap<K, 
 }
 
 /// For more information about this see `./ci/rebuild-libwit-bindgen-cabi.sh`.
-#[cfg(not(target_env = "p2"))]
+#[cfg(any(target_env = "p1", target_env = ""))]
 mod wit_bindgen_cabi_realloc;
 
 /// This function is called from generated bindings and will be deleted by
@@ -120,7 +122,7 @@ mod wit_bindgen_cabi_realloc;
 ///
 /// For more information about this see `./ci/rebuild-libwit-bindgen-cabi.sh`.
 pub fn maybe_link_cabi_realloc() {
-    #[cfg(all(target_family = "wasm", not(target_env = "p2")))]
+    #[cfg(all(target_family = "wasm", any(target_env = "p1", target_env = "")))]
     {
         unsafe extern "C" {
             fn cabi_realloc(
@@ -151,7 +153,7 @@ pub fn maybe_link_cabi_realloc() {
 /// `cabi_realloc` module above. It's otherwise never explicitly called.
 ///
 /// For more information about this see `./ci/rebuild-libwit-bindgen-cabi.sh`.
-#[cfg(not(target_env = "p2"))]
+#[cfg(any(target_env = "p1", target_env = ""))]
 pub unsafe fn cabi_realloc(
     old_ptr: *mut u8,
     old_len: usize,

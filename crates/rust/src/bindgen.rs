@@ -10,6 +10,8 @@ use wit_bindgen_core::{
     Source, dealias, make_external_component, make_external_symbol, symbol_extensions, uwrite,
     uwriteln, wit_parser::*,
 };
+use wit_bindgen_core::abi::{Bindgen, Instruction, LiftLower, WasmType};
+use wit_bindgen_core::{ChainingMode, Source, dealias, uwrite, uwriteln, wit_parser::*};
 
 pub(super) struct FunctionBindgen<'a, 'b> {
     pub r#gen: &'b mut InterfaceGenerator<'a>,
@@ -24,7 +26,7 @@ pub(super) struct FunctionBindgen<'a, 'b> {
     pub import_return_pointer_area_align: Alignment,
     pub handle_decls: Vec<String>,
     always_owned: bool,
-    return_self: bool,
+    return_self: Option<ChainingMode>,
 }
 
 pub const POINTER_SIZE_EXPRESSION: &str = "::core::mem::size_of::<*const u8>()";
@@ -35,7 +37,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
         params: Vec<String>,
         wasm_import_module: &'b str,
         always_owned: bool,
-        return_self: bool,
+        return_self: Option<ChainingMode>,
     ) -> FunctionBindgen<'a, 'b> {
         FunctionBindgen {
             r#gen,
@@ -462,7 +464,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         .as_deref()
                         .unwrap()
                         .to_upper_camel_case();
-                    format!("{name}Borrow::lift({op} as usize)")
+                    format!("{name}Borrow::lift(core::ptr::with_exposed_provenance({op} as usize))")
                 } else {
                     let tmp = format!("handle{}", self.tmp());
                     self.handle_decls.push(format!("let {tmp};"));
@@ -1210,11 +1212,11 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::Return { amt, .. } => {
-                assert!(!self.return_self || *amt == 0);
+                assert!(self.return_self.is_none() || *amt == 0);
 
                 match amt {
                     0 => {
-                        if self.return_self {
+                        if self.return_self.is_some() {
                             self.push_str("self\n");
                         }
                     }

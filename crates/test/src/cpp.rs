@@ -50,6 +50,7 @@ impl LanguageMethods for Cpp {
 
     fn should_fail_verify(
         &self,
+        _runner: &Runner,
         name: &str,
         config: &crate::config::WitConfig,
         _args: &[String],
@@ -59,7 +60,7 @@ impl LanguageMethods for Cpp {
             return false;
         }
         return match name {
-            "issue1514-6.wit" | "named-fixed-length-list.wit" | "map.wit" => true,
+            "issue1514-6.wit" | "named-fixed-length-list.wit" => true,
             _ => false,
         } || config.async_;
     }
@@ -271,7 +272,8 @@ impl LanguageMethods for Cpp {
         .arg("-c")
         .arg("-o")
         .arg(verify.artifacts_dir.join("tmp.o"));
-        runner.run_command(&mut cmd)
+        runner.run_command(&mut cmd)?;
+        Ok(())
     }
 
     fn default_bindgen_args(&self) -> &[&str] {

@@ -99,11 +99,6 @@ impl LanguageMethods for Rust {
             return true;
         }
 
-        // Named fixed-length lists don't work with async yet.
-        if name == "named-fixed-length-list.wit-async" {
-            return true;
-        }
-
         false
     }
 
@@ -114,7 +109,7 @@ impl LanguageMethods for Rust {
                 "borrowed-duplicate",
                 &["--ownership=borrowing-duplicate-if-necessary"],
             ),
-            ("async", &["--async=all"]),
+            ("sync", &["--sync=all"]),
             ("no-std", &["--std-feature"]),
             ("merge-equal", &["--merge-structurally-equal-types"]),
             ("hashmap", &["--map-type=std::collections::HashMap"]),
@@ -433,7 +428,7 @@ path = 'lib.rs'
                 .with_context(|| format!("failed to link {output:?}"))?;
         } else {
             runner
-                .convert_p1_to_component(&output, compile)
+                .convert_core_module_to_component(&output, compile)
                 .with_context(|| format!("failed to convert {output:?}"))?;
         }
         Ok(())

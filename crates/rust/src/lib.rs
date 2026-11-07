@@ -126,7 +126,6 @@ enum RuntimeItem {
     AsF64,
     ResourceType,
     BoxType,
-    WitMapTrait,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -459,7 +458,6 @@ impl RustWasm {
             return_pointer_area_align: Default::default(),
             needs_runtime_module: false,
             needs_deallocate: false,
-            needs_wit_map: false,
         })
     }
 
@@ -805,11 +803,6 @@ pub fn run_ctors_once() {{
                 self.emit_runtime_as_trait("f64", &["f64"]);
             }
 
-            RuntimeItem::WitMapTrait => {
-                let rt = self.runtime_path().to_string();
-                uwriteln!(self.src, "pub use {rt}::WitMap;");
-            }
-
             RuntimeItem::ResourceType => {
                 self.src.push_str(&format!(
                     r#"
@@ -1091,6 +1084,7 @@ macro_rules! __export_{world_name}_impl {{
             world_id,
             wit_component::StringEncoding::UTF8,
             Some(&producers),
+            false,
         )
         .unwrap();
 
@@ -1289,7 +1283,7 @@ impl WorldGenerator for RustWasm {
             );
         }
         for opt in self.opts.async_.debug_opts() {
-            uwriteln!(self.src_preamble, "//   * async: {opt}");
+            uwriteln!(self.src_preamble, "//   * sync: {opt}");
         }
         for opt in self.opts.chainable_methods.debug_opts() {
             uwriteln!(self.src_preamble, "//   * chainable-methods: {opt}");
@@ -1891,7 +1885,6 @@ struct FnSig {
     async_: bool,
     unsafe_: bool,
     private: bool,
-    use_item_name: bool,
     generics: Option<String>,
     self_arg: Option<String>,
     self_is_first_param: bool,
@@ -1899,7 +1892,11 @@ struct FnSig {
 
 impl FnSig {
     fn update_for_func(&mut self, func: &Function, return_self: Option<ChainingMode>) {
-        if let FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) = &func.kind {
+        if let FunctionKind::Method(_)
+        | FunctionKind::AsyncMethod(_)
+        | FunctionKind::MethodGetter(_)
+        | FunctionKind::MethodSetter(_) = &func.kind
+        {
             self.self_arg = Some(
                 match return_self {
                     Some(ChainingMode::Owning) => "self",

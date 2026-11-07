@@ -60,7 +60,7 @@ impl LanguageMethods for Cpp {
             return false;
         }
         return match name {
-            "issue1514-6.wit" | "named-fixed-length-list.wit" => true,
+            "named-fixed-length-list.wit" => true,
             _ => false,
         } || config.async_;
     }
@@ -181,6 +181,7 @@ impl LanguageMethods for Cpp {
 
         // Now compile the runner's source code to with the above object and the
         // component-type object into a final component.
+        let output = compile.output.with_extension("core.wasm");
         let mut cmd = Command::new(compiler);
         cmd.arg(&compile.component.path).arg(&bindings_object);
         if !runner.is_symmetric() {
@@ -208,12 +209,13 @@ impl LanguageMethods for Cpp {
             .arg("-std=c++20")
             .arg("-g")
             .arg("-o")
-            .arg(&compile.output);
+            .arg(&output);
         for flag in Vec::from(config.cflags) {
             cmd.arg(flag);
         }
         if !runner.is_symmetric() {
             cmd.arg("-mexec-model=reactor");
+            cmd.arg("-Wl,--skip-wit-component");
         } else {
             cmd.arg("-fPIC").arg(format!(
                 "-Wl,--version-script={}",
@@ -241,6 +243,10 @@ impl LanguageMethods for Cpp {
                 .arg("-lsymmetric_executor");
         }
         runner.run_command(&mut cmd)?;
+
+        runner
+            .convert_core_module_to_component(&output, compile)
+            .with_context(|| format!("failed to convert {output:?}"))?;
         Ok(())
     }
 

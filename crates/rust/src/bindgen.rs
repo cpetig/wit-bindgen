@@ -899,12 +899,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             } => {
                 let alloc = self.r#gen.path_to_std_alloc_module();
                 let rt = self.r#gen.r#gen.runtime_path().to_string();
-                self.r#gen.needs_wit_map = true;
-                self.r#gen.needs_runtime_module = true;
-                self.r#gen
-                    .r#gen
-                    .rt_module
-                    .insert(crate::RuntimeItem::WitMapTrait);
+                let wit_map = self.r#gen.r#gen.wit_map_path();
                 let body = self.blocks.pop().unwrap();
                 let tmp = self.tmp();
                 let map = format!("map{tmp}");
@@ -916,7 +911,9 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     "let {map} = {operand0};\n",
                     operand0 = operands[0]
                 ));
-                self.push_str(&format!("let {len} = {map}.wit_map_len();\n"));
+                self.push_str(&format!(
+                    "let {len} = {{ use {wit_map} as _; {map}.wit_map_len() }};\n"
+                ));
                 let entry = self.map_entry_layout(key, value);
                 self.push_str(&format!(
                     "let {layout} = {alloc}::Layout::from_size_align({len} * {}, {}).unwrap();\n",
@@ -1131,15 +1128,25 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 }
                 self.push_str(&prev_src);
                 let constructor_type = match &func.kind {
-                    FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
-                        self.push_str(&format!("T_::{}", to_rust_ident(func.item_name())));
-                        None
-                    }
-                    FunctionKind::Method(_)
+                    FunctionKind::Freestanding
+                    | FunctionKind::AsyncFreestanding
+                    | FunctionKind::Getter
+                    | FunctionKind::Method(_)
+                    | FunctionKind::MethodGetter(_)
                     | FunctionKind::Static(_)
+                    | FunctionKind::StaticGetter(_)
                     | FunctionKind::AsyncMethod(_)
                     | FunctionKind::AsyncStatic(_) => {
                         self.push_str(&format!("T_::{}", to_rust_ident(func.item_name())));
+                        None
+                    }
+                    FunctionKind::Setter
+                    | FunctionKind::MethodSetter(_)
+                    | FunctionKind::StaticSetter(_) => {
+                        self.push_str(&format!(
+                            "T_::{}",
+                            to_rust_ident(&format!("set-{}", func.item_name()))
+                        ));
                         None
                     }
                     FunctionKind::Constructor(ty) => {
@@ -1175,8 +1182,13 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     // `&Self` since traits have `&self` as their
                     // first arguments.
                     if i == 0
-                        && (matches!(func.kind, FunctionKind::Method(_))
-                            || matches!(func.kind, FunctionKind::AsyncMethod(_)))
+                        && matches!(
+                            func.kind,
+                            FunctionKind::Method(_)
+                                | FunctionKind::AsyncMethod(_)
+                                | FunctionKind::MethodGetter(_)
+                                | FunctionKind::MethodSetter(_)
+                        )
                     {
                         self.push_str(".get()")
                     }

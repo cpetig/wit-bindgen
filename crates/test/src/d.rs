@@ -31,7 +31,12 @@ impl LanguageMethods for D {
         config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
-        config.async_ || config.error_context || name == "map.wit" || name == "issue1642.wit"
+        config.async_
+            || config.error_context
+            || name == "map.wit"
+            || name == "map-in-world.wit"
+            || name == "map-named-wit-map.wit"
+            || name == "issue1642.wit"
     }
 
     fn default_bindgen_args_for_codegen(&self) -> &[&str] {
@@ -140,7 +145,7 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
     runner.run_command(&mut cmd)?;
 
     runner
-        .convert_p1_to_component(&output, compile)
+        .convert_core_module_to_component(&output, compile)
         .with_context(|| format!("failed to convert {output:?}"))?;
 
     Ok(())

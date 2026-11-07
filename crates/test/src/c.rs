@@ -222,9 +222,11 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
     }
     runner.run_command(&mut cmd)?;
 
-    if !runner.is_symmetric() {runner
-        .convert_core_module_to_component(&output, compile)
-        .with_context(|| format!("failed to convert {output:?}"))?;}
+    if !runner.is_symmetric() {
+        runner
+            .convert_core_module_to_component(&output, compile)
+            .with_context(|| format!("failed to convert {output:?}"))?;
+    }
     Ok(())
 }
 

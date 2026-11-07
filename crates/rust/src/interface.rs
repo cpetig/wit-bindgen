@@ -12,10 +12,8 @@ use std::fmt::Write as _;
 use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
 use wit_bindgen_core::{
-    AnonymousTypeGenerator, Source, TypeInfo, dealias, make_external_component,
+    AnonymousTypeGenerator, ChainingMode, Source, TypeInfo, dealias, make_external_component,
     make_external_symbol, symbol_extensions, symmetric, uwrite, uwriteln, wit_parser::*,
-    AnonymousTypeGenerator, ChainingMode, Source, TypeInfo, dealias, uwrite, uwriteln,
-    wit_parser::*,
 };
 
 pub struct InterfaceGenerator<'a> {
@@ -883,6 +881,7 @@ pub mod vtable{ordinal} {{
                         size = size.format_term(POINTER_SIZE_EXPRESSION, true),
                         align = align.format(POINTER_SIZE_EXPRESSION),
         ));
+        }
 
         let map = match payload_for {
             PayloadFor::Future => &mut self.r#gen.future_payloads,

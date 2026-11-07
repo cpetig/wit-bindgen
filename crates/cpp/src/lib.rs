@@ -1494,11 +1494,14 @@ impl CppInterfaceGenerator<'_> {
         {
             if i == 0
                 && name == "self"
-                && (matches!(&func.kind, FunctionKind::Method(_)| FunctionKind::MethodGetter(_)
-                        | FunctionKind::MethodSetter(_))
-                    || (matches!(&is_drop, SpecialMethod::ResourceDrop)
-                        && matches!(abi_variant, AbiVariant::GuestImport)
-                        && !self.r#gen.opts.host_side())
+                && (matches!(
+                    &func.kind,
+                    FunctionKind::Method(_)
+                        | FunctionKind::MethodGetter(_)
+                        | FunctionKind::MethodSetter(_)
+                ) || (matches!(&is_drop, SpecialMethod::ResourceDrop)
+                    && matches!(abi_variant, AbiVariant::GuestImport)
+                    && !self.r#gen.opts.host_side())
                     || (matches!(&is_drop, SpecialMethod::Dtor)
                         && matches!(abi_variant, AbiVariant::GuestExport)
                         && self.r#gen.opts.host_side()))
@@ -1534,7 +1537,11 @@ impl CppInterfaceGenerator<'_> {
         }
         // default to non-const when exporting a method
         let import = matches!(abi_variant, AbiVariant::GuestImport) ^ self.r#gen.opts.host_side();
-        if matches!(func.kind, FunctionKind::Method(_)| FunctionKind::MethodGetter(_) | FunctionKind::MethodSetter(_)) && import {
+        if matches!(
+            func.kind,
+            FunctionKind::Method(_) | FunctionKind::MethodGetter(_) | FunctionKind::MethodSetter(_)
+        ) && import
+        {
             res.const_member = true;
         }
         res
@@ -4026,7 +4033,11 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     .unwrap()
                     .to_pascal_case();
 
-                uwriteln!(self.src, "switch (static_cast<int32_t>({})) {{", expr_to_match);
+                uwriteln!(
+                    self.src,
+                    "switch (static_cast<int32_t>({})) {{",
+                    expr_to_match
+                );
                 for (i, ((case, (block, block_results)), payload)) in
                     variant.cases.iter().zip(blocks).zip(payloads).enumerate()
                 {
@@ -4441,8 +4452,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let (mut namespace, func_name_h) =
                     self.r#gen
                         .func_namespace_name(func, !self.r#gen.r#gen.opts.host_side(), true);
-                if matches!(func.kind, FunctionKind::Method(_)| FunctionKind::MethodGetter(_)
-                        | FunctionKind::MethodSetter(_)) {
+                if matches!(
+                    func.kind,
+                    FunctionKind::Method(_)
+                        | FunctionKind::MethodGetter(_)
+                        | FunctionKind::MethodSetter(_)
+                ) {
                     let this = operands.remove(0);
                     if self.r#gen.r#gen.opts.host_side() {
                         uwrite!(self.src, "({this}).");

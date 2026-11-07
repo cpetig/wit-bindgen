@@ -1726,7 +1726,8 @@ var {async_status_var} = {raw_name}({wasm_params});
             None,
         );
         f.futures_and_streams = futures_and_streams;
-        let result = abi::lift_from_memory(f.interface_gen.resolve, &mut f, address.into(), ty, false);
+        let result =
+            abi::lift_from_memory(f.interface_gen.resolve, &mut f, address.into(), ty, false);
 
         (f.src, result)
     }

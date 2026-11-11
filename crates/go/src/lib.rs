@@ -45,12 +45,38 @@ fn remote_pkg(name: &str) -> String {
 }
 
 /// The version of github.com/bytecodealliance/go-pkg that's being used
-const REMOTE_PKG_VERSION: &str = "v0.2.1";
+const REMOTE_PKG_VERSION: &str = "v0.4.1";
 
 /// If a user specifies the `pkg_name` flag, the required version for the
 /// shared remote package isn't recorded. This enables downstream users to retrieve the version programmatically.
 pub fn remote_pkg_version() -> String {
     format!("go.bytecodealliance.org/pkg {REMOTE_PKG_VERSION}")
+}
+
+/// Appends `_` to `name` if it collides with a Go keyword.
+/// Source: https://go.dev/ref/spec#Keywords
+fn escape_go_keyword(name: String) -> String {
+    match name.as_str() {
+        "break" | "case" | "chan" | "const" | "continue" | "default" | "defer" | "else"
+        | "fallthrough" | "for" | "func" | "go" | "goto" | "if" | "import" | "interface"
+        | "map" | "package" | "range" | "return" | "select" | "struct" | "switch" | "type"
+        | "var" => format!("{name}_"),
+        _ => name,
+    }
+}
+
+/// The bindings generated for variants require helper methods
+/// that have a risk of colliding with bindings generated for
+/// user-defined WIT types.
+fn matches_reserved_variant_function_name(f: &str) -> bool {
+    matches!(f, "Tag")
+}
+
+/// The bindings generated for resources require helper methods
+/// that have a risk of colliding with bindings generated for
+/// user-defined WIT types.
+fn matches_reserved_resource_function_name(f: &str) -> bool {
+    matches!(f, "TakeHandle" | "SetHandle" | "Handle" | "Drop" | "OnDrop")
 }
 
 #[derive(Default, Debug, Copy, Clone)]
@@ -110,20 +136,12 @@ pub struct Opts {
     #[cfg_attr(feature = "clap", clap(long))]
     pub generate_stubs: bool,
 
-    /// If specified, organize the bindings into a package for use as a library;
-    /// otherwise (if `None`), the bindings will be organized for use as a
-    /// standalone executable.
+    /// If set, organize the bindings as a library package: `imports` and
+    /// `exports` (if stubs are generated) each get their own directory named
+    /// after them. If `None`, organize the bindings for a standalone executable
+    /// instead.
     #[cfg_attr(feature = "clap", clap(long))]
     pub pkg_name: Option<String>,
-
-    /// When `--pkg-name` is specified, optionally specify a different package
-    /// for exports.
-    ///
-    /// This allows you to put the exports and imports in separate packages when
-    /// building a library.  If only `--pkg-name` is specified, this will
-    /// default to that value.
-    #[cfg_attr(feature = "clap", clap(long, requires = "pkg_name"))]
-    pub export_pkg_name: Option<String>,
 
     /// Print the version of the remote package being used for the shared WIT types.
     ///
@@ -139,6 +157,10 @@ pub struct Opts {
     /// references more than one version of the WIT package.
     #[cfg_attr(feature = "clap", clap(long))]
     pub include_versions: bool,
+
+    /// Mutes warnings (if any)
+    #[cfg_attr(feature = "clap", clap(long))]
+    pub quiet: bool,
 }
 
 impl Opts {
@@ -157,6 +179,7 @@ struct InterfaceData {
     need_unsafe: bool,
     need_runtime: bool,
     need_math: bool,
+    has_stubs: bool,
 }
 
 impl InterfaceData {
@@ -166,6 +189,7 @@ impl InterfaceData {
         self.need_unsafe |= data.need_unsafe;
         self.need_runtime |= data.need_runtime;
         self.need_math |= data.need_math;
+        self.has_stubs |= data.has_stubs;
     }
 
     fn imports(&self) -> String {
@@ -186,6 +210,7 @@ impl InterfaceData {
             need_unsafe: generator.need_unsafe,
             need_runtime: generator.need_pinner,
             need_math: generator.need_math,
+            has_stubs: false,
         }
     }
 }
@@ -198,6 +223,7 @@ impl From<InterfaceGenerator<'_>> for InterfaceData {
             need_unsafe: generator.need_unsafe,
             need_runtime: generator.need_runtime,
             need_math: false,
+            has_stubs: generator.has_stubs,
         }
     }
 }
@@ -221,19 +247,27 @@ struct Go {
     interface_names: HashMap<InterfaceId, WorldKey>,
     interfaces: BTreeMap<String, InterfaceData>,
     export_interfaces: BTreeMap<String, InterfaceData>,
-    types: HashSet<TypeId>,
+    // Add String to the types to allow for implements of the same type in different interfaces to be generated.
+    types: HashSet<(String, TypeId)>,
     resources: HashMap<TypeId, Direction>,
     futures_and_streams: HashMap<(TypeId, bool), Option<WorldKey>>,
+    // Tracks which `future`/`stream` declarations have already been generated.
+    generated_futures_and_streams: HashSet<FutureStreamDedup>,
+    warnings: Vec<String>,
 }
 
 impl Go {
     /// Adds the bindings module prefix to a package name.
     fn mod_pkg(&self, for_export: bool, name: &str) -> String {
-        let prefix = for_export
-            .then_some(())
-            .and(self.opts.export_pkg_name.as_deref())
-            .or(self.opts.pkg_name.as_deref())
-            .unwrap_or("wit_component");
+        let prefix = if let Some(pkg) = self.opts.pkg_name.as_ref() {
+            if for_export {
+                format!("{pkg}/exports")
+            } else {
+                format!("{pkg}/imports")
+            }
+        } else {
+            "wit_component".to_string()
+        };
         format!(r#""{prefix}/{name}""#)
     }
 
@@ -251,7 +285,7 @@ impl Go {
         if local == owner && (exported ^ in_import) {
             String::new()
         } else {
-            let package = self.interface_name(resolve, owner);
+            let package = self.go_package_name(resolve, owner);
             let package = if exported {
                 format!("export_{package}")
             } else {
@@ -571,16 +605,16 @@ func wasm_{kind}_drop_writable_{snake}(handle int32)
 {lower}
 
 var wasm_{kind}_vtable_{snake} = witTypes.{upper_kind}Vtable[{payload}]{{
-	{size},
-	{align},
-	wasm_{kind}_read_{snake},
-	wasm_{kind}_write_{snake},
-	nil,
-	nil,
-	wasm_{kind}_drop_readable_{snake},
-	wasm_{kind}_drop_writable_{snake},
-	{lift_name},
-	{lower_name},
+	Size: {size},
+	Align: {align},
+	Read: wasm_{kind}_read_{snake},
+	Write: wasm_{kind}_write_{snake},
+	CancelRead: nil,
+	CancelWrite: nil,
+	DropReadable: wasm_{kind}_drop_readable_{snake},
+	DropWritable: wasm_{kind}_drop_writable_{snake},
+	Lift: {lift_name},
+	Lower: {lower_name},
 }}
 
 func Make{upper_kind}{camel}() (*witTypes.{upper_kind}Writer[{payload}], *witTypes.{upper_kind}Reader[{payload}]) {{
@@ -638,7 +672,7 @@ func Lift{upper_kind}{camel}(handle int32) *witTypes.{upper_kind}Reader[{payload
                                 } else {
                                     format!(
                                         "{}_",
-                                        self.interface_name(
+                                        self.go_package_name(
                                             resolve,
                                             Some(
                                                 &self
@@ -725,10 +759,11 @@ impl WorldGenerator for Go {
         false
     }
 
-    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
+    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) -> Result<()> {
         _ = world;
-        self.sizes.fill(resolve);
+        self.sizes.fill(resolve)?;
         self.imports.insert(remote_pkg("runtime"));
+        Ok(())
     }
 
     fn import_interface(
@@ -738,15 +773,17 @@ impl WorldGenerator for Go {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
-        if let WorldKey::Name(_) = name {
-            self.interface_names.insert(id, name.clone());
-        }
+        self.interface_names.insert(id, name.clone());
 
+        let go_package_name = self.go_package_name(resolve, Some(name));
         let mut data = {
             let mut generator = InterfaceGenerator::new(self, resolve, Some((id, name)), true);
             for (name, ty) in resolve.interfaces[id].types.iter() {
-                if !generator.generator.types.contains(ty) {
-                    generator.generator.types.insert(*ty);
+                if generator
+                    .generator
+                    .types
+                    .insert((go_package_name.clone(), *ty))
+                {
                     generator.define_type(name, *ty);
                 }
             }
@@ -757,7 +794,7 @@ impl WorldGenerator for Go {
             data.extend(self.import(resolve, func, Some(name)));
         }
         self.interfaces
-            .entry(self.interface_name(resolve, Some(name)))
+            .entry(go_package_name)
             .or_default()
             .extend(data);
 
@@ -770,15 +807,16 @@ impl WorldGenerator for Go {
         _world: WorldId,
         funcs: &[(&str, &Function)],
         _files: &mut Files,
-    ) {
+    ) -> Result<()> {
         let mut data = InterfaceData::default();
         for (_, func) in funcs {
             data.extend(self.import(resolve, func, None));
         }
         self.interfaces
-            .entry(self.interface_name(resolve, None))
+            .entry(self.go_package_name(resolve, None))
             .or_default()
             .extend(data);
+        Ok(())
     }
 
     fn export_interface(
@@ -788,30 +826,32 @@ impl WorldGenerator for Go {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
-        if let WorldKey::Name(_) = name {
-            self.interface_names.insert(id, name.clone());
-        }
+        self.interface_names.insert(id, name.clone());
 
+        let go_package_name = self.go_package_name(resolve, Some(name));
         for (type_name, ty) in &resolve.interfaces[id].types {
             let exported = matches!(resolve.types[*ty].kind, TypeDefKind::Resource)
                 || self.has_exported_resource(resolve, Type::Id(*ty));
 
             let mut generator = InterfaceGenerator::new(self, resolve, Some((id, name)), false);
 
-            if exported || !generator.generator.types.contains(ty) {
-                generator.generator.types.insert(*ty);
+            if generator
+                .generator
+                .types
+                .insert((go_package_name.clone(), *ty))
+                || exported
+            {
                 generator.define_type(type_name, *ty);
             }
 
             let data = generator.into();
 
-            let name = self.interface_name(resolve, Some(name));
             if exported {
                 &mut self.export_interfaces
             } else {
                 &mut self.interfaces
             }
-            .entry(name)
+            .entry(go_package_name.clone())
             .or_default()
             .extend(data);
         }
@@ -844,23 +884,24 @@ impl WorldGenerator for Go {
         _world: WorldId,
         types: &[(&str, TypeId)],
         _files: &mut Files,
-    ) {
+    ) -> Result<()> {
+        let package = self.go_package_name(resolve, None);
         let mut generator = InterfaceGenerator::new(self, resolve, None, true);
         for (name, ty) in types {
-            if !generator.generator.types.contains(ty) {
-                generator.generator.types.insert(*ty);
+            if generator.generator.types.insert((package.clone(), *ty)) {
                 generator.define_type(name, *ty);
             }
         }
         let data = generator.into();
-        self.interfaces
-            .entry(self.interface_name(resolve, None))
-            .or_default()
-            .extend(data);
+        self.interfaces.entry(package).or_default().extend(data);
+        Ok(())
     }
 
     fn finish(&mut self, resolve: &Resolve, id: WorldId, files: &mut Files) -> Result<()> {
         _ = (resolve, id);
+        // Error about unused async configuration to help catch configuration
+        // errors.
+        self.opts.async_.ensure_all_used()?;
 
         let version = env!("CARGO_PKG_VERSION");
         let packages = resolve
@@ -890,9 +931,21 @@ impl WorldGenerator for Go {
             .collect::<Vec<_>>()
             .join("\n");
         let header = &format!(
-            "// Generated by `wit-bindgen` {version}. DO NOT EDIT!
+            "// Code generated by wit-bindgen {version}. DO NOT EDIT.
 //
 // This code was generated from the following packages:
+{packages}
+"
+        );
+
+        let stub_header = &format!(
+            "// The exported functions below are stubs which should be 
+// replaced with your own implementation.
+//
+// WARNING: Regenerating the bindings with `--generate-stubs` will 
+// regenerate this file and discard any edits.
+//
+// Generated by `wit-bindgen` {version} from the following packages:
 {packages}
 "
         );
@@ -914,7 +967,7 @@ impl WorldGenerator for Go {
                 println!("{}", remote_pkg_version());
             }
             // If a module name is specified, the generated files will be used as a library.
-            ("wit_exports/wit_exports.go", "wit_exports", "")
+            ("exports/wit_exports/wit_exports.go", "wit_exports", "")
         } else {
             files.push(
                 "go.mod",
@@ -943,7 +996,7 @@ func main() {}
         };
 
         files.push(
-            exports_file_path,
+            &exports_file_path,
             &maybe_gofmt(
                 self.opts.format,
                 format!(
@@ -968,13 +1021,23 @@ var {SYNC_EXPORT_PINNER} = runtime.Pinner{{}}
             ),
         );
 
-        for (prefix, interfaces) in [("export_", &self.export_interfaces), ("", &self.interfaces)] {
+        let (import_path_prefix, export_path_prefix) = if self.opts.pkg_name.is_some() {
+            ("imports/", "exports/")
+        } else {
+            ("", "")
+        };
+
+        for (prefix, interfaces, path_prefix) in [
+            ("export_", &self.export_interfaces, export_path_prefix),
+            ("", &self.interfaces, import_path_prefix),
+        ] {
             for (name, data) in interfaces {
                 let imports = data.imports();
                 let code = &data.code;
+                let header = if data.has_stubs { stub_header } else { header };
 
                 files.push(
-                    &format!("{prefix}{name}/wit_bindings.go"),
+                    &format!("{path_prefix}{prefix}{name}/wit_bindings.go"),
                     &maybe_gofmt(
                         self.opts.format,
                         format!(
@@ -992,13 +1055,23 @@ import (
                 );
 
                 files.push(
-                    &format!("{prefix}{name}/empty.s"),
+                    &format!("{path_prefix}{prefix}{name}/empty.s"),
                     r#"// This file exists for testing this package without WebAssembly,
 // allowing empty function bodies with a //go:wasmimport directive.
 // See https://pkg.go.dev/cmd/compile for more information."#
                         .as_bytes(),
                 );
             }
+        }
+
+        if !self.opts.quiet {
+            let warnings = self
+                .warnings
+                .iter()
+                .map(|w| format!("WARNING: {w}"))
+                .collect::<Vec<String>>()
+                .join("\n");
+            eprintln!("{warnings}");
         }
 
         Ok(())
@@ -1025,7 +1098,7 @@ impl Go {
         let sig = resolve.wasm_signature(variant, func);
         let import_name = &func.name;
         let name = func.name.to_snake_case().replace('.', "_");
-        let (camel, has_self) = func_declaration(resolve, func);
+        let (camel, has_self, comment) = self.func_declaration(resolve, func);
 
         let module = match interface {
             Some(name) => resolve.name_world_key(name),
@@ -1060,7 +1133,7 @@ impl Go {
                 func.params
                     .iter()
                     .skip(if has_self { 1 } else { 0 })
-                    .map(|Param { name, .. }| name.to_lower_camel_case()),
+                    .map(|Param { name, .. }| escape_go_keyword(name.to_lower_camel_case())),
             )
             .collect::<Vec<_>>();
 
@@ -1222,6 +1295,7 @@ defer {PINNER}.Unpin()
 //go:wasmimport {module} {prefix}{import_name}
 func {raw_name}({params}) {results}
 
+{comment}
 func {camel}({go_params}) {go_results} {{
         {pinner}
         {return_area}
@@ -1329,7 +1403,10 @@ func {camel}({go_params}) {go_results} {{
 
             (
                 if abi::guest_export_needs_post_return(resolve, func) {
-                    format!("{PINNER} := &runtime.Pinner{{}}")
+                    format!(
+                        "{PINNER} := &runtime.Pinner{{}}
+                    defer {PINNER}.Unpin()"
+                    )
                 } else {
                     String::new()
                 },
@@ -1368,7 +1445,12 @@ func wasm_export_post_return_{name}(result {results}) {{
         };
 
         if self.opts.generate_stubs {
-            let (camel, has_self) = func_declaration(resolve, func);
+            let (camel, has_self, comment) = self.func_declaration(resolve, func);
+            let comment = if comment.is_empty() {
+                "// TODO: Implement".to_string()
+            } else {
+                format!("// TODO: Implement\n//\n{comment}")
+            };
 
             let mut imports = BTreeSet::new();
             let params =
@@ -1376,17 +1458,18 @@ func wasm_export_post_return_{name}(result {results}) {{
             let results = self.func_results(resolve, func, interface, false, &mut imports);
 
             self.export_interfaces
-                .entry(self.interface_name(resolve, interface))
+                .entry(self.go_package_name(resolve, interface))
                 .or_default()
                 .extend(InterfaceData {
                     code: format!(
-                        r#"
+                        r#"{comment}
 func {camel}({params}) {results} {{
         panic("not implemented")
 }}
 "#
                     ),
                     imports,
+                    has_stubs: true,
                     ..InterfaceData::default()
                 });
         }
@@ -1419,7 +1502,7 @@ func wasm_export_{name}({params}) {results} {{
             .iter()
             .skip(if has_self { 1 } else { 0 })
             .map(|Param { name, ty, .. }| {
-                let name = name.to_lower_camel_case();
+                let name = escape_go_keyword(name.to_lower_camel_case());
                 let ty = self.type_name(resolve, *ty, interface, in_import, imports);
                 format!("{prefix}{name} {ty}")
             })
@@ -1485,6 +1568,36 @@ func wasm_export_{name}({params}) {results} {{
             if let hash_map::Entry::Vacant(e) = self.futures_and_streams.entry((ty, exported)) {
                 e.insert(interface.cloned());
 
+                let name = self.go_package_name(resolve, interface);
+
+                // Distinct `future`/`stream` types may share a
+                // payload type (e.g. when one payload is a type alias of the
+                // other, or when two anonymous payloads are structurally
+                // identical).  Since the names of the generated declarations
+                // are derived from the payload type, generating code for each
+                // of them would produce duplicate declarations, so dedupe on
+                // the mangled payload name instead.
+                let kind = match &resolve.types[ty].kind {
+                    TypeDefKind::Future(_) => "future",
+                    TypeDefKind::Stream(_) => "stream",
+                    _ => unreachable!(),
+                };
+                let snake = payload_type
+                    .map(|ty| self.mangle_name(resolve, ty, interface))
+                    .unwrap_or_else(|| "unit".into());
+
+                if !self
+                    .generated_futures_and_streams
+                    .insert(FutureStreamDedup {
+                        in_import,
+                        is_exported: exported,
+                        pkg_name: name.clone(),
+                        mangled_name: format!("{kind}_{snake}"),
+                    })
+                {
+                    continue;
+                }
+
                 let data = self.future_or_stream(
                     resolve,
                     ty,
@@ -1495,7 +1608,6 @@ func wasm_export_{name}({params}) {results} {{
                     &func.name,
                 );
 
-                let name = self.interface_name(resolve, interface);
                 if in_import || !exported {
                     &mut self.interfaces
                 } else {
@@ -1521,8 +1633,8 @@ func wasm_export_{name}({params}) {results} {{
         })
     }
 
-    fn interface_name(&self, resolve: &Resolve, interface: Option<&WorldKey>) -> String {
-        match interface {
+    fn go_package_name(&self, resolve: &Resolve, interface: Option<&WorldKey>) -> String {
+        let name = match interface {
             Some(WorldKey::Name(name)) => name.to_snake_case(),
             Some(WorldKey::Interface(id)) => {
                 let interface = &resolve.interfaces[*id];
@@ -1547,7 +1659,9 @@ func wasm_export_{name}({params}) {results} {{
                 format!("{namespace}_{package}_{version}{interface}")
             }
             None => "wit_world".into(),
-        }
+        };
+
+        escape_go_keyword(name)
     }
 
     fn func_name(
@@ -1556,10 +1670,66 @@ func wasm_export_{name}({params}) {results} {{
         interface: Option<&WorldKey>,
         func: &Function,
     ) -> String {
-        let prefix = self.interface_name(resolve, interface);
+        let prefix = self.go_package_name(resolve, interface);
         let name = func.name.to_snake_case().replace('.', "_");
 
         format!("{prefix}_{name}")
+    }
+
+    fn func_declaration(&mut self, resolve: &Resolve, func: &Function) -> (String, bool, String) {
+        match &func.kind {
+            FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => (
+                func.item_name().to_upper_camel_case(),
+                false,
+                "".to_string(),
+            ),
+            FunctionKind::Constructor(ty) => {
+                let ty = resolve.types[*ty]
+                    .name
+                    .as_ref()
+                    .unwrap()
+                    .to_upper_camel_case();
+                (format!("Make{ty}"), false, "".to_string())
+            }
+            FunctionKind::Method(ty) | FunctionKind::AsyncMethod(ty) => {
+                let ty = resolve.types[*ty]
+                    .name
+                    .as_ref()
+                    .unwrap()
+                    .to_upper_camel_case();
+                let mut camel = func.item_name().to_upper_camel_case();
+                let mut comment = "".to_string();
+                if matches_reserved_resource_function_name(&camel) {
+                    self.warnings.push(format!(
+                    "The method `{camel}` for resource `{ty}` conflicts with a method reserved by the bindings generator; it will be renamed to `{camel}_()`"
+                ));
+                    comment = format!(
+                        r#"// This is the user-defined method associated with the `{ty}` resource.
+                    // This is suffixed with `_` because it collides with
+                    // the `{camel}` function, which is reserved by the
+                    // bindings generator. "#
+                    );
+                    camel.push('_');
+                }
+
+                (format!("(self *{ty}) {camel}"), true, comment)
+            }
+            FunctionKind::Static(ty) | FunctionKind::AsyncStatic(ty) => {
+                let ty = resolve.types[*ty]
+                    .name
+                    .as_ref()
+                    .unwrap()
+                    .to_upper_camel_case();
+                let camel = func.item_name().to_upper_camel_case();
+                (format!("{ty}{camel}"), false, "".to_string())
+            }
+            FunctionKind::Getter
+            | FunctionKind::Setter
+            | FunctionKind::MethodGetter(_)
+            | FunctionKind::MethodSetter(_)
+            | FunctionKind::StaticGetter(_)
+            | FunctionKind::StaticSetter(_) => todo!(),
+        }
     }
 }
 
@@ -1852,7 +2022,7 @@ for index := 0; index < int({length}); index++ {{
                 let name = func.item_name().to_upper_camel_case();
                 let package = format!(
                     "export_{}",
-                    self.generator.interface_name(resolve, self.interface)
+                    self.generator.go_package_name(resolve, self.interface)
                 );
 
                 let call = match &func.kind {
@@ -1875,6 +2045,10 @@ for index := 0; index < int({length}); index++ {{
                     }
                     FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) => {
                         let target = &operands[0];
+                        let mut name = name.clone();
+                        if matches_reserved_resource_function_name(&name) {
+                            name.push('_');
+                        }
                         let args = operands[1..].join(", ");
                         format!("({target}).{name}({args})")
                     }
@@ -1883,6 +2057,12 @@ for index := 0; index < int({length}); index++ {{
                         let ty = self.type_name(resolve, Type::Id(*ty));
                         format!("{ty}{name}({args})")
                     }
+                    FunctionKind::Getter
+                    | FunctionKind::Setter
+                    | FunctionKind::MethodGetter(_)
+                    | FunctionKind::MethodSetter(_)
+                    | FunctionKind::StaticGetter(_)
+                    | FunctionKind::StaticSetter(_) => todo!(),
                 };
 
                 if let Some(ty) = func.result {
@@ -1894,11 +2074,16 @@ for index := 0; index < int({length}); index++ {{
                         self.generator.tuples.insert(count);
                         self.imports.insert(remote_pkg("types"));
 
-                        let results = (0..count)
+                        let names = (0..count)
                             .map(|_| self.locals.tmp("result"))
+                            .collect::<Vec<_>>();
+                        let bindings = names.join(", ");
+                        let fields = names
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, name)| format!("F{idx}: {name}"))
                             .collect::<Vec<_>>()
                             .join(", ");
-
                         let types = tuple
                             .types
                             .iter()
@@ -1908,8 +2093,8 @@ for index := 0; index < int({length}); index++ {{
 
                         uwriteln!(
                             self.src,
-                            "{results} := {call}
-{result} := witTypes.Tuple{count}[{types}]{{{results}}}"
+                            "{bindings} := {call}
+{result} := witTypes.Tuple{count}[{types}]{{{fields}}}"
                         );
                     } else {
                         uwriteln!(self.src, "{result} := {call}");
@@ -2085,7 +2270,12 @@ if {value} {{
                     .map(|&ty| self.type_name(resolve, ty))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let fields = operands.join(", ");
+                let fields = operands
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, val)| format!("F{idx}: {val}"))
+                    .collect::<Vec<String>>()
+                    .join(", ");
                 self.imports.insert(remote_pkg("types"));
                 results.push(format!("witTypes.Tuple{count}[{types}]{{{fields}}}"));
             }
@@ -2105,9 +2295,15 @@ if {value} {{
                     results.push(format!("({op}).{field}"));
                 }
             }
-            Instruction::RecordLift { ty, .. } => {
+            Instruction::RecordLift { record, ty, .. } => {
                 let name = self.type_name(resolve, Type::Id(*ty));
-                let fields = operands.join(", ");
+                let fields = record
+                    .fields
+                    .iter()
+                    .zip(operands.iter())
+                    .map(|(field, op)| format!("{}: {op}", field.name.to_upper_camel_case()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 results.push(format!("{name}{{{fields}}}"));
             }
             Instruction::OptionLower {
@@ -2363,15 +2559,19 @@ default:
                             .join("\n");
 
                         let name = case.name.to_upper_camel_case();
+                        let mut case_func = name.clone();
+                        if matches_reserved_variant_function_name(&name) {
+                            case_func.push('_');
+                        }
 
                         let set_payload = if case.ty.is_some() {
-                            format!("{VARIANT_PAYLOAD_NAME} := {value}.{name}()")
+                            format!("{VARIANT_PAYLOAD_NAME} := {value}.{case_func}()")
                         } else {
                             String::new()
                         };
 
                         format!(
-                            "case {ty}{name}:
+                            "case {ty}_{name}:
         {set_payload}
         {block}
         {assignments}
@@ -2633,6 +2833,7 @@ struct InterfaceGenerator<'a> {
     imports: BTreeSet<String>,
     need_unsafe: bool,
     need_runtime: bool,
+    has_stubs: bool,
 }
 
 impl<'a> InterfaceGenerator<'a> {
@@ -2651,6 +2852,7 @@ impl<'a> InterfaceGenerator<'a> {
             imports: BTreeSet::new(),
             need_unsafe: false,
             need_runtime: false,
+            has_stubs: false,
         }
     }
 
@@ -2799,16 +3001,21 @@ func (self *{camel}) SetHandle(handle int32) {{
 
 func (self *{camel}) Drop() {{
 	handle := self.handle
-	if self.handle != 0 {{
-		self.handle = 0
+	if handle != 0 {{
+		// Dropping an own handle of a resource this component exports runs
+		// its destructor (`resourceDtor{camel}`), which clears the handle,
+		// unpins `self` and calls `OnDrop`.
 		resourceDrop{camel}(handle)
-		self.pinner.Unpin()
-                self.OnDrop()
 	}}
 }}
 
 func {camel}FromOwnHandle(handle int32) *{camel} {{
-	return (*{camel})(unsafe.Pointer(resourceRep{camel}(handle)))
+	self := (*{camel})(unsafe.Pointer(resourceRep{camel}(handle)))
+	// The handle we received is a new one in this component's table, so
+	// record it; `Drop` must release this handle, not the one previously
+	// handed out by `TakeHandle`.
+	self.handle = handle
+	return self
 }}
 
 func {camel}FromBorrowHandle(rep int32) *{camel} {{
@@ -2846,7 +3053,7 @@ func (self *{camel}) OnDrop() {{}}
             .map(|(i, flag)| {
                 let docs = format_docs(&flag.docs);
                 let flag = flag.name.to_upper_camel_case();
-                format!("{docs}{name}{flag} {repr} = 1 << {i}")
+                format!("{docs}{name}_{flag} {repr} = 1 << {i}")
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -2895,7 +3102,7 @@ const (
             .map(|(i, case)| {
                 let docs = format_docs(&case.docs);
                 let case = case.name.to_upper_camel_case();
-                format!("{docs}{name}{case} {repr} = {i}")
+                format!("{docs}{name}_{case} {repr} = {i}")
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -2906,16 +3113,32 @@ const (
             .filter_map(|case| {
                 case.ty.map(|ty| {
                     let case = case.name.to_upper_camel_case();
+                    let mut case_func = case.clone();
                     let ty = self.type_name(self.resolve, ty);
-                    format!(
-                        r#"func (self {name}) {case}() {ty} {{
-        if self.tag != {name}{case} {{
+                    let mangle_comment = if matches_reserved_variant_function_name(&case) {
+                        self.generator.warnings.push(format!("The payload getter for case `{case}` of variant `{name}` conflicts with a method reserved by the bindings generator; it will be renamed to `{case}_()`"));
+
+                        case_func.push('_');
+
+                        format!(r#"// This retrieves the payload of the `{case}` case
+                        // of the `{name}` WIT variant.
+                        //
+                        // This is suffixed with `_` because it collides with
+                        // the `{case}` function, which is reserved by the
+                        // bindings generator."#)
+
+                    } else {String::new()};
+
+                        format!(
+                            r#"{mangle_comment}
+                            func (self {name}) {case_func}() {ty} {{
+        if self.tag != {name}_{case} {{
                 panic("tag mismatch")
         }}
         return self.value.({ty})
 }}
 "#
-                    )
+                        )
                 })
             })
             .collect::<Vec<_>>()
@@ -2934,7 +3157,7 @@ const (
                 let case = case.name.to_upper_camel_case();
                 format!(
                     r#"func Make{name}{case}({param}) {name} {{
-        return {name}{{{name}{case}, {value}}}
+        return {name}{{{name}_{case}, {value}}}
 }}
 "#
                 )
@@ -3012,7 +3235,7 @@ func (self {name}) Tag() {repr} {{
             .map(|(i, case)| {
                 let docs = format_docs(&case.docs);
                 let case = case.name.to_upper_camel_case();
-                format!("{docs}{name}{case} {repr} = {i}")
+                format!("{docs}{name}_{case} {repr} = {i}")
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -3230,40 +3453,6 @@ fn any(resolve: &Resolve, ty: Type, fun: &dyn Fn(Type) -> bool) -> bool {
     }
 }
 
-fn func_declaration(resolve: &Resolve, func: &Function) -> (String, bool) {
-    match &func.kind {
-        FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
-            (func.item_name().to_upper_camel_case(), false)
-        }
-        FunctionKind::Constructor(ty) => {
-            let ty = resolve.types[*ty]
-                .name
-                .as_ref()
-                .unwrap()
-                .to_upper_camel_case();
-            (format!("Make{ty}"), false)
-        }
-        FunctionKind::Method(ty) | FunctionKind::AsyncMethod(ty) => {
-            let ty = resolve.types[*ty]
-                .name
-                .as_ref()
-                .unwrap()
-                .to_upper_camel_case();
-            let camel = func.item_name().to_upper_camel_case();
-            (format!("(self *{ty}) {camel}"), true)
-        }
-        FunctionKind::Static(ty) | FunctionKind::AsyncStatic(ty) => {
-            let ty = resolve.types[*ty]
-                .name
-                .as_ref()
-                .unwrap()
-                .to_upper_camel_case();
-            let camel = func.item_name().to_upper_camel_case();
-            (format!("{ty}{camel}"), false)
-        }
-    }
-}
-
 fn maybe_gofmt<'a>(format: Format, code: &'a [u8]) -> Cow<'a, [u8]> {
     thread::scope(|s| {
         if let Format::True = format
@@ -3282,4 +3471,68 @@ fn maybe_gofmt<'a>(format: Format, code: &'a [u8]) -> Cow<'a, [u8]> {
 
         Cow::Borrowed(code)
     })
+}
+
+#[derive(Eq, PartialEq, Hash)]
+struct FutureStreamDedup {
+    in_import: bool,
+    is_exported: bool,
+    pkg_name: String,
+    mangled_name: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_files_have_go_generated_code_header() {
+        let mut resolve = Resolve::default();
+        let pkg = resolve
+            .push_str(
+                "test.wit",
+                r#"
+                package a:b;
+
+                interface i {
+                    resource r {
+                        constructor();
+                    }
+                    f: func(x: r);
+                }
+
+                world w {
+                    import i;
+                    export i;
+                }
+                "#,
+            )
+            .unwrap();
+        let world = resolve.select_world(&[pkg], Some("w")).unwrap();
+        let mut files = Files::default();
+        Opts {
+            format: Format::False,
+            ..Opts::default()
+        }
+        .build()
+        .generate(&mut resolve, world, &mut files)
+        .unwrap();
+
+        // Go tools recognize generated code by a line matching
+        // `^// Code generated .* DO NOT EDIT\.$` (https://go.dev/s/generatedcode).
+        let mut checked = 0;
+        for (name, contents) in files.iter() {
+            if !name.ends_with(".go") {
+                continue;
+            }
+            let first = std::str::from_utf8(contents).unwrap().lines().next();
+            let first = first.unwrap_or_default();
+            assert!(
+                first.starts_with("// Code generated ") && first.ends_with(" DO NOT EDIT."),
+                "{name}: unexpected first line {first:?}"
+            );
+            checked += 1;
+        }
+        assert!(checked > 0);
+    }
 }

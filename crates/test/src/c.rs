@@ -56,20 +56,19 @@ impl LanguageMethods for C {
 
     fn should_fail_verify(
         &self,
+        _runner: &Runner,
         name: &str,
         config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
-        config.error_context
-            || name.starts_with("named-fixed-length-list.wit")
-            || name.starts_with("map.wit")
+        config.error_context || name.starts_with("named-fixed-length-list.wit")
     }
 
     fn codegen_test_variants(&self) -> &[(&str, &[&str])] {
         &[
             ("no-sig-flattening", &["--no-sig-flattening"]),
             ("autodrop", &["--autodrop-borrows=yes"]),
-            ("async", &["--async=all"]),
+            ("sync", &["--sync=all"]),
         ]
     }
 
@@ -225,7 +224,7 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
 
     if !runner.is_symmetric() {
         runner
-            .convert_p1_to_component(&output, compile)
+            .convert_core_module_to_component(&output, compile)
             .with_context(|| format!("failed to convert {output:?}"))?;
     }
     Ok(())
@@ -255,5 +254,6 @@ fn verify(runner: &Runner, verify: &Verify<'_>, compiler: PathBuf) -> Result<()>
     .arg("-c")
     .arg("-o")
     .arg(verify.artifacts_dir.join("tmp.o"));
-    runner.run_command(&mut cmd)
+    runner.run_command(&mut cmd)?;
+    Ok(())
 }

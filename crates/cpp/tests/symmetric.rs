@@ -183,7 +183,7 @@ fn tests(
         }
         let mut cpp = opts.build(None);
         cpp.apply_resolve_options(&mut resolve, &mut world);
-        cpp.generate(&resolve, world, &mut files).unwrap();
+        cpp.generate(&mut resolve, world, &mut files).unwrap();
 
         for (file, contents) in files.iter() {
             let dst = cpp_dir.join(file);

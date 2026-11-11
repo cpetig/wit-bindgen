@@ -84,7 +84,8 @@ impl WorldGenerator for ImportLib {
         _world: wit_parser::WorldId,
         _funcs: &[(&str, &wit_parser::Function)],
         _files: &mut Files,
-    ) {
+    ) -> Result<()> {
+        Ok(())
     }
 
     fn export_funcs(
@@ -106,7 +107,8 @@ impl WorldGenerator for ImportLib {
         _world: wit_parser::WorldId,
         _types: &[(&str, wit_parser::TypeId)],
         _files: &mut Files,
-    ) {
+    ) -> Result<()> {
+        Ok(())
     }
 
     fn finish(

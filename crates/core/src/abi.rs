@@ -1235,11 +1235,7 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 } else if async_ {
                     self.emit(&Instruction::AsyncTaskReturn {
                         name: &func.name,
-                        params: if func.result.is_some() {
-                            &[WasmType::Pointer]
-                        } else {
-                            &[]
-                        },
+                        params: &sig.results,
                     });
                 } else {
                     self.emit(&Instruction::Return {

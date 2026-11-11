@@ -603,6 +603,9 @@ impl Cpp {
             if self.opts.symmetric {
                 uwriteln!(header, "#define WIT_SYMMETRIC");
             }
+            if self.opts.autosar {
+                uwriteln!(header, "#define WIT_ARA_SPAN");
+            }
             for include in self.includes.iter() {
                 uwriteln!(header, "#include {include}");
             }
@@ -952,6 +955,9 @@ impl WorldGenerator for Cpp {
             uwriteln!(h_str.src, "#define WIT_HOST_DIRECT");
         } else if self.opts.symmetric {
             uwriteln!(h_str.src, "#define WIT_SYMMETRIC");
+        }
+        if self.opts.autosar {
+            uwriteln!(h_str.src, "#define WIT_ARA_SPAN");
         }
         for include in self.includes.iter() {
             uwriteln!(h_str.src, "#include {include}");

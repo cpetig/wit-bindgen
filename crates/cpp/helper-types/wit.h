@@ -15,13 +15,21 @@
 #include <string.h> // memcpy
 #include <stdlib.h> // free
 #include <new>
+#ifdef WIT_ARA_SPAN
+#include <ara/core/span.h>
+#else
 #include <span>
+#endif
 #include <utility> // pair
 #include <vector>
 #include <coroutine>
 
 namespace wit {
+#ifdef WIT_ARA_SPAN
+template <class T> using span=::ara::core::Span<T>;
+#else
 template <class T> using span=std::span<T>;
+#endif
 /// @brief Helper class to map between IDs and resources
 /// @tparam R Type of the Resource
 template <class R> class ResourceTable {
@@ -166,9 +174,9 @@ public:
   T* leak() { T*result = data_; data_ = nullptr; return result; }
   // typically called by post
   static void drop_raw(void *ptr) { if (ptr!=empty_ptr()) free(ptr); }
-  std::span<T> get_view() const { return std::span<T>(data_, length); }
-  std::span<const T> get_const_view() const { return std::span<const T>(data_, length); }
-  template <class U> static vector<T> from_view(std::span<U> const& a) {
+  span<T> get_view() const { return span<T>(data_, length); }
+  span<const T> get_const_view() const { return span<const T>(data_, length); }
+  template <class U> static vector<T> from_view(span<U> const& a) {
     auto result = vector<T>::allocate(a.size());
     for (uint32_t i=0;i<a.size();++i) {
       new ((void*)(result.data_+i)) T(a[i]);

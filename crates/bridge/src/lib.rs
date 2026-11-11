@@ -35,7 +35,7 @@ impl Opts {
 }
 
 impl WorldGenerator for Bridge {
-    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) {
+    fn preprocess(&mut self, resolve: &Resolve, world: WorldId) -> anyhow::Result<()> {
         let world = &resolve.worlds[world];
         let name = if self.opts.instance.is_empty() {
             world.name.clone()
@@ -70,6 +70,7 @@ impl WorldGenerator for Bridge {
         }}
         "#
         );
+        Ok(())
     }
 
     fn import_interface(
@@ -118,13 +119,14 @@ impl WorldGenerator for Bridge {
         worldid: wit_parser::WorldId,
         funcs: &[(&str, &wit_parser::Function)],
         _files: &mut wit_bindgen_core::Files,
-    ) {
+    ) -> anyhow::Result<()> {
         let world = &resolve.worlds[worldid];
         uwriteln!(self.src, "// Import Funcs {}", world.name);
         let mut r#gen = self.interface(resolve);
         for (_name, func) in funcs.iter() {
             r#gen.generate_function(func, &TypeOwner::World(worldid), AbiVariant::GuestImport);
         }
+        Ok(())
     }
 
     fn export_funcs(
@@ -149,9 +151,10 @@ impl WorldGenerator for Bridge {
         world: wit_parser::WorldId,
         _types: &[(&str, wit_parser::TypeId)],
         _files: &mut wit_bindgen_core::Files,
-    ) {
+    ) -> anyhow::Result<()> {
         let world = &resolve.worlds[world];
         uwriteln!(self.src, "// Import Types {}", world.name);
+        Ok(())
     }
 
     fn finish(

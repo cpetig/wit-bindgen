@@ -8,6 +8,7 @@ use std::process::Command;
 pub struct Go;
 
 /// Go-specific state, stored in `Runner`, detected during `prepare`.
+#[derive(Debug)]
 pub struct State {
     /// Whether the Go toolchain in use supports the `runtime.wasiOnIdle` hook
     /// required for component model async support.

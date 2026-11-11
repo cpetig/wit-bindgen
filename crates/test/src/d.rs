@@ -43,7 +43,7 @@ impl LanguageMethods for D {
         &["--emit-export-stubs"]
     }
 
-    fn prepare(&self, runner: &mut Runner) -> Result<()> {
+    fn prepare(&self, runner: &mut Runner, _: &str) -> Result<()> {
         prepare(runner, ldc2(runner))
     }
 

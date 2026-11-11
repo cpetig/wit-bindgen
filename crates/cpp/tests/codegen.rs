@@ -68,9 +68,10 @@ macro_rules! codegen_test {
                 "cpp",
                 $test.as_ref(),
                 |resolve, world, files| {
-                    let mut opts = wit_bindgen_cpp::Opts::default();
-                    opts.api_style = TBD;
-                    opts.build().generate(resolve, world, files).unwrap()
+                    let opts = wit_bindgen_cpp::Opts::default();
+                    opts.build(None)
+                        .generate(&mut resolve.clone(), world, files)
+                        .unwrap()
                 },
                 verify,
             );
@@ -82,7 +83,9 @@ macro_rules! codegen_test {
                     |resolve, world, files| {
                         let mut opts = wit_bindgen_cpp::Opts::default();
                         opts.host = true;
-                        opts.build().generate(resolve, world, files).unwrap()
+                        opts.build(None)
+                            .generate(&mut resolve.clone(), world, files)
+                            .unwrap()
                     },
                     verify_host,
                 );

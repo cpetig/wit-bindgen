@@ -3396,7 +3396,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 results.push(resultname);
             }
 
-            abi::Instruction::CallWasm { name, sig } => {
+            abi::Instruction::CallWasm { name, sig, .. } => {
                 let split_name = if name.contains('.') {
                     name.split(".").skip(1).next().unwrap()
                 } else {

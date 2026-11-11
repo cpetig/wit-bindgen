@@ -246,6 +246,8 @@ fn add_type(
             WorldItem::Interface {
                 id: new_id,
                 stability: Default::default(),
+                external_id: Default::default(),
+                docs: Default::default(),
                 span: Default::default(),
             },
         );
@@ -373,6 +375,8 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
             WorldItem::Interface {
                 id: iface_id,
                 stability: Default::default(),
+                external_id: Default::default(),
+                docs: Default::default(),
                 span: Default::default(),
             },
         );
@@ -388,6 +392,7 @@ pub fn hash(resolve: &Resolve, func: &wit_parser::Function) -> u64 {
         world_id,
         wit_component::StringEncoding::UTF8,
         None,
+        false,
     )
     .unwrap();
     let mut hasher = rustc_stable_hash::hashers::SipHasher128::new_with_keys(0, 1);

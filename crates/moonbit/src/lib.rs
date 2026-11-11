@@ -423,7 +423,7 @@ impl WorldGenerator for MoonBit {
         r#gen.types(id);
 
         for (_, func) in resolve.interfaces[id].functions.iter() {
-            r#gen.export(None, func, None);
+            r#gen.export(func);
         }
 
         let fragment = r#gen.finish();
@@ -487,7 +487,7 @@ impl WorldGenerator for MoonBit {
         let mut r#gen = self.interface(resolve, &name, Direction::Export, None);
 
         for (_, func) in funcs {
-            r#gen.export(None, func, None);
+            r#gen.export(func);
         }
 
         let fragment = r#gen.finish();

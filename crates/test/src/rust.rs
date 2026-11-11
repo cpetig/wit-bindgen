@@ -256,8 +256,9 @@ path = 'lib.rs'
             Some(path) => println!("Building `wit-bindgen` from {:?}...", cwd.join(path)),
             None => println!("Building `wit-bindgen` from crates.io..."),
         }
-        let mut cmd = Command::new("cargo")
-            .current_dir(&wit_bindgen)
+
+        let mut cmd = Command::new("cargo");
+        cmd.current_dir(&wit_bindgen)
             .arg("build")
             .arg(if runner.is_symmetric() {
                 "-pmini-bindgen"
@@ -266,12 +267,14 @@ path = 'lib.rs'
             })
             .arg("-pfutures")
             .arg("--message-format=json");
+
         if !runner.is_symmetric() {
             cmd.arg("--target").arg(&opts.rust_target);
         } else {
             cmd.arg("-psymmetric_executor").arg("-psymmetric_stream");
         }
-        let json = runner.run_command(cmd)?;
+
+        let json = runner.run_command(&mut cmd)?;
         let mut wit_bindgen_files = None;
         let mut futures_files = None;
         let mut wit_bindgen_deps = Vec::new();
@@ -306,10 +309,18 @@ path = 'lib.rs'
             }
         }
 
-        let wit_bindgen_deps = vec![target_out_dir.join("deps"), host_out_dir.join("deps")];
+        // The symmetric runtime libraries live in the target directory
+        // containing the `deps` directory.
         let mut native_deps = Vec::new();
         if runner.is_symmetric() {
-            native_deps.push(target_out_dir);
+            for dep in &wit_bindgen_deps {
+                if dep.file_name().is_some_and(|name| name == "deps") {
+                    let target_dir = dep.parent().unwrap().to_path_buf();
+                    if !native_deps.contains(&target_dir) {
+                        native_deps.push(target_dir);
+                    }
+                }
+            }
         }
 
         runner.rust_state = Some(State {

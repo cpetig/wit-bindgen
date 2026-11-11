@@ -205,7 +205,6 @@ impl<'i> InterfaceGenerator<'i> {
         let rt = self.r#gen.runtime_path().to_string();
 
         for (resource, (trait_name, methods)) in traits.iter() {
-            uwriteln!(self.src, "pub trait {trait_name}: {rt}::Resource {{");
             let resource = resource.unwrap();
             let resource_name = self.resolve.types[resource].name.as_ref().unwrap();
             if self.r#gen.opts.symmetric {
@@ -223,7 +222,7 @@ impl<'i> InterfaceGenerator<'i> {
                 );
             }
 
-            uwriteln!(self.src, "pub trait {trait_name}: 'static {{");
+            uwriteln!(self.src, "pub trait {trait_name}: {rt}::Resource {{");
             let (_, interface_name) = interface.unwrap();
             let module = self.resolve.name_world_key(interface_name);
             let wasm_import_module = format!("[export]{module}");
@@ -262,26 +261,23 @@ impl<'i> InterfaceGenerator<'i> {
             } else {
                 " as i32"
             };
-            let box_path = self.path_to_box();
             uwriteln!(
                 self.src,
-                r#"#[doc(hidden)]
-/// Place the value on the heap or in an arena, return the raw pointer.
-/// Override for custom resource allocators.
-fn _resource_into_raw(val: Option<Self>) -> *mut Option<Self> where Self: Sized
+                r#"
+#[doc(hidden)]
+unsafe fn _resource_new(val: *mut u8) -> {handle_type}
+    where Self: Sized
 {{
-    {box_path}::into_raw({box_path}::new(val))
+    {import_new}
+    unsafe {{ {external_new}(val) as {handle_type} }}
 }}
 
 #[doc(hidden)]
-/// Consumes the value from the handle, handle is invalid afterwards.
-/// 
-/// # Safety
-/// 
-/// See Box::from_raw
-unsafe fn _resource_from_raw(handle: *mut Option<Self>) -> Option<Self> where Self: Sized
+fn _resource_rep(handle: {handle_type}) -> *mut u8
+    where Self: Sized
 {{
-    *unsafe {{ {box_path}::from_raw(handle) }}
+    {import_rep}
+    unsafe {{ {external_rep}(handle{casting}) }}
 }}
 
                     "#
@@ -857,7 +853,15 @@ pub mod vtable{ordinal} {{
     unsafe extern "C" fn start_read(handle: u32, ptr: *mut u8{start_extra_named}) -> u32 {{ unsafe {{ imports::start_read(handle, ptr{start_extra_arg}) }} }}
     #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn start_write(handle: u32, ptr: *const u8{start_extra_named}) -> u32 {{ unsafe {{ imports::start_write(handle, ptr{start_extra_arg}) }} }}
-
+"#
+            ));
+        } else {
+            dealloc_lists_arg = "";
+            vtable_part1 = "";
+            vtable_part2 = "";
+        }
+        code.push_str(&format!(
+            r#"
     {lift_fn}
     {lower_fn}
     {dealloc_lists_fn}
@@ -877,11 +881,10 @@ pub mod vtable{ordinal} {{
         const VTABLE: &'static {async_support}::{camel}Vtable<Self> = &VTABLE;
     }}
 }}
-                        "#,
-                        size = size.format_term(POINTER_SIZE_EXPRESSION, true),
-                        align = align.format(POINTER_SIZE_EXPRESSION),
+"#,
+            size = size.format_term(POINTER_SIZE_EXPRESSION, true),
+            align = align.format(POINTER_SIZE_EXPRESSION),
         ));
-        }
 
         let map = match payload_for {
             PayloadFor::Future => &mut self.r#gen.future_payloads,
@@ -940,6 +943,7 @@ pub mod vtable{ordinal} {{
                 &self.wasm_import_module,
                 func,
                 params,
+                async_,
                 should_return_self,
             );
         }
@@ -954,7 +958,7 @@ pub mod vtable{ordinal} {{
 
     fn lower_to_memory(&mut self, address: &str, value: &str, ty: &Type, module: &str) -> String {
         let symmetric = self.r#gen.opts.symmetric;
-        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, None, false);
+        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, None);
         abi::lower_to_memory(
             f.r#gen.resolve,
             &mut f,
@@ -992,7 +996,7 @@ pub mod vtable{ordinal} {{
 
     fn lift_from_memory(&mut self, address: &str, ty: &Type, module: &str) -> String {
         let symmetric = self.r#gen.opts.symmetric;
-        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, None, false);
+        let mut f = FunctionBindgen::new(self, Vec::new(), module, true, None);
         let result = abi::lift_from_memory(f.r#gen.resolve, &mut f, address.into(), ty, symmetric);
         format!("unsafe {{ {}\n{result} }}", String::from(f.src))
     }

@@ -741,40 +741,25 @@ impl Runner {
                         self,
                         &component.path,
                         &component.bindgen.wit_config,
-                    );
+                    ) || component
+                        .language
+                        .obj()
+                        .should_fail_runtime1(self, &test, &component);
                     Trial::test(&component.path.display().to_string(), move || {
                         let result = me.compile_component(&test, &component).with_context(|| {
                             format!("failed to compile component {:?}", component.path)
                         });
                         match result {
-                            Ok(path) => {
-                                if component
-                                    .language
-                                    .obj()
-                                    .should_fail_runtime1(&me, &test, &component)
-                                {
-                                    me.render_error(StepResult::new(Err(anyhow::anyhow!(
-                                        "Test {} should fail {:?}",
-                                        component.name,
-                                        component.kind
-                                    ))))
-                                } else {
-                                    compilations.lock().unwrap().push((test, component, path));
-                                    Ok(())
-                                }
+                            Ok(path) if !should_fail => {
+                                compilations.lock().unwrap().push((test, component, path));
+                                Ok(())
                             }
-                            Err(e) => {
-                                let should_fail = component
-                                    .language
-                                    .obj()
-                                    .should_fail_runtime1(&me, &test, &component);
-                                me.render_error(
-                                    StepResult::new(Err(e))
-                                        .should_fail(should_fail)
-                                        .metadata("component", &component.name)
-                                        .metadata("path", component.path.display()),
-                                )
-                            }
+                            other => me.render_error(
+                                StepResult::new(other.map(|_| ()))
+                                    .should_fail(should_fail)
+                                    .metadata("component", &component.name)
+                                    .metadata("path", component.path.display()),
+                            ),
                         }
                     })
                 })

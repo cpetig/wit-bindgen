@@ -218,9 +218,6 @@ impl Parse for Config {
                         }
                         opts.link_name = Some(name.value());
                     }
-                    Opt::EnableMethodChaining(enable) => {
-                        opts.enable_method_chaining = enable.value();
-                    }
                     Opt::ChainableMethods(val, span) => {
                         if method_chaining_configured {
                             return Err(Error::new(
@@ -445,7 +442,6 @@ mod kw {
     syn::custom_keyword!(imports);
     syn::custom_keyword!(debug);
     syn::custom_keyword!(link_name);
-    syn::custom_keyword!(enable_method_chaining);
     syn::custom_keyword!(chainable_methods);
     syn::custom_keyword!(sync);
     syn::custom_keyword!(merge_structurally_equal_types);
@@ -533,7 +529,6 @@ enum Opt {
     Symmetric(syn::LitBool),
     InvertDirection(syn::LitBool),
     LinkName(syn::LitStr),
-    EnableMethodChaining(syn::LitBool),
     Sync(AsyncFilterSet, Span),
     Debug(syn::LitStr),
     ChainableMethods(ChainableMethodFilterSet, Span),

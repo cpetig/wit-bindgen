@@ -18,7 +18,7 @@ use wit_bindgen_core::{
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Param,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,
-        WorldKey,
+        WorldItem, WorldKey,
     },
 };
 use wit_parser::TypeIdVisitor;
@@ -88,6 +88,29 @@ struct HostFunction {
     host_name: String,
 }
 
+impl Includes {
+    fn merge(&mut self, other: &Includes) {
+        self.needs_vector |= other.needs_vector;
+        self.needs_expected |= other.needs_expected;
+        self.needs_string |= other.needs_string;
+        self.needs_string_view |= other.needs_string_view;
+        self.needs_optional |= other.needs_optional;
+        self.needs_cstring |= other.needs_cstring;
+        self.needs_imported_resources |= other.needs_imported_resources;
+        self.needs_exported_resources |= other.needs_exported_resources;
+        self.needs_variant |= other.needs_variant;
+        self.needs_tuple |= other.needs_tuple;
+        self.needs_assert |= other.needs_assert;
+        self.needs_bit |= other.needs_bit;
+        self.needs_span |= other.needs_span;
+        self.needs_wit |= other.needs_wit;
+        self.needs_memory |= other.needs_memory;
+        self.needs_future |= other.needs_future;
+        self.needs_stream |= other.needs_stream;
+        self.needs_array |= other.needs_array;
+    }
+}
+
 #[derive(Default)]
 struct SourceWithState {
     src: Source,
@@ -119,6 +142,7 @@ struct Cpp {
     imported_interfaces: HashSet<InterfaceId>,
     instance_names: HashMap<InterfaceId, String>,
     user_class_files: HashMap<String, String>,
+    user_class_includes: Vec<String>,
     defined_types: HashSet<(Vec<String>, String)>,
     types: Types,
 
@@ -548,6 +572,7 @@ impl Cpp {
                 includes: std::mem::take(&mut self.includes),
                 src: std::mem::take(&mut self.h_src),
                 dependencies: std::mem::take(&mut self.dependencies),
+                user_class_includes: std::mem::take(&mut self.user_class_includes),
             }
         } else {
             Default::default()
@@ -567,6 +592,9 @@ impl Cpp {
                 uwriteln!(header, "#include {include}");
             }
             header.push_str(&self.h_src.src);
+            for include in self.user_class_includes.iter() {
+                uwriteln!(header, "#include {include}");
+            }
             let mut filename = namespace.join("-");
             filename.push_str(".h");
             if self.opts.format {
@@ -576,9 +604,13 @@ impl Cpp {
 
             let _ = std::mem::replace(&mut self.includes, store.includes);
             let _ = std::mem::replace(&mut self.h_src, store.src);
-            let _ = std::mem::replace(&mut self.dependencies, store.dependencies);
-            self.h_src.change_namespace(&[]);
-            uwriteln!(self.h_src.src, "#include \"{filename}\"");
+            let file_deps = std::mem::replace(&mut self.dependencies, store.dependencies);
+            self.dependencies.merge(&file_deps);
+            let _ = std::mem::replace(&mut self.user_class_includes, store.user_class_includes);
+            let inc = String::from("\"") + &filename + "\"";
+            if !self.user_class_includes.contains(&inc) {
+                self.user_class_includes.push(inc);
+            }
         }
     }
 
@@ -593,6 +625,7 @@ struct FileContext {
     includes: Vec<String>,
     src: SourceWithState,
     dependencies: Includes,
+    user_class_includes: Vec<String>,
 }
 
 impl WorldGenerator for Cpp {
@@ -601,6 +634,27 @@ impl WorldGenerator for Cpp {
         self.world = name.to_string();
         self.types.analyze(resolve);
         self.world_id = Some(world);
+        for (name, item) in &resolve.worlds[world].exports {
+            if let WorldItem::Interface { id, .. } = item {
+                self.update_instance_name(resolve, name, *id);
+            }
+        }
+        for (_name, item) in &resolve.worlds[world].exports {
+            if let WorldItem::Interface { id, .. } = item {
+                let namespc = namespace(resolve, &TypeOwner::Interface(*id), true, self);
+                for &type_id in resolve.interfaces[*id].types.values() {
+                    let ty = &resolve.types[type_id];
+                    if matches!(ty.kind, TypeDefKind::Resource) {
+                        if let Some(name) = &ty.name {
+                            let pascal = name.to_upper_camel_case();
+                            self.h_src.change_namespace(&namespc);
+                            uwriteln!(self.h_src.src, "class {pascal};");
+                        }
+                    }
+                }
+            }
+        }
+        self.h_src.change_namespace(&Vec::default());
         //        self.sizes.fill(resolve);
         if !self.opts.host_side() {
             let export_name = if self.opts.symmetric {
@@ -952,6 +1006,10 @@ impl WorldGenerator for Cpp {
         self.h_src.change_namespace(&Vec::default());
         h_str.src.push_str(&self.h_src.src);
 
+        for include in self.user_class_includes.iter() {
+            uwriteln!(h_str.src, "#include {include}");
+        }
+
         uwriteln!(c_str.src, "\n// Component Adapters");
 
         if !self.opts.short_cut && self.opts.host {
@@ -1195,6 +1253,39 @@ impl CppInterfaceGenerator<'_> {
 
     fn types(&mut self, iface: InterfaceId) {
         let iface_data = &self.resolve().interfaces[iface];
+
+        for &id in iface_data.types.values() {
+            let ty = &self.resolve().types[id];
+            if ty.owner != TypeOwner::Interface(iface) {
+                continue;
+            }
+            if let Some(name) = &ty.name {
+                match &ty.kind {
+                    TypeDefKind::Resource => {
+                        let pascal = name.to_upper_camel_case();
+                        uwriteln!(self.r#gen.h_src.src, "class {pascal};");
+                    }
+                    TypeDefKind::Record(_) => {
+                        let pascal = name.to_pascal_case();
+                        uwriteln!(self.r#gen.h_src.src, "struct {pascal};");
+                        let needs_param = match self.r#gen.opts.ownership {
+                            Ownership::Owning => false,
+                            Ownership::CoarseBorrowing => !self.r#gen.types.get(id).has_own_handle,
+                            Ownership::FineBorrowing => true,
+                        };
+                        if needs_param {
+                            let param_pascal = format!("{name}-param").to_pascal_case();
+                            uwriteln!(self.r#gen.h_src.src, "struct {param_pascal};");
+                        }
+                    }
+                    TypeDefKind::Variant(_) => {
+                        let pascal = name.to_pascal_case();
+                        uwriteln!(self.r#gen.h_src.src, "struct {pascal};");
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         // Here we sort the types topologically before emitting code for them,
         // taking into consideration the parameter and return types of functions
@@ -1522,8 +1613,13 @@ impl CppInterfaceGenerator<'_> {
     ) -> HighlevelSignature {
         let mut res = HighlevelSignature::default();
 
-        let (namespace, func_name_h) =
-            self.func_namespace_name(func, matches!(abi_variant, AbiVariant::GuestExport), false);
+        let is_export = matches!(
+            abi_variant,
+            AbiVariant::GuestExport
+                | AbiVariant::GuestExportAsync
+                | AbiVariant::GuestExportAsyncStackful
+        );
+        let (namespace, func_name_h) = self.func_namespace_name(func, is_export, false);
         res.name = func_name_h;
         res.namespace = namespace;
         let is_drop = is_special_method(func);
@@ -2733,7 +2829,10 @@ impl CppInterfaceGenerator<'_> {
                         ) => {
                             // Only exported resources have ::Owned typedef
                             if is_exported {
-                                typename.push_str(&format!("::{OWNED_CLASS_NAME}"))
+                                self.r#gen.dependencies.needs_wit = true;
+                                typename = format!(
+                                    "wit::{RESOURCE_EXPORT_BASE_CLASS_NAME}<{typename}>::{OWNED_CLASS_NAME}"
+                                );
                             } else {
                                 typename.push_str("&&")
                             }
@@ -2755,7 +2854,10 @@ impl CppInterfaceGenerator<'_> {
                         (_, _) => todo!(),
                     }
                     if matches!(flavor, Flavor::InStruct) && is_exported {
-                        typename.push_str(&format!("::{OWNED_CLASS_NAME}"))
+                        self.r#gen.dependencies.needs_wit = true;
+                        typename = format!(
+                            "wit::{RESOURCE_EXPORT_BASE_CLASS_NAME}<{typename}>::{OWNED_CLASS_NAME}"
+                        );
                     }
                     typename
                 }
@@ -4082,8 +4184,15 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     );
                     format!("wit::span<{inner} const>(ptr{}, (size_t){len})", tmp)
                 } else {
+                    let variant = match self.variant {
+                        AbiVariant::GuestImportAsync => AbiVariant::GuestImport,
+                        AbiVariant::GuestExportAsync | AbiVariant::GuestExportAsyncStackful => {
+                            AbiVariant::GuestExport
+                        }
+                        v => v,
+                    };
                     match (
-                        self.variant,
+                        variant,
                         self.r#gen.r#gen.opts.api_style,
                         self.r#gen.r#gen.opts.symmetric,
                     ) {
@@ -5621,6 +5730,35 @@ fn is_special_method(func: &Function) -> SpecialMethod {
 
 /// Sort the specified types topologically, taking the parameter and result
 /// types of resource functions into consideration.
+fn reaches_hard(resolve: &Resolve, start: TypeId, targets: &HashSet<TypeId>) -> bool {
+    struct HardChecker<'a> {
+        targets: &'a HashSet<TypeId>,
+        seen: HashSet<TypeId>,
+        found: bool,
+    }
+
+    impl TypeIdVisitor for HardChecker<'_> {
+        fn before_visit_type_id(&mut self, id: TypeId) -> bool {
+            if self.found {
+                return false;
+            }
+            if self.targets.contains(&id) {
+                self.found = true;
+                return false;
+            }
+            self.seen.insert(id)
+        }
+    }
+
+    let mut checker = HardChecker {
+        targets,
+        seen: HashSet::new(),
+        found: false,
+    };
+    checker.visit_type_id(resolve, start);
+    checker.found
+}
+
 fn sort_types<'a>(
     resolve: &Resolve,
     types: &'a IndexMap<String, TypeId>,
@@ -5628,47 +5766,101 @@ fn sort_types<'a>(
     struct Visitor<'a> {
         resolve: &'a Resolve,
         sorted: IndexSet<TypeId>,
-        visited: HashSet<TypeId>,
+        active: HashSet<TypeId>,
+    }
+
+    impl Visitor<'_> {
+        fn visit_soft_type(&mut self, ty: &Type) {
+            let Type::Id(tid) = *ty else {
+                return;
+            };
+            if self.sorted.contains(&tid) || self.active.contains(&tid) {
+                return;
+            }
+            if !reaches_hard(self.resolve, tid, &self.active) {
+                self.visit_type_id(self.resolve, tid);
+                return;
+            }
+            // `tid` transitively embeds an active resource by value (e.g. a record
+            // holding an owned handle to this resource), so a record/variant must be
+            // emitted after the resource (relying on its forward declaration). Still
+            // unwrap structural wrappers and `using` aliases so inner non-cyclic types
+            // (like enums or aliases) are emitted before the resource.
+            match &self.resolve.types[tid].kind {
+                TypeDefKind::Record(_) | TypeDefKind::Variant(_) | TypeDefKind::Resource => {}
+                TypeDefKind::Option(inner) | TypeDefKind::List(inner) => {
+                    self.visit_soft_type(inner);
+                }
+                TypeDefKind::Type(inner) | TypeDefKind::FixedLengthList(inner, _) => {
+                    self.visit_soft_type(inner);
+                    self.sorted.insert(tid);
+                }
+                TypeDefKind::Future(inner) | TypeDefKind::Stream(inner) => {
+                    if let Some(inner) = inner {
+                        self.visit_soft_type(inner);
+                    }
+                    self.sorted.insert(tid);
+                }
+                TypeDefKind::Result(r) => {
+                    if let Some(ok) = &r.ok {
+                        self.visit_soft_type(ok);
+                    }
+                    if let Some(err) = &r.err {
+                        self.visit_soft_type(err);
+                    }
+                }
+                TypeDefKind::Tuple(t) => {
+                    for elem in &t.types {
+                        self.visit_soft_type(elem);
+                    }
+                }
+                TypeDefKind::Map(k, v) => {
+                    self.visit_soft_type(k);
+                    self.visit_soft_type(v);
+                }
+                TypeDefKind::Handle(_) | TypeDefKind::Flags(_) | TypeDefKind::Enum(_) => {
+                    self.sorted.insert(tid);
+                }
+                TypeDefKind::Unknown => unreachable!(),
+            }
+        }
     }
 
     impl TypeIdVisitor for Visitor<'_> {
         fn before_visit_type_id(&mut self, id: TypeId) -> bool {
+            if self.sorted.contains(&id) || self.active.contains(&id) {
+                return false;
+            }
+            self.active.insert(id);
+
             let ty = &self.resolve.types[id];
             if let TypeDefKind::Resource = &ty.kind {
-                // Here we avoid infinite recursion by remembering if we've seen
-                // this type already.
-                if self.visited.contains(&id) {
-                    false
-                } else {
-                    self.visited.insert(id);
+                // TypeIdVisitor does not consider the parameter and return
+                // types of resource associated functions to be transitive
+                // types, so we handle them as soft dependencies (yielding to
+                // hard value-layout dependencies if a cycle exists).
+                if let TypeOwner::Interface(interface) = ty.owner {
+                    for function in self.resolve.interfaces[interface].functions.values() {
+                        if let Some(resource) = function.kind.resource()
+                            && resource == id
+                        {
+                            for parameter in &function.params {
+                                self.visit_soft_type(&parameter.ty);
+                            }
 
-                    // TypeIdVisitor does not consider the parameter and return
-                    // types of resource associated functions to be transitive
-                    // types, so we need to handle that ourselves here.
-                    if let TypeOwner::Interface(interface) = ty.owner {
-                        for function in self.resolve.interfaces[interface].functions.values() {
-                            if let Some(resource) = function.kind.resource()
-                                && resource == id
-                            {
-                                for parameter in &function.params {
-                                    self.visit_type(self.resolve, &parameter.ty);
-                                }
-
-                                if let Some(ty) = function.result {
-                                    self.visit_type(self.resolve, &ty);
-                                }
+                            if let Some(ty) = function.result {
+                                self.visit_soft_type(&ty);
                             }
                         }
                     }
-
-                    true
                 }
-            } else {
-                true
             }
+
+            true
         }
 
         fn after_visit_type_id(&mut self, id: TypeId) {
+            self.active.remove(&id);
             self.sorted.insert(id);
         }
     }
@@ -5676,7 +5868,7 @@ fn sort_types<'a>(
     let mut visitor = Visitor {
         resolve,
         sorted: Default::default(),
-        visited: Default::default(),
+        active: Default::default(),
     };
 
     for &id in types.values() {

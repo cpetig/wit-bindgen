@@ -251,15 +251,19 @@ impl<'i> InterfaceGenerator<'i> {
                 &[handle_type],
                 &[abi::WasmType::Pointer],
             );
+            // symmetric handles are the representation pointer itself
+            let (new_body, rep_body) = if self.r#gen.opts.symmetric {
+                ("val as usize".to_string(), "handle as *mut u8".to_string())
+            } else {
+                (
+                    format!("{import_new}\n    unsafe {{ {external_new}(val) as u32 }}"),
+                    format!("{import_rep}\n    unsafe {{ {external_rep}(handle as i32) }}"),
+                )
+            };
             let handle_type = if self.r#gen.opts.symmetric {
                 "usize"
             } else {
                 "u32"
-            };
-            let casting = if self.r#gen.opts.symmetric {
-                " as *mut u8"
-            } else {
-                " as i32"
             };
             uwriteln!(
                 self.src,
@@ -268,16 +272,14 @@ impl<'i> InterfaceGenerator<'i> {
 unsafe fn _resource_new(val: *mut u8) -> {handle_type}
     where Self: Sized
 {{
-    {import_new}
-    unsafe {{ {external_new}(val) as {handle_type} }}
+    {new_body}
 }}
 
 #[doc(hidden)]
 fn _resource_rep(handle: {handle_type}) -> *mut u8
     where Self: Sized
 {{
-    {import_rep}
-    unsafe {{ {external_rep}(handle{casting}) }}
+    {rep_body}
 }}
 
                     "#

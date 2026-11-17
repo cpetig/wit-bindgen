@@ -14,10 +14,17 @@ pub use dummy_rt::resource;
 #[cfg(feature = "canonical")]
 pub use original::{generate, resource, rt};
 
-#[cfg(feature = "async")]
+#[cfg(all(feature = "async", feature = "symmetric"))]
 pub use rt::async_support::{
     block_on, spawn, FutureReader, FutureWriteCancel, FutureWriter, StreamReader, StreamResult,
     StreamWriter,
+};
+
+// upstream renamed spawn to spawn_local
+#[cfg(all(feature = "async", feature = "canonical"))]
+pub use rt::async_support::{
+    block_on, spawn_local as spawn, FutureReader, FutureWriteCancel, FutureWriter, StreamReader,
+    StreamResult, StreamWriter,
 };
 
 #[cfg(feature = "symmetric")]

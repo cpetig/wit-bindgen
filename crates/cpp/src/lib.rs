@@ -2421,6 +2421,10 @@ impl CppInterfaceGenerator<'_> {
     // }
 
     fn generate_futures_and_streams(&mut self, func: &Function, variant: AbiVariant) {
+        // symmetric mode uses lower_future/lift_future instead of canonical ABI vtables
+        if self.r#gen.opts.symmetric {
+            return;
+        }
         let export = matches!(
             variant,
             AbiVariant::GuestExport
@@ -4593,12 +4597,22 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         }
                     },
                     (Handle::Own(ty), false) => match self.variant {
-                        AbiVariant::GuestImport | AbiVariant::GuestImportAsync => {
+                        // stream/future payloads of exported resources are lifted with the import variant
+                        AbiVariant::GuestImport | AbiVariant::GuestImportAsync
+                            if !{
+                                let rt = &self.r#gen.resolve.types[*ty];
+                                let rt = match &rt.kind {
+                                    TypeDefKind::Type(Type::Id(id)) => {
+                                        &self.r#gen.resolve.types[*id]
+                                    }
+                                    _ => rt,
+                                };
+                                self.r#gen.is_exported_type(rt)
+                            } =>
+                        {
                             results.push(format!("wit::{RESOURCE_IMPORT_BASE_CLASS_NAME}{{{op}}}"))
                         }
-                        AbiVariant::GuestExport
-                        | AbiVariant::GuestExportAsync
-                        | AbiVariant::GuestExportAsyncStackful => {
+                        _ => {
                             let tmp = self.tmp();
                             let var = self.tempname("obj", tmp);
                             let tname = self.r#gen.type_name(
@@ -4881,9 +4895,9 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     && !is_function_param
                 {
                     // Import from struct/variant field: optional<wit::string> needs .get_view()
-                    format!("({op0}).value().get_view()")
+                    format!("(*({op0})).get_view()")
                 } else {
-                    format!("({op0}).value()")
+                    format!("(*({op0}))")
                 };
                 let bind_some = format!("auto&& {some_payload} = {value_extract};");
 
@@ -4957,7 +4971,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 let op0 = &operands[0];
                 let bind_ok = if result.ok.is_some() {
                     if self.r#gen.r#gen.opts.autosar {
-                        format!("auto&& {ok_payload} = ({op0}).Value();")
+                        format!("auto&& {ok_payload} = std::move({op0}).Value();")
                     } else {
                         format!("auto&& {ok_payload} = *({op0});")
                     }
@@ -4970,7 +4984,12 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     } else {
                         "error"
                     };
-                    format!("auto&& {err_payload} = ({op0}).{error}();")
+                    if self.r#gen.r#gen.opts.autosar {
+                        // Error()/Value() on an lvalue are const-only; the && overloads allow moving resources out
+                        format!("auto&& {err_payload} = std::move({op0}).{error}();")
+                    } else {
+                        format!("auto&& {err_payload} = ({op0}).{error}();")
+                    }
                 } else {
                     String::new()
                 };
@@ -5054,7 +5073,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         self.src,
                         "::ara::core::Optional<{full_type}> {resultname};\n"
                     );
-                    results.push(format!("std::move({resultname}).value()"));
+                    results.push(format!("*std::move({resultname})"));
                 } else {
                     uwriteln!(self.src, "std::optional<{full_type}> {resultname};\n");
                     results.push(format!("*std::move({resultname})"));

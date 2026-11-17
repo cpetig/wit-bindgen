@@ -22,7 +22,9 @@
 #endif
 #include <utility> // pair
 #include <vector>
+#ifdef __cpp_impl_coroutine
 #include <coroutine>
+#endif
 
 namespace wit {
 #ifdef WIT_ARA_SPAN
@@ -378,6 +380,8 @@ enum WaitableState : uint32_t {
 
 inline constexpr uint32_t WAITABLE_STATUS_BLOCKED = 0xffffffffU;
 
+// async support needs C++20 coroutines
+#ifdef __cpp_impl_coroutine
 namespace detail {
 
 #ifdef __wasm__
@@ -1886,6 +1890,8 @@ inline std::pair<StreamWriter<T>, StreamReader<T>> stream_new() {
   int32_t writer = static_cast<int32_t>(handles >> 32);
   return {StreamWriter<T>(writer), StreamReader<T>(reader)};
 }
+
+#endif // __cpp_impl_coroutine
 
 class ErrorContext {
 public:

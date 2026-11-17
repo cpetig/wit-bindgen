@@ -407,7 +407,7 @@ macro_rules! {macro_name} {{
                 );
                 uwriteln!(
                     self.src,
-                    r#"    #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                    r#"    #[cfg_attr(not(target_arch = "wasm32"), unsafe(no_mangle))]
     #[allow(non_snake_case)]
     unsafe extern "C" fn {dtor_symbol}(arg0: usize) {{
       $($path_to_types)*::_export_drop_{snake}_cabi::<<$ty as $($path_to_types)*::Guest>::{camel}>(arg0)
@@ -426,7 +426,7 @@ macro_rules! {macro_name} {{
                 const _: () = {{
                     #[doc(hidden)]
                     #[cfg_attr(target_arch = "wasm32", unsafe(export_name = "{export_prefix}{module}#[dtor]{name}"))]
-                    #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                    #[cfg_attr(not(target_arch = "wasm32"), unsafe(no_mangle))]
                     #[allow(non_snake_case)]
                     unsafe extern "C" fn {dtor_symbol}(rep: *mut u8) {{
                         unsafe {{
@@ -1495,7 +1495,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             self.src,
             "\
                 #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}{export_name}\"))]
-                #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
+                #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]
                 #[allow(non_snake_case)]
                 unsafe extern \"C\" fn {external_name}\
         ",
@@ -1534,7 +1534,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 self.src,
                 "\
                     #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}cabi_post_{export_name}\"))]
-                    #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
+                    #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]
                     #[allow(non_snake_case)]
                     unsafe extern \"C\" fn {external_name}\
             "

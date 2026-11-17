@@ -1499,48 +1499,14 @@ pub mod exports {
                     where
                         Self: Sized,
                     {
-                        #[link(
-                            wasm_import_module = "[export]symmetric:runtime/symmetric-stream@0.3.1"
-                        )]
-                        unsafe extern "C" {
-                            #[allow(non_snake_case)]
-                            #[cfg_attr(
-                                target_arch = "wasm32",
-                                link_name = "[resource-new]address"
-                            )]
-                            fn X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_newX5Daddress(
-                                _: *mut u8,
-                            ) -> *mut u8;
-                        }
-                        unsafe {
-                            X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_newX5Daddress(
-                                val,
-                            ) as usize
-                        }
+                        val as usize
                     }
                     #[doc(hidden)]
                     fn _resource_rep(handle: usize) -> *mut u8
                     where
                         Self: Sized,
                     {
-                        #[link(
-                            wasm_import_module = "[export]symmetric:runtime/symmetric-stream@0.3.1"
-                        )]
-                        unsafe extern "C" {
-                            #[allow(non_snake_case)]
-                            #[cfg_attr(
-                                target_arch = "wasm32",
-                                link_name = "[resource-rep]address"
-                            )]
-                            fn X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_repX5Daddress(
-                                _: *mut u8,
-                            ) -> *mut u8;
-                        }
-                        unsafe {
-                            X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_repX5Daddress(
-                                handle as *mut u8,
-                            )
-                        }
+                        handle as *mut u8
                     }
                     /// Place this resource's representation into a location with a stable pointer,
                     /// returning a pointer to that location.
@@ -1594,48 +1560,14 @@ pub mod exports {
                     where
                         Self: Sized,
                     {
-                        #[link(
-                            wasm_import_module = "[export]symmetric:runtime/symmetric-stream@0.3.1"
-                        )]
-                        unsafe extern "C" {
-                            #[allow(non_snake_case)]
-                            #[cfg_attr(
-                                target_arch = "wasm32",
-                                link_name = "[resource-new]buffer"
-                            )]
-                            fn X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_newX5Dbuffer(
-                                _: *mut u8,
-                            ) -> *mut u8;
-                        }
-                        unsafe {
-                            X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_newX5Dbuffer(
-                                val,
-                            ) as usize
-                        }
+                        val as usize
                     }
                     #[doc(hidden)]
                     fn _resource_rep(handle: usize) -> *mut u8
                     where
                         Self: Sized,
                     {
-                        #[link(
-                            wasm_import_module = "[export]symmetric:runtime/symmetric-stream@0.3.1"
-                        )]
-                        unsafe extern "C" {
-                            #[allow(non_snake_case)]
-                            #[cfg_attr(
-                                target_arch = "wasm32",
-                                link_name = "[resource-rep]buffer"
-                            )]
-                            fn X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_repX5Dbuffer(
-                                _: *mut u8,
-                            ) -> *mut u8;
-                        }
-                        unsafe {
-                            X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_repX5Dbuffer(
-                                handle as *mut u8,
-                            )
-                        }
+                        handle as *mut u8
                     }
                     /// Place this resource's representation into a location with a stable pointer,
                     /// returning a pointer to that location.
@@ -1689,7 +1621,7 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
-                pub unsafe fn _export_drop_streamObj_cabi<T: GuestStreamObj>(
+                pub unsafe fn _export_drop_stream_obj_cabi<T: GuestStreamObj>(
                     arg0: usize,
                 ) {
                     #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
@@ -1701,48 +1633,14 @@ pub mod exports {
                     where
                         Self: Sized,
                     {
-                        #[link(
-                            wasm_import_module = "[export]symmetric:runtime/symmetric-stream@0.3.1"
-                        )]
-                        unsafe extern "C" {
-                            #[allow(non_snake_case)]
-                            #[cfg_attr(
-                                target_arch = "wasm32",
-                                link_name = "[resource-new]stream-obj"
-                            )]
-                            fn X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_newX5Dstream_obj(
-                                _: *mut u8,
-                            ) -> *mut u8;
-                        }
-                        unsafe {
-                            X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_newX5Dstream_obj(
-                                val,
-                            ) as usize
-                        }
+                        val as usize
                     }
                     #[doc(hidden)]
                     fn _resource_rep(handle: usize) -> *mut u8
                     where
                         Self: Sized,
                     {
-                        #[link(
-                            wasm_import_module = "[export]symmetric:runtime/symmetric-stream@0.3.1"
-                        )]
-                        unsafe extern "C" {
-                            #[allow(non_snake_case)]
-                            #[cfg_attr(
-                                target_arch = "wasm32",
-                                link_name = "[resource-rep]stream-obj"
-                            )]
-                            fn X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_repX5Dstream_obj(
-                                _: *mut u8,
-                            ) -> *mut u8;
-                        }
-                        unsafe {
-                            X5BexportX5DsymmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_repX5Dstream_obj(
-                                handle as *mut u8,
-                            )
-                        }
+                        handle as *mut u8
                     }
                     /// Place this resource's representation into a location with a stable pointer,
                     /// returning a pointer to that location.
@@ -1825,7 +1723,7 @@ pub mod exports {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
                         const _ : () = { #[cfg_attr(target_arch = "wasm32", unsafe
                         (export_name = "[constructor]buffer"))]
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dbuffer(arg0
                         : * mut u8, arg1 : i64,) -> * mut u8 { unsafe {
@@ -1833,55 +1731,55 @@ pub mod exports {
                         $($path_to_types)*:: Guest >::Buffer > (arg0, arg1) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]buffer.get-address"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_address(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_buffer_get_address_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]buffer.get-size"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_size(arg0
                         : * mut u8,) -> i64 { unsafe { $($path_to_types)*::
                         _export_method_buffer_get_size_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]buffer.set-size"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eset_size(arg0
                         : * mut u8, arg1 : i64,) { unsafe { $($path_to_types)*::
                         _export_method_buffer_set_size_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0, arg1) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]buffer.capacity"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Ecapacity(arg0
                         : * mut u8,) -> i64 { unsafe { $($path_to_types)*::
                         _export_method_buffer_capacity_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[constructor]stream-obj"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dstream_obj()
                         -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_constructor_stream_obj_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > () } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.clone"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclone(arg0
                         : * mut u8, arg1 : i32,) -> * mut u8 { unsafe {
                         $($path_to_types)*:: _export_method_stream_obj_clone_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.is-write-closed"))]
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_write_closed(arg0
                         : * mut u8,) -> i32 { unsafe { $($path_to_types)*::
@@ -1889,8 +1787,8 @@ pub mod exports {
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.start-reading"))] #[cfg_attr(not(target_arch
-                        = "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern
-                        "C" fn
+                        = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_reading(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
@@ -1898,7 +1796,7 @@ pub mod exports {
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1, arg2) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.read-ready-subscribe"))]
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
@@ -1906,39 +1804,39 @@ pub mod exports {
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.close-read"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclose_read(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_close_read_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.read-result"))] #[cfg_attr(not(target_arch =
-                        "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern "C"
-                        fn
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_result(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_read_result_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.is-read-closed"))] #[cfg_attr(not(target_arch
-                        = "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern
-                        "C" fn
+                        = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_read_closed(arg0
                         : * mut u8,) -> i32 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_is_read_closed_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.start-writing"))] #[cfg_attr(not(target_arch
-                        = "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern
-                        "C" fn
+                        = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_writing(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_start_writing_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.write-ready-subscribe"))]
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
@@ -1946,28 +1844,28 @@ pub mod exports {
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.finish-writing"))] #[cfg_attr(not(target_arch
-                        = "wasm32"), no_mangle)] #[allow(non_snake_case)] unsafe extern
-                        "C" fn
+                        = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Efinish_writing(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_finish_writing_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1, arg2) } }
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(arg0
                         : usize) { $($path_to_types)*:: _export_drop_address_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::Address > (arg0) }
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(arg0
                         : usize) { $($path_to_types)*:: _export_drop_buffer_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::Buffer > (arg0) }
-                        #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                        #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
                         symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(arg0
                         : usize) { $($path_to_types)*::
-                        _export_drop_streamObj_cabi::<<$ty as $($path_to_types)*:: Guest
+                        _export_drop_stream_obj_cabi::<<$ty as $($path_to_types)*:: Guest
                         >::StreamObj > (arg0) } };
                     };
                 }

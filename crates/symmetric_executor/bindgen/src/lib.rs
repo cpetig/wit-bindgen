@@ -1,5 +1,12 @@
 // this crate tries to minimize dependencies for symmetric bindings
 
+// features are unified across a cargo workspace, so a workspace mixing both modes ends up here
+#[cfg(all(feature = "symmetric", feature = "canonical"))]
+compile_error!(
+    "features `symmetric` and `canonical` are mutually exclusive; some package of the workspace \
+     enables the other mode, build the packages of each mode separately (cargo build -p ...)"
+);
+
 #[cfg(feature = "symmetric")]
 pub mod rt {
     pub use dummy_rt::rt::{maybe_link_cabi_realloc, Resource, ResourceRep};

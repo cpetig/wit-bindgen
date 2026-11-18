@@ -1,3 +1,5 @@
+include!("../link-search/src/scan.rs");
+
 fn main() {
-    symmetric_link_search::emit();
+    emit();
 }

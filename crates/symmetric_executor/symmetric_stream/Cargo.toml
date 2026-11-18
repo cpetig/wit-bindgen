@@ -16,4 +16,5 @@ trace = ["dep:libc"]
 default = ["trace"]
 
 [build-dependencies]
-symmetric-link-search = { path = "../link-search" }
+# only to have the library built before the build script looks for it
+symmetric_executor = { path = ".." }

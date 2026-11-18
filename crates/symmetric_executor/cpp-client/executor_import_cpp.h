@@ -2,10 +2,11 @@
 #ifndef __CPP_GUEST_BINDINGS_EXECUTOR_IMPORT_H
 #define __CPP_GUEST_BINDINGS_EXECUTOR_IMPORT_H
 #define WIT_SYMMETRIC
+#define WIT_ARA_SPAN
 #include "wit.h"
+#include <ara/core/optional.h>
 #include <cassert>
 #include <cstdint>
-#include <optional>
 #include <utility>
 /// This interface will only work with symmetric ABI (shared everything),
 /// it can't be composed with the canonical ABI
@@ -13,6 +14,11 @@
 namespace symmetric {
 namespace runtime {
 namespace symmetric_executor {
+class CallbackFunction;
+class CallbackData;
+class EventSubscription;
+class EventGenerator;
+class CallbackRegistration;
 /// These pseudo-resources are just used to
 /// pass pointers to register
 /// Return value of an event callback
@@ -112,9 +118,9 @@ void Run();
 CallbackRegistration Register(EventSubscription &&trigger,
                               CallbackFunction &&callback, CallbackData &&data);
 /// Register a callback for an event, skip if already active
-std::optional<CallbackRegistration> RegisterUnique(EventSubscription &&trigger,
-                                                   CallbackFunction &&callback,
-                                                   CallbackData &&data);
+::ara::core::Optional<CallbackRegistration>
+RegisterUnique(EventSubscription &&trigger, CallbackFunction &&callback,
+               CallbackData &&data);
 /// Wait for a specific event
 void BlockOn(EventSubscription &&trigger);
 } // namespace symmetric_executor

@@ -1,6 +1,7 @@
 #include "module_cpp.h"
 #include "stream_support.h"
 #include <expected> // needs to precede optional
+#include "result_compat.h"
 #include <future>
 
 // internal calback used by lift_event
@@ -144,10 +145,11 @@ template <class T> struct stream_writer {
 
   // non blocking write, returns remaining data
   std::vector<T> write_nb(std::vector<T> data) {
-    auto buffer = handle.StartWriting();
-    if (buffer.has_value()) {
-      auto capacity = buffer->Capacity();
-      uint8_t *dest = (uint8_t *)buffer->GetAddress().into_handle();
+    auto result = handle.StartWriting();
+    if (wit::result_ok(result)) {
+      auto buffer = wit::result_value(std::move(result));
+      auto capacity = buffer.Capacity();
+      uint8_t *dest = (uint8_t *)buffer.GetAddress().into_handle();
       auto elements = data.size();
       if (capacity < elements)
         elements = capacity;
@@ -156,8 +158,8 @@ template <class T> struct stream_writer {
             std::move(data[i]),
             dest + (i * wit::StreamProperties<T>::lowered_size));
       }
-      buffer->SetSize(elements);
-      handle.FinishWriting(std::move(buffer).value());
+      buffer.SetSize(elements);
+      handle.FinishWriting(std::move(buffer));
 
       if (capacity > data.size())
         capacity = data.size();
@@ -224,15 +226,16 @@ write_to_future(void *data) {
   if (ptr->fut.wait_for(std::chrono::seconds::zero()) ==
       std::future_status::ready) {
     auto result = ptr->fut.get();
-    auto buffer = ptr->wr.handle.StartWriting();
-    if (buffer.has_value()) {
-      assert(buffer->Capacity() == 1);
-      uint8_t *dataptr = (uint8_t *)(buffer->GetAddress().into_handle());
+    auto written = ptr->wr.handle.StartWriting();
+    if (wit::result_ok(written)) {
+      auto buffer = wit::result_value(std::move(written));
+      assert(buffer.Capacity() == 1);
+      uint8_t *dataptr = (uint8_t *)(buffer.GetAddress().into_handle());
       LOWER::lower(std::move(result), dataptr);
-      buffer->SetSize(1);
-      ptr->wr.handle.FinishWriting(std::move(buffer).value());
+      buffer.SetSize(1);
+      ptr->wr.handle.FinishWriting(std::move(buffer));
     } else {
-      if (buffer.error() ==
+      if (wit::result_error(written) ==
           symmetric::runtime::symmetric_stream::StreamState::kPending) {
         symmetric::runtime::symmetric_executor::Register(
             ptr->wr.handle.WriteReadySubscribe(),
@@ -253,16 +256,17 @@ write_to_future(void *data) {
            symmetric::runtime::symmetric_executor::EventGenerator &&gen) {
           auto result = ptr->fut.get();
           while (!ptr->wr.handle.IsReadClosed()) {
-            auto buffer = ptr->wr.handle.StartWriting();
-            if (buffer.has_value()) {
+            auto written = ptr->wr.handle.StartWriting();
+            if (wit::result_ok(written)) {
+              auto buffer = wit::result_value(std::move(written));
               // assert(buffer.GetSize()==1); //sizeof(T));
               uint8_t *dataptr =
-                  (uint8_t *)(buffer->GetAddress().into_handle());
+                  (uint8_t *)(buffer.GetAddress().into_handle());
               LOWER::lower(std::move(result), dataptr);
-              buffer->SetSize(1);
-              ptr->wr.handle.FinishWriting(std::move(buffer).value());
+              buffer.SetSize(1);
+              ptr->wr.handle.FinishWriting(std::move(buffer));
             } else {
-              if (buffer.error() ==
+              if (wit::result_error(written) ==
                   symmetric::runtime::symmetric_stream::StreamState::kPending) {
                 symmetric::runtime::symmetric_executor::BlockOn(
                     ptr->wr.handle.WriteReadySubscribe());

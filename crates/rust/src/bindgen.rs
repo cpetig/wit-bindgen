@@ -854,12 +854,12 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(&format!(
                     "let ({result}, {cleanup}) = {rt}::Cleanup::new({layout});"
                 ));
-                if self.r#gen.r#gen.opts.symmetric && self.r#gen.in_import {
-                    //if !self.r#gen.needs_deallocate {
-                    //    self.push_str("// ");
-                    //} else {
-                    assert!(self.r#gen.needs_deallocate);
-                    //}
+                // `needs_deallocate` is only set while generating an imported function with list
+                // parameters; the payload code of futures and streams has no `_deallocate` list.
+                if self.r#gen.r#gen.opts.symmetric
+                    && self.r#gen.in_import
+                    && self.r#gen.needs_deallocate
+                {
                     self.push_str(&format!(
                         "if !{result}.is_null() {{ _deallocate.push(({result}, {layout})); }}\n"
                     ));

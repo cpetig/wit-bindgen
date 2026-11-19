@@ -9,6 +9,9 @@ dummy-rt = { path = "../dummy-rt", optional = true }
 original = { path = "../../guest-rust", optional = true, package = "wit-bindgen" }
 wit-bindgen-rust-macro = { path = "../../guest-rust/macro", optional = true }
 
+[build-dependencies]
+symmetric-link-search = { path = "../link-search" }
+
 [features]
 # no default gives you the original wit-bindgen crate with rt
 default = [ "symmetric", "async" ]

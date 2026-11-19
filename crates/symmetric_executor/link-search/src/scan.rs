@@ -26,6 +26,10 @@ pub fn emit() {
             }
         }
     }
+    // libraries of the workspace members themselves
+    if let Some(profile) = build_dirs[0].parent() {
+        println!("cargo:rustc-link-search={}", profile.display());
+    }
     let mut newest: BTreeMap<String, (SystemTime, PathBuf)> = BTreeMap::new();
     for build in build_dirs {
         let Ok(crates) = fs::read_dir(build) else {

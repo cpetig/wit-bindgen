@@ -479,7 +479,7 @@ impl symmetric_executor::Guest for Guest {
         let queue = QueuedEvent::new(
             trigger,
             CallbackEntry(
-                unsafe { std::mem::transmute(std::ptr::null::<u8>()) },
+                |_| CallbackState::Ready,
                 std::ptr::null_mut(),
             ),
         );

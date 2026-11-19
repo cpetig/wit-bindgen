@@ -5060,7 +5060,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     if !self.r#gen.r#gen.opts.autosar {
                         format!("{resultname}.emplace({ok_result});")
                     } else {
-                        String::new()
+                        format!("{resultname}.emplace({full_type}::FromValue());")
                     }
                 };
                 let err_assign = if self.r#gen.r#gen.opts.autosar {

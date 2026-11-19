@@ -170,6 +170,8 @@ symmetric::runtime::symmetric_stream::StreamObj::StartReading(
 
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
+    result1.emplace(
+        ::ara::core::Result<void, symmetric_stream::Buffer>::FromValue());
   } else {
 
     result1.emplace(
@@ -291,6 +293,8 @@ symmetric::runtime::symmetric_stream::StreamObj::FinishWriting(
 
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
 
+    result1.emplace(
+        ::ara::core::Result<void, symmetric_stream::Buffer>::FromValue());
   } else {
 
     result1.emplace(

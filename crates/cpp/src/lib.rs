@@ -13,7 +13,8 @@ use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
     AsyncFilterSet, Files, InterfaceGenerator, Source, Types, WorldGenerator,
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
-    make_external_component, make_external_symbol, name_package_module, uwrite, uwriteln,
+    make_external_component, make_external_symbol, name_package_module, symbol_extensions,
+    symmetric, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Param,
         Resolve, SizeAlign, Stability, Type, TypeDef, TypeDefKind, TypeId, TypeOwner, WorldId,

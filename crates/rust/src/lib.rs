@@ -11,7 +11,7 @@ use std::str::FromStr;
 use wit_bindgen_core::abi::{Bitcast, WasmType};
 use wit_bindgen_core::{
     AsyncFilterSet, ChainableMethodFilterSet, ChainingMode, Files, InterfaceGenerator as _, Source,
-    Types, WorldGenerator, dealias, name_package_module, symbol_name, uwrite, uwriteln,
+    Types, WorldGenerator, dealias, make_external_component, name_package_module, uwrite, uwriteln,
     wit_parser::*,
 };
 

@@ -13,8 +13,7 @@ use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
 use wit_bindgen_core::{
     AnonymousTypeGenerator, ChainingMode, Source, TypeInfo, dealias, make_external_component,
-    make_external_symbol, symbol_extensions, symbol_name, symmetric, uwrite, uwriteln,
-    wit_parser::*,
+    make_external_symbol, symbol_extensions, symmetric, uwrite, uwriteln, wit_parser::*,
 };
 
 pub struct InterfaceGenerator<'a> {
@@ -710,8 +709,6 @@ macro_rules! {macro_name} {{
                 Alignment::default(),
             )
         };
-        let size = size.format_term(POINTER_SIZE_EXPRESSION, true);
-        let align = align.format(POINTER_SIZE_EXPRESSION);
         let lift;
         let lower;
         let dealloc_lists;

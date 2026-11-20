@@ -316,12 +316,24 @@ impl Executor {
                     );
                 }
                 count_events += 1;
-                task.callback.take_if(|CallbackEntry(f, data)| {
-                    let result = (f)(*data);
+                let key = EventKey::of(&task.inner);
+                let registered = &mut task.registered;
+                task.callback.take_if(|entry| {
+                    // the running callback re-registers its events, so this one doesn't count
+                    // as pending for register_unique
+                    if std::mem::take(registered) {
+                        forget_registration(&key, entry);
+                    }
+                    let result = (entry.0)(entry.1);
                     if DEBUGGING {
                         println!("{} callback returned {:?}", gettid(), result,);
                     }
-                    matches!(result, CallbackState::Ready)
+                    let ready = matches!(result, CallbackState::Ready);
+                    if !ready {
+                        remember_registration(key.clone(), CallbackEntry(entry.0, entry.1));
+                        *registered = true;
+                    }
+                    ready
                 });
             } else {
                 count_waiting += 1;
@@ -337,8 +349,21 @@ impl Executor {
                             let diff = system_time.duration_since(now).unwrap_or_default();
                             ws.timeout(diff);
                         } else {
-                            task.callback.take_if(|CallbackEntry(f, data)| {
-                                matches!((f)(*data), CallbackState::Ready)
+                            let key = EventKey::of(&task.inner);
+                            let registered = &mut task.registered;
+                            task.callback.take_if(|entry| {
+                                if std::mem::take(registered) {
+                                    forget_registration(&key, entry);
+                                }
+                                let ready = matches!((entry.0)(entry.1), CallbackState::Ready);
+                                if !ready {
+                                    remember_registration(
+                                        key.clone(),
+                                        CallbackEntry(entry.0, entry.1),
+                                    );
+                                    *registered = true;
+                                }
+                                ready
                             });
                         }
                     }
@@ -433,24 +458,17 @@ impl symmetric_executor::Guest for Guest {
         callback: symmetric_executor::CallbackFunction,
         data: symmetric_executor::CallbackData,
     ) -> Option<symmetric_executor::CallbackRegistration> {
-        match EXECUTOR.try_lock() {
-            Ok(lock) => {
-                let cb: CallbackType = unsafe { transmute(callback.handle()) };
-                let data2 = data.handle() as *mut OpaqueData;
-                if lock
-                    .active_tasks
-                    .iter()
-                    .any(|e| e.callback == Some(CallbackEntry(cb, data2)))
-                {
-                    _ = callback.take_handle();
-                    _ = data.take_handle();
-                    None
-                } else {
-                    drop(lock);
-                    Some(Self::register(trigger, callback, data))
-                }
-            }
-            Err(_) => Some(Self::register(trigger, callback, data)),
+        let cb: CallbackType = unsafe { transmute(callback.handle()) };
+        let data2 = data.handle() as *mut OpaqueData;
+        let key = EventKey::of(&trigger.get::<EventSubscriptionInternal>().inner);
+        // pending registrations are tracked separately from the executor's task list, which can
+        // be locked (or borrowed by tick, when called from a callback) right now
+        if is_registered(&key, &CallbackEntry(cb, data2)) {
+            _ = callback.take_handle();
+            _ = data.take_handle();
+            None
+        } else {
+            Some(Self::register(trigger, callback, data))
         }
     }
 
@@ -478,10 +496,7 @@ impl symmetric_executor::Guest for Guest {
         // part of this function is never used
         let queue = QueuedEvent::new(
             trigger,
-            CallbackEntry(
-                |_| CallbackState::Ready,
-                std::ptr::null_mut(),
-            ),
+            CallbackEntry(|_| CallbackState::Ready, std::ptr::null_mut()),
         );
         if queue.inner.ready() {
             if DEBUGGING {
@@ -590,6 +605,49 @@ struct QueuedEvent {
     inner: EventType,
     event_fd: EventFd,
     callback: Option<CallbackEntry>,
+    // whether callback is listed in REGISTRATIONS
+    registered: bool,
+}
+
+/// Identity of the event a registration waits for
+#[derive(Clone, PartialEq)]
+enum EventKey {
+    Trigger(usize),
+    Time(SystemTime),
+}
+
+impl EventKey {
+    fn of(inner: &EventType) -> Self {
+        match inner {
+            EventType::Triggered { event, .. } => Self::Trigger(Arc::as_ptr(event) as usize),
+            EventType::SystemTime(time) => Self::Time(*time),
+        }
+    }
+}
+
+// The pending registrations, used by register_unique to avoid piling up identical ones
+static REGISTRATIONS: Mutex<Vec<(EventKey, CallbackEntry)>> = Mutex::new(Vec::new());
+
+fn remember_registration(key: EventKey, entry: CallbackEntry) {
+    REGISTRATIONS.lock().unwrap().push((key, entry));
+}
+
+fn forget_registration(key: &EventKey, entry: &CallbackEntry) {
+    let mut registrations = REGISTRATIONS.lock().unwrap();
+    if let Some(pos) = registrations
+        .iter()
+        .position(|(k, e)| k == key && e == entry)
+    {
+        registrations.swap_remove(pos);
+    }
+}
+
+fn is_registered(key: &EventKey, entry: &CallbackEntry) -> bool {
+    REGISTRATIONS
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(k, e)| k == key && e == entry)
 }
 
 static ID_SOURCE: AtomicUsize = AtomicUsize::new(1);
@@ -636,11 +694,13 @@ impl QueuedEvent {
                 }
             }
         }
+        remember_registration(EventKey::of(&inner), CallbackEntry(callback.0, callback.1));
         QueuedEvent {
             id,
             inner,
             callback: Some(callback),
             event_fd,
+            registered: true,
         }
     }
 }
@@ -675,6 +735,9 @@ impl EventSubscriptionInternal {
 
 impl Drop for QueuedEvent {
     fn drop(&mut self) {
+        if let (true, Some(cb)) = (self.registered, &self.callback) {
+            forget_registration(&EventKey::of(&self.inner), cb);
+        }
         if let Some(cb) = &self.callback {
             if DEBUGGING {
                 println!(

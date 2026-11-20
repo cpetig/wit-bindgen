@@ -25,39 +25,7 @@ macro_rules! rtdebug {
     }
 }
 
-/// Helper macro to deduplicate foreign definitions of wasm functions.
-///
-/// This automatically imports when on wasm targets and then defines a dummy
-/// panicking shim for native targets to support native compilation but fail at
-/// runtime.
-macro_rules! extern_wasm {
-    (
-        $(#[$extern_attr:meta])*
-        unsafe extern "C" {
-            $(
-                $(#[$func_attr:meta])*
-                $vis:vis fn $func_name:ident ( $($args:tt)* ) $(-> $ret:ty)?;
-            )*
-        }
-    ) => {
-        $(
-            #[cfg(not(target_family = "wasm"))]
-            #[allow(unused, reason = "dummy shim for non-wasm compilation, never invoked")]
-            $vis unsafe fn $func_name($($args)*) $(-> $ret)? {
-                unreachable!();
-            }
-        )*
-
-        #[cfg(target_family = "wasm")]
-        $(#[$extern_attr])*
-        unsafe extern "C" {
-            $(
-                $(#[$func_attr])*
-                $vis fn $func_name($($args)*) $(-> $ret)?;
-            )*
-        }
-    };
-}
+use crate::rt::extern_wasm;
 
 mod abi_buffer;
 mod cabi;
@@ -148,6 +116,9 @@ struct SharedTaskState {
     // Note the `TryLock` is the same as `waitables` above, it's serving the
     // purpose of interior mutability.
     waitable_set: TryLock<Option<WaitableSet>>,
+
+    /// Tasks spawned onto this task through the `rust_spawn` hook.
+    spawned: spawn::Spawned,
 }
 
 /// An entry of `SharedTaskState::waitables` which is added through the C ABI.
@@ -230,7 +201,7 @@ impl<'a> TaskState<'a> {
                     .store(SLEEP_STATE_POLLING, Ordering::Relaxed);
 
                 // Poll our future, seeing if it was able to make progress.
-                let poll = me.tasks.poll_next(&mut context);
+                let poll = me.tasks.poll_next(&mut context, &me.shared.spawned);
 
                 match poll {
                     // The task list is empty, but there might be remaining work
@@ -360,10 +331,12 @@ impl Drop for TaskState<'_> {
         // execute arbitrary code. This arbitrary code might require the p3 APIs
         // for managing waitables, notably around removing them. In this
         // situation we ensure that the p3 task is set while futures are being
-        // destroyed.
+        // destroyed. The same applies to tasks that these destructors spawn
+        // onto this task.
         if !self.tasks.is_empty() {
             self.with_p3_task_set(|me| {
                 me.tasks = Default::default();
+                me.shared.spawned.take();
             })
         }
     }
@@ -450,8 +423,9 @@ impl SharedTaskState {
     }
 
     #[cfg(feature = "async-spawn")]
-    unsafe fn cabi_rust_spawn(_ptr: *mut c_void, task: Box<dyn Future<Output = ()>>) {
-        spawn::push(Pin::from(task))
+    unsafe fn cabi_rust_spawn(ptr: *mut c_void, task: Box<dyn Future<Output = ()>>) {
+        let me = unsafe { Self::cabi_to_self(ptr) };
+        me.spawned.push(Pin::from(task))
     }
 }
 
@@ -555,7 +529,7 @@ impl ReturnCode {
 #[cfg(not(target_env = "p3"))]
 mod task_state {
     pub fn get() -> *mut u8 {
-        extern_wasm! {
+        super::extern_wasm! {
             #[link(wasm_import_module = "$root")]
             unsafe extern "C" {
                 #[link_name = "[context-get-0]"]
@@ -567,7 +541,7 @@ mod task_state {
     }
 
     pub unsafe fn set(value: *mut u8) {
-        extern_wasm! {
+        super::extern_wasm! {
             #[link(wasm_import_module = "$root")]
             unsafe extern "C" {
                 #[link_name = "[context-set-0]"]

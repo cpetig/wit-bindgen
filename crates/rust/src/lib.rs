@@ -11,7 +11,8 @@ use std::str::FromStr;
 use wit_bindgen_core::abi::{Bitcast, WasmType};
 use wit_bindgen_core::{
     AsyncFilterSet, ChainableMethodFilterSet, ChainingMode, Files, InterfaceGenerator as _, Source,
-    Types, WorldGenerator, dealias, name_package_module, uwrite, uwriteln, wit_parser::*,
+    Types, WorldGenerator, dealias, name_package_module, symbol_name, uwrite, uwriteln,
+    wit_parser::*,
 };
 
 mod bindgen;
@@ -776,7 +777,7 @@ pub unsafe fn bool_lift(val: u8) -> bool {
                 let rt = self.runtime_path();
                 self.src.push_str(&format!(
                     r#"
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 pub fn run_ctors_once() {{
     {rt}::run_ctors_once();
 }}
@@ -1056,7 +1057,7 @@ macro_rules! __export_{world_name}_impl {{
         if self.opts.format {
             uwriteln!(self.src, "#[rustfmt::skip]");
         }
-        self.src.push_str("\n#[cfg(target_arch = \"wasm32\")]\n");
+        self.src.push_str("\n");
 
         // The custom section name here must start with "component-type" but
         // otherwise is attempted to be unique here to ensure that this doesn't get
@@ -1068,8 +1069,8 @@ macro_rules! __export_{world_name}_impl {{
         let pkg = &resolve.packages[world.package.unwrap()].name;
         let version = env!("CARGO_PKG_VERSION");
         self.src.push_str(&format!(
-            "#[unsafe(link_section = \"component-type:wit-bindgen:{version}:\
-             {pkg}:{world_name}:{section_suffix}{opts_suffix}\")]\n"
+            "#[cfg_attr(target_family = \"wasm\", unsafe(link_section = \"component-type:wit-bindgen:{version}:\
+             {pkg}:{world_name}:{section_suffix}{opts_suffix}\"))]\n"
         ));
 
         let mut producers = wasm_metadata::Producers::empty();
@@ -1128,6 +1129,25 @@ macro_rules! __export_{world_name}_impl {{
 
         self.src.push_str("\";\n");
         self.src.set_indent(old_indent);
+
+        let symbol = make_external_component(&format!("{pkg}/{world_name}{opts_suffix}"));
+        uwriteln!(
+            self.src,
+            "
+            #[cfg(not(target_family = \"wasm\"))]
+            const _: () = {{
+                #[unsafe(export_name = \"__wit_bindgen_world_{symbol}\")]
+                unsafe extern \"C\" fn __wit_bindgen_world(len: *mut usize) -> *const u8 {{
+                    if !len.is_null() {{
+                        unsafe {{
+                            *len = __WIT_BINDGEN_COMPONENT_TYPE.len();
+                        }}
+                    }}
+                    __WIT_BINDGEN_COMPONENT_TYPE.as_ptr()
+                }}
+            }};
+        ",
+        );
 
         if let Some(func_name) = func_name {
             let rt = self.runtime_path().to_string();
@@ -2001,12 +2021,11 @@ fn declare_import(
     rust_name: &str,
     params: &[WasmType],
     results: &[WasmType],
+    rt: &str,
 ) -> String {
     let mut sig = "(".to_owned();
-    for param in params.iter() {
-        sig.push_str("_: ");
-        sig.push_str(wasm_type(*param));
-        sig.push_str(", ");
+    for (i, param) in params.iter().enumerate() {
+        uwrite!(sig, "arg{i}: {}, ", wasm_type(*param));
     }
     sig.push(')');
     assert!(results.len() < 2);
@@ -2016,11 +2035,13 @@ fn declare_import(
     }
     format!(
         "
-            #[link(wasm_import_module = \"{wasm_import_module}\")]
-            unsafe extern \"C\" {{
-                #[allow(non_snake_case)]
-                #[cfg_attr(target_arch = \"wasm32\", link_name = \"{wasm_import_name}\")]
-                fn {rust_name}{sig};
+            {rt}::extern_wasm! {{
+                #[link(wasm_import_module = \"{wasm_import_module}\")]
+                unsafe extern \"C\" {{
+                    #[allow(non_snake_case)]
+                    #[cfg_attr(target_arch = \"wasm32\", link_name = \"{wasm_import_name}\")]
+                    fn {rust_name}{sig};
+                }}
             }}
         "
     )

@@ -13,7 +13,8 @@ use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
 use wit_bindgen_core::{
     AnonymousTypeGenerator, ChainingMode, Source, TypeInfo, dealias, make_external_component,
-    make_external_symbol, symbol_extensions, symmetric, uwrite, uwriteln, wit_parser::*,
+    make_external_symbol, symbol_extensions, symbol_name, symmetric, uwrite, uwriteln,
+    wit_parser::*,
 };
 
 pub struct InterfaceGenerator<'a> {
@@ -243,6 +244,7 @@ impl<'i> InterfaceGenerator<'i> {
                 &external_new,
                 &[abi::WasmType::Pointer],
                 &[handle_type],
+                self.r#gen.runtime_path(),
             );
             let import_rep = crate::declare_import(
                 &wasm_import_module,
@@ -250,6 +252,7 @@ impl<'i> InterfaceGenerator<'i> {
                 &external_rep,
                 &[handle_type],
                 &[abi::WasmType::Pointer],
+                self.r#gen.runtime_path(),
             );
             let handle_type = if self.r#gen.opts.symmetric {
                 "usize"
@@ -389,7 +392,6 @@ macro_rules! {macro_name} {{
             };
             self.generate_raw_cabi_export(func, &ty, "$($path_to_types)*", async_);
         }
-        let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
         for name in resources_to_drop {
             let module = match self.identifier {
                 Identifier::Interface(_, key) => self.resolve.name_world_key(key),
@@ -708,6 +710,8 @@ macro_rules! {macro_name} {{
                 Alignment::default(),
             )
         };
+        let size = size.format_term(POINTER_SIZE_EXPRESSION, true);
+        let align = align.format(POINTER_SIZE_EXPRESSION);
         let lift;
         let lower;
         let dealloc_lists;
@@ -733,14 +737,6 @@ macro_rules! {macro_name} {{
             PayloadFor::Future => "Future",
             PayloadFor::Stream => "Stream",
         };
-        let start_extra = match payload_for {
-            PayloadFor::Future => "",
-            PayloadFor::Stream => ", _: usize",
-        };
-        // On wasm the VTABLE stores the address of a local wrapper rather than
-        // the canonical import directly (see the wrapper functions below). The
-        // wrappers need *named* extra params to forward, where the extern block
-        // and native stubs only need the type.
         let start_extra_named = match payload_for {
             PayloadFor::Future => "",
             PayloadFor::Stream => ", _extra: usize",
@@ -786,6 +782,7 @@ macro_rules! {macro_name} {{
             start_read,
             start_write,"#;
 
+        let rt = self.r#gen.runtime_path();
         let mut code = format!(
             r#"
 #[doc(hidden)]
@@ -818,40 +815,34 @@ pub mod vtable{ordinal} {{
     // that simply delegate to the imports. Seems to work for now even though
     // it seems like optimizations should defeat this, but it's not all that
     // much more indirection and in theory gets things working for now.
-    #[cfg(target_arch = "wasm32")]
     mod imports {{
-        #[link(wasm_import_module = "{module}")]
-        unsafe extern "C" {{
-            #[link_name = "[{import_prefix}-new-{index}]{func_name}"]
-            pub(super) fn new() -> u64;
-            #[link_name = "[{import_prefix}-cancel-write-{index}]{func_name}"]
-            pub(super) fn cancel_write(_: u32) -> u32;
-            #[link_name = "[{import_prefix}-cancel-read-{index}]{func_name}"]
-            pub(super) fn cancel_read(_: u32) -> u32;
-            #[link_name = "[{import_prefix}-drop-writable-{index}]{func_name}"]
-            pub(super) fn drop_writable(_: u32);
-            #[link_name = "[{import_prefix}-drop-readable-{index}]{func_name}"]
-            pub(super) fn drop_readable(_: u32);
-            #[link_name = "[async-lower][{import_prefix}-read-{index}]{func_name}"]
-            pub(super) fn start_read(_: u32, _: *mut u8{start_extra}) -> u32;
-            #[link_name = "[async-lower][{import_prefix}-write-{index}]{func_name}"]
-            pub(super) fn start_write(_: u32, _: *const u8{start_extra}) -> u32;
+        {rt}::extern_wasm! {{
+            #[link(wasm_import_module = "{module}")]
+            unsafe extern "C" {{
+                #[link_name = "[{import_prefix}-new-{index}]{func_name}"]
+                pub(super) fn new() -> u64;
+                #[link_name = "[{import_prefix}-cancel-write-{index}]{func_name}"]
+                pub(super) fn cancel_write(handle: u32) -> u32;
+                #[link_name = "[{import_prefix}-cancel-read-{index}]{func_name}"]
+                pub(super) fn cancel_read(handle: u32) -> u32;
+                #[link_name = "[{import_prefix}-drop-writable-{index}]{func_name}"]
+                pub(super) fn drop_writable(handle: u32);
+                #[link_name = "[{import_prefix}-drop-readable-{index}]{func_name}"]
+                pub(super) fn drop_readable(handle: u32);
+                #[link_name = "[async-lower][{import_prefix}-read-{index}]{func_name}"]
+                pub(super) fn start_read(handle: u32, ptr: *mut u8{start_extra_named}) -> u32;
+                #[link_name = "[async-lower][{import_prefix}-write-{index}]{func_name}"]
+                pub(super) fn start_write(handle: u32, ptr: *const u8{start_extra_named}) -> u32;
+            }}
         }}
     }}
 
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn new() -> u64 {{ unsafe {{ imports::new() }} }}
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn cancel_write(handle: u32) -> u32 {{ unsafe {{ imports::cancel_write(handle) }} }}
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn cancel_read(handle: u32) -> u32 {{ unsafe {{ imports::cancel_read(handle) }} }}
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn drop_writable(handle: u32) {{ unsafe {{ imports::drop_writable(handle) }} }}
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn drop_readable(handle: u32) {{ unsafe {{ imports::drop_readable(handle) }} }}
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn start_read(handle: u32, ptr: *mut u8{start_extra_named}) -> u32 {{ unsafe {{ imports::start_read(handle, ptr{start_extra_arg}) }} }}
-    #[cfg(target_arch = "wasm32")]
     unsafe extern "C" fn start_write(handle: u32, ptr: *const u8{start_extra_named}) -> u32 {{ unsafe {{ imports::start_write(handle, ptr{start_extra_arg}) }} }}
 "#
             ));
@@ -1174,6 +1165,7 @@ fn abi_layout(&mut self) -> ::core::alloc::Layout {{
             "call",
             &sig.params,
             &sig.results,
+            self.r#gen.runtime_path(),
         );
         let mut args = String::new();
         for i in 0..params_lower.len() {
@@ -1340,7 +1332,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             // for more details.
             uwrite!(
                 self.src,
-                "#[cfg(target_arch=\"wasm32\")]\n{run_ctors_once}();",
+                "#[cfg(target_family=\"wasm\")]\n{run_ctors_once}();",
             );
         }
 
@@ -1491,6 +1483,8 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 make_external_component(&(String::from(export_prefix) + &export_name));
             (export_name, external_name)
         };
+
+        let attrs = self.core_export_attrs(&export_name);
         uwrite!(
             self.src,
             "\
@@ -1500,7 +1494,6 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 unsafe extern \"C\" fn {external_name}\
         ",
         );
-
         let params = self.print_export_sig(func, async_);
         self.push_str(" {\n");
         uwriteln!(
@@ -1515,8 +1508,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             uwrite!(
                 self.src,
                 "\
-                    #[unsafe(export_name = \"{export_prefix}[callback]{export_name}\")]
-                    unsafe extern \"C\" fn _callback_{name_snake}(event0: u32, event1: u32, event2: u32) -> u32 {{
+                    {attrs}unsafe extern \"C\" fn _callback_{name_snake}(event0: u32, event1: u32, event2: u32) -> u32 {{
                         unsafe {{
                             {path_to_self}::__callback_{name_snake}(event0, event1, event2)
                         }}
@@ -1548,6 +1540,24 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             );
             self.src.push_str("}\n");
         }
+    }
+
+    /// Returns the `export_name` attributes for a core export named
+    /// `export_name`.
+    ///
+    /// Has to exist due to the fact that native names cannot contain
+    /// special characters that wasm can like '/'.
+    ///
+    /// `cfg_attr` conditions are mutually exclusive, so exactly one attribute
+    /// applies on any target (for names that survive encoding unchanged, such
+    /// as `$root` exports, both carry the same string).
+    fn core_export_attrs(&self, export_name: &str) -> String {
+        let prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
+        let native = make_external_component(export_name);
+        format!(
+            "#[cfg_attr(target_family = \"wasm\", unsafe(export_name = \"{prefix}{export_name}\"))]\n\
+             #[cfg_attr(not(target_family = \"wasm\"), unsafe(export_name = \"{prefix}{native}\"))]\n"
+        )
     }
 
     fn print_export_sig(&mut self, func: &Function, async_: bool) -> Vec<String> {
@@ -3203,6 +3213,7 @@ impl<'a> {camel}Borrow<'a>{{
                 abi::WasmType::I32
             }],
             &[],
+            self.r#gen.runtime_path(),
         );
         uwriteln!(
             self.src,

@@ -17,6 +17,7 @@ pub mod symmetric;
 pub use async_::AsyncFilterSet;
 mod chainable_method;
 pub use chainable_method::{ChainableMethodFilterSet, ChainingMode};
+//pub mod symbol_name;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Direction {
@@ -314,11 +315,18 @@ pub fn make_external_symbol(module_name: &str, name: &str, variant: abi::AbiVari
         make_external_component(name)
     } else {
         let mut res = make_external_component(module_name);
-        res.push_str(if matches!(variant, abi::AbiVariant::GuestExport) {
-            "X23" // Hash character
-        } else {
-            "X00" // NUL character (some tools use '.' for display)
-        });
+        res.push_str(
+            if matches!(
+                variant,
+                abi::AbiVariant::GuestExport
+                    | abi::AbiVariant::GuestExportAsync
+                    | abi::AbiVariant::GuestExportAsyncStackful
+            ) {
+                "X23" // Hash character
+            } else {
+                "X00" // NUL character (some tools use '.' for display)
+            },
+        );
         res.push_str(&make_external_component(name));
         res
     }

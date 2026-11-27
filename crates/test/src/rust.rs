@@ -547,16 +547,16 @@ mod core {}
         &self,
         runner: &Runner,
         name: &str,
-        _component: &crate::Component,
+        component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
             && (name == "skip"
                 || name == "with-only-affects-imports"
-                // The chain links and runs, but the leaf's yield
-                // (`wake_by_ref`) is ignored by the symmetric Rust runtime,
-                // which asserts in async_support.rs (and the C++ middle
-                // double frees).
-                || name == "async-cross-component-await"
+                // The Rust leaf's yield (`wake_by_ref` in a `poll_fn`) is
+                // ignored by the symmetric Rust runtime, which asserts in
+                // async_support.rs.
+                || (name == "async-cross-component-await"
+                    && component.path.file_stem().is_some_and(|s| s == "leaf"))
                 // `intermediate` imports `toplevel-import`, which the wasm
                 // composition (compose.wac) satisfies with the
                 // `toplevel-export` of `leaf-toplevel`; symmetric linking

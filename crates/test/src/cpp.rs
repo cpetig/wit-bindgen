@@ -330,10 +330,6 @@ impl LanguageMethods for Cpp {
         // dbg!(runner);
         runner.is_symmetric()
             && ((matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
-                // Links and runs with the Rust leaf, but the leaf's yield
-                // (`wake_by_ref`) is not supported by the symmetric Rust
-                // runtime, so the chain aborts.
-                || name == "async-cross-component-await"
                 // These compile, but futures and streams still map to `std::future`
                 // (to be replaced by `wit::FutureReader`/`StreamReader`)
                 || name == "future-string"

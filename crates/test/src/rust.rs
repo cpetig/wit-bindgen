@@ -312,19 +312,26 @@ path = 'lib.rs'
         let mut native_deps = Vec::new();
         if runner.is_symmetric() {
             for dep in &wit_bindgen_deps {
-                if dep.file_name().is_some_and(|name| name == "deps") {
-                    let target_dir = dep.parent().unwrap().to_path_buf();
-                    for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
-                        if let Some(found) = super::find_cdylib(&target_dir, lib) {
-                            let dir = found.parent().unwrap().to_path_buf();
-                            if !native_deps.contains(&dir) {
-                                native_deps.push(dir);
-                            }
+                // the profile directory is the parent of `deps` or `build`
+                let dep = dep.canonicalize().unwrap_or_else(|_| dep.clone());
+                let Some(target_dir) = dep
+                    .ancestors()
+                    .find(|a| a.file_name().is_some_and(|n| n == "deps" || n == "build"))
+                    .and_then(|a| a.parent())
+                    .map(Path::to_path_buf)
+                else {
+                    continue;
+                };
+                for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
+                    if let Some(found) = super::find_cdylib(&target_dir, lib) {
+                        let dir = found.parent().unwrap().to_path_buf();
+                        if !native_deps.contains(&dir) {
+                            native_deps.push(dir);
                         }
                     }
-                    if !native_deps.contains(&target_dir) {
-                        native_deps.push(target_dir);
-                    }
+                }
+                if !native_deps.contains(&target_dir) {
+                    native_deps.push(target_dir);
                 }
             }
         }
@@ -387,7 +394,7 @@ path = 'lib.rs'
 
         let compile_cdylib = |cmd: &mut Command| {
             cmd.arg("--crate-type=cdylib");
-            if runner.produces_component() {
+            if runner.produces_component() && !runner.is_symmetric() {
                 if link_shared {
                     cmd.arg("-Clink-arg=-Wl,--skip-wit-component");
                 } else {
@@ -443,7 +450,7 @@ path = 'lib.rs'
             runner
                 .link_dylibs_to_component(&dylibs, compile)
                 .with_context(|| format!("failed to link {output:?}"))?;
-        } else {
+        } else if !runner.is_symmetric() {
             runner
                 .convert_core_module_to_component(&output, compile)
                 .with_context(|| format!("failed to convert {output:?}"))?;

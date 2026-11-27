@@ -83,14 +83,6 @@ impl LanguageMethods for Cpp {
             let mut target_out_dir = wit_bindgen.join("target");
             target_out_dir.push("debug");
 
-            for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
-                if let Some(found) = crate::find_cdylib(&target_out_dir, lib) {
-                    let d = found.parent().unwrap().to_path_buf();
-                    if !native_deps.contains(&d) {
-                        native_deps.push(d);
-                    }
-                }
-            }
             native_deps.push(target_out_dir);
             // libruntime.a (async/stream support) for the C++ guests
             runner.run_command(
@@ -186,7 +178,11 @@ impl LanguageMethods for Cpp {
 
         // Now compile the runner's source code to with the above object and the
         // component-type object into a final component.
-        let output = compile.output.with_extension("core.wasm");
+        let output = compile.output.with_extension(if runner.is_symmetric() {
+            "so"
+        } else {
+            "core.wasm"
+        });
         let mut cmd = Command::new(compiler);
         cmd.arg(&compile.component.path).arg(&bindings_object);
         if !runner.is_symmetric() {
@@ -232,6 +228,12 @@ impl LanguageMethods for Cpp {
             ));
             for i in runner.cpp_state.as_ref().unwrap().native_deps.iter() {
                 cmd.arg(format!("-L{}", i.as_os_str().to_str().unwrap()));
+                // newer cargo keeps cdylibs in build/<crate>/<hash>/out
+                for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
+                    if let Some(found) = crate::find_cdylib(i, lib) {
+                        cmd.arg(format!("-L{}", found.parent().unwrap().display()));
+                    }
+                }
             }
             cmd.arg("-shared");
             if matches!(compile.component.kind, Kind::Runner) {
@@ -249,9 +251,11 @@ impl LanguageMethods for Cpp {
         }
         runner.run_command(&mut cmd)?;
 
-        runner
-            .convert_core_module_to_component(&output, compile)
-            .with_context(|| format!("failed to convert {output:?}"))?;
+        if !runner.is_symmetric() {
+            runner
+                .convert_core_module_to_component(&output, compile)
+                .with_context(|| format!("failed to convert {output:?}"))?;
+        }
         Ok(())
     }
 

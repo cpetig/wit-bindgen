@@ -795,6 +795,18 @@ pub trait Bindgen {
     /// "canonical" form for lists. This dictates whether the `ListCanonLower`
     /// and `ListCanonLift` instructions are used or not.
     fn is_list_canonical(&self, resolve: &Resolve, element: &Type) -> bool;
+
+    /// Whether symmetric async exports should go through the deferred
+    /// `AsyncTaskReturn` protocol: results are written via `return_pointer`
+    /// and `AsyncTaskReturn` is emitted so the generator can capture the body
+    /// as a separate `_return` function (used by the C generator).
+    ///
+    /// Generators that keep the old symmetric behaviour (results are written
+    /// to the caller supplied result pointer argument, no task-return is
+    /// emitted, e.g. Rust) leave this at `false`.
+    fn symmetric_deferred_task_return(&self) -> bool {
+        false
+    }
 }
 
 /// Generates an abstract sequence of instructions which represents this
@@ -1164,6 +1176,12 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                 });
 
                 if matches!(lift_lower, LiftLower::Symmetric) && sig.retptr {
+                    // In symmetric mode, if a retptr was used, the CallWasm return
+                    // value (task pointer for async, or nothing for sync) may be on
+                    // the stack. Pop it if async since we don't need the task pointer.
+                    if async_ && !sig.results.is_empty() {
+                        self.stack.pop().unwrap();
+                    }
                     if let Some(ptr) = retptr_oprnd {
                         self.read_results_from_memory(
                             &func.result,
@@ -1241,7 +1259,12 @@ impl<'a, B: Bindgen> Generator<'a, B> {
 
                 // Emit the function return
                 if async_ && matches!(lift_lower, LiftLower::Symmetric) {
-                    // nothing to do here
+                    // For symmetric async imports, emit a normal Return if there are results
+                    // that were lifted from the retptr.
+                    self.emit(&Instruction::Return {
+                        func,
+                        amt: usize::from(func.result.is_some()),
+                    });
                 } else if async_ {
                     if sig.retptr {
                         // In an async guest import with retptr, CallWasm pushed the status result `ret`,
@@ -1350,7 +1373,11 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                             (results.is_none(), Some(results))
                         }
                         (_, _is_async @ true, func_result, true) => {
-                            (func_result.is_some(), Some(Some(vec![WasmType::Pointer])))
+                            if func_result.is_some() {
+                                (true, Some(Some(vec![WasmType::Pointer])))
+                            } else {
+                                (false, Some(Some(vec![])))
+                            }
                         }
                         // All other non-async cases
                         (_, _is_async @ false, _, _) => (sig.retptr, None),
@@ -1405,14 +1432,32 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                         false,
                     )
                     | (_lower_to_memory @ _, _has_ret_ptr @ _, _, true) => {
-                        self.emit(&Instruction::GetArg {
-                            nth: sig.params.len() - 1,
-                        });
-                        let ptr = self
-                            .stack
-                            .pop()
-                            .expect("empty stack during result lower to memory");
-                        self.write_params_to_memory(&func.result, ptr, Default::default());
+                        if async_
+                            && self.bindgen.symmetric_deferred_task_return()
+                            && matches!(variant, AbiVariant::GuestExport | AbiVariant::GuestExportAsync)
+                        {
+                            // For symmetric async exports, use return_pointer so
+                            // the DeferredTaskReturn body uses `ptr` variable
+                            // rather than the adapter's param name.
+                            let ElementInfo { size, align } =
+                                self.bindgen.sizes().params(&func.result);
+                            let ptr = self.bindgen.return_pointer(size, align);
+                            self.write_params_to_memory(
+                                &func.result,
+                                ptr.clone(),
+                                Default::default(),
+                            );
+                            self.stack.push(ptr);
+                        } else {
+                            self.emit(&Instruction::GetArg {
+                                nth: sig.params.len() - 1,
+                            });
+                            let ptr = self
+                                .stack
+                                .pop()
+                                .expect("empty stack during result lower to memory");
+                            self.write_params_to_memory(&func.result, ptr, Default::default());
+                        }
                     }
 
                     // Lowering to memory for a guest export
@@ -1497,10 +1542,19 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                             });
                         }
                     }
-                    (AbiVariant::GuestExportAsync, Some(_results), true) => {
-                        // let name = &format!("[task-return]{}", func.name);
-                        // let params = results.as_deref().unwrap_or_default();
-                        // self.emit(&Instruction::AsyncTaskReturn { name, params });
+                    (AbiVariant::GuestExportAsync, Some(results), true) => {
+                        if self.bindgen.symmetric_deferred_task_return() {
+                            let name = &format!("[task-return]{}", func.name);
+                            let params = results.as_deref().unwrap_or_default();
+                            self.emit(&Instruction::AsyncTaskReturn { name, params });
+                        }
+                    }
+                    (_, _, true) if async_ && self.bindgen.symmetric_deferred_task_return() => {
+                        let name = &format!("[task-return]{}", func.name);
+                        self.emit(&Instruction::AsyncTaskReturn {
+                            name: name,
+                            params: &[],
+                        });
                     }
                     (_, _, true) => {
                         // not right, but avoids trap for now

@@ -537,9 +537,7 @@ mod core {}
                         || test.name == /*rust*/"equal-types"
                         || test.name == /*rust*/"xcrate"
                         || test.name == /*async*/"rust-cross-task-wakeup"
-                        || test.name == /*async*/"rust-lowered-send"
-                        || test.name == /*async*/"simple-import-params-results"
-                        || test.name == /*async*/"ping-pong")))
+                        || test.name == /*async*/"rust-lowered-send")))
     }
 
     fn should_fail_runtime2(

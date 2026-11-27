@@ -1434,7 +1434,10 @@ impl<'a, B: Bindgen> Generator<'a, B> {
                     | (_lower_to_memory @ _, _has_ret_ptr @ _, _, true) => {
                         if async_
                             && self.bindgen.symmetric_deferred_task_return()
-                            && matches!(variant, AbiVariant::GuestExport | AbiVariant::GuestExportAsync)
+                            && matches!(
+                                variant,
+                                AbiVariant::GuestExport | AbiVariant::GuestExportAsync
+                            )
                         {
                             // For symmetric async exports, use return_pointer so
                             // the DeferredTaskReturn body uses `ptr` variable

@@ -1133,8 +1133,8 @@ impl Runner {
                         .map(|(_, p)| p.file_stem().unwrap_or_default().to_string_lossy())
                         .collect::<Vec<_>>()
                         .join("-");
-                    path = runner_wasm
-                        .with_extension(&format!("composition{i}-{combination}.wasm"));
+                    path =
+                        runner_wasm.with_extension(&format!("composition{i}-{combination}.wasm"));
                     std::fs::write(&path, &bytes)
                         .with_context(|| format!("failed to write temporary file {path:?}"))?;
                     path.as_path()

@@ -1478,12 +1478,21 @@ trait LanguageMethods {
             Some(false) => {}
         }
 
+        for arg in self.extra_bindgen_args(runner, bindgen) {
+            cmd.arg(arg);
+        }
         for arg in bindgen.args.iter() {
             cmd.arg(arg);
         }
 
         runner.run_command(&mut cmd)?;
         Ok(())
+    }
+
+    /// Additional arguments for `wit-bindgen` which depend on the test, added
+    /// after the default arguments.
+    fn extra_bindgen_args(&self, _runner: &Runner, _bindgen: &Bindgen) -> Vec<&'static str> {
+        Vec::new()
     }
 
     /// Returns the default set of arguments that will be passed to

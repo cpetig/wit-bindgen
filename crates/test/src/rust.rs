@@ -531,6 +531,16 @@ mod core {}
                 || test.name == "map"
                 || test.name == /*rust*/"with-types")
                 || (test.name == /*async*/"yield-loop-receives-events" && component.name == "leaf")
+                // The symmetric Rust runtime lacks `spawn_local`, `yield_async`,
+                // `StreamReader::collect` and `StreamWriter::write`'s
+                // `into_vec`.
+                || (matches!(component.kind, crate::Kind::Test)
+                    && (test.name == "ping-pong"
+                        || test.name == "stream-param-future-result"
+                        || test.name == "async-import-results"))
+                || (matches!(component.kind, crate::Kind::Runner)
+                    && (test.name == "simple-stream-payload"
+                        || test.name == "async-import-results"))
                 || (matches!(component.kind, crate::Kind::Test)
                     && (test.name == /*async*/"simple-pending-import"
                         || test.name == "simple-yield"
@@ -557,6 +567,13 @@ mod core {}
                 // async_support.rs.
                 || (name == "async-cross-component-await"
                     && component.path.file_stem().is_some_and(|s| s == "leaf"))
+                // An async export which completes without waiting is never
+                // run, as the symmetric Rust runtime ignores its own
+                // `wake_by_ref` (`drop-future` hangs).
+                || (name == "simple-future" && matches!(component.kind, crate::Kind::Test))
+                // `stream<_>` without payload: the layout size of `()`
+                // is not zero (assert in the symmetric Rust `StreamWrite`).
+                || (name == "simple-stream" && matches!(component.kind, crate::Kind::Runner))
                 // `intermediate` imports `toplevel-import`, which the wasm
                 // composition (compose.wac) satisfies with the
                 // `toplevel-export` of `leaf-toplevel`; symmetric linking

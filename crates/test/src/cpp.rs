@@ -83,7 +83,19 @@ impl LanguageMethods for Cpp {
             let mut target_out_dir = wit_bindgen.join("target");
             target_out_dir.push("debug");
 
+            for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
+                if let Some(found) = crate::find_cdylib(&target_out_dir, lib) {
+                    let d = found.parent().unwrap().to_path_buf();
+                    if !native_deps.contains(&d) {
+                        native_deps.push(d);
+                    }
+                }
+            }
             native_deps.push(target_out_dir);
+            // libruntime.a (async/stream support) for the C++ guests
+            runner.run_command(
+                Command::new("make").current_dir(cwd.join("crates/symmetric_executor/cpp-client")),
+            )?;
             let root_dir = runner.opts.artifacts.join(test_name);
             native_deps.push(root_dir);
         }

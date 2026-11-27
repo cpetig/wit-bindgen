@@ -1028,15 +1028,12 @@ impl Runner {
             let cwd = runner_wasm.parent().unwrap().parent().unwrap();
             let dir = cwd.join("rust");
             let wit_bindgen = dir.join("wit-bindgen");
-            let so_dir = wit_bindgen.join("target").join("debug").join("deps");
-            symlink(
-                so_dir.join("libsymmetric_executor.so"),
-                composed_wasm.join("libsymmetric_executor.so"),
-            )?;
-            symlink(
-                so_dir.join("libsymmetric_stream.so"),
-                composed_wasm.join("libsymmetric_stream.so"),
-            )?;
+            let debug_dir = wit_bindgen.join("target").join("debug");
+            for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
+                let found = find_cdylib(&debug_dir, lib)
+                    .with_context(|| format!("could not find {lib} below {debug_dir:?}"))?;
+                symlink(found, composed_wasm.join(lib))?;
+            }
 
             let mut cmd = Command::new("../../rust/symmetric-test/target/debug/symmetric-test");
             cmd.env("LD_LIBRARY_PATH", ".");
@@ -1560,4 +1557,21 @@ impl Component {
         )?;
         Ok(config.lang.unwrap())
     }
+}
+
+/// Find the newest build of the cdylib `lib_name` below a cargo `target/debug` directory.
+///
+/// Older cargo puts cdylibs into `deps/`, newer versions into `build/<crate>/<hash>/out/`.
+pub(crate) fn find_cdylib(debug_dir: &Path, lib_name: &str) -> Option<PathBuf> {
+    let mut candidates = vec![debug_dir.join("deps").join(lib_name)];
+    if let Ok(crates) = std::fs::read_dir(debug_dir.join("build")) {
+        for hashes in crates.flatten().filter_map(|c| std::fs::read_dir(c.path()).ok()) {
+            candidates.extend(hashes.flatten().map(|h| h.path().join("out").join(lib_name)));
+        }
+    }
+    candidates
+        .into_iter()
+        .filter_map(|c| Some((std::fs::metadata(&c).ok()?.modified().ok()?, c)))
+        .max()
+        .map(|(_, c)| c)
 }

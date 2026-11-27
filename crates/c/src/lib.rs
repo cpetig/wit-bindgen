@@ -202,6 +202,9 @@ impl WorldGenerator for C {
             .rename_world
             .clone()
             .unwrap_or_else(|| resolve.worlds[world].name.clone());
+        if self.opts.symmetric {
+            self.sizes = SizeAlign::new_symmetric();
+        }
         self.sizes.fill(resolve)?;
         self.world_id = Some(world);
 
@@ -823,6 +826,17 @@ extern uint32_t {snake}_thread_yield_then_promote_cancellable(uint32_t thread);
     fn generate_async_helpers(&mut self) {
         let snake = self.world.to_snake_case();
         let shouty = self.world.to_shouty_snake_case();
+        let symmetric = self.opts.symmetric;
+        // Waitables are native pointers (to a stream or future) when
+        // symmetric, handle table indices otherwise.
+        //
+        // Note: this is formatted in advance to avoid `Source` stripping the
+        // space between type and name when `uwriteln!` splits format args.
+        let waitable_param = if symmetric {
+            "uintptr_t waitable"
+        } else {
+            "uint32_t waitable"
+        };
         uwriteln!(
             self.src.h_async,
             "
@@ -859,13 +873,13 @@ typedef enum {snake}_event_code {{
 
 typedef struct {snake}_event {{
     {snake}_event_code_t event;
-    uint32_t waitable;
+    {waitable_param};
     uint32_t code;
 }} {snake}_event_t;
 
 typedef uint32_t {snake}_waitable_set_t;
 {snake}_waitable_set_t {snake}_waitable_set_new(void);
-void {snake}_waitable_join(uint32_t waitable, {snake}_waitable_set_t set);
+void {snake}_waitable_join({waitable_param}, {snake}_waitable_set_t set);
 void {snake}_waitable_set_drop({snake}_waitable_set_t set);
 void {snake}_waitable_set_wait({snake}_waitable_set_t set, {snake}_event_t *event);
 void {snake}_waitable_set_poll({snake}_waitable_set_t set, {snake}_event_t *event);
@@ -890,6 +904,73 @@ void {snake}_context_set_0(void* value);
 void {snake}_thread_yield(void);
             "
         );
+        if symmetric {
+            // The async runtime is provided by `wit_async_support.c`, which
+            // emulates the canonical ABI builtins on top of the executor and
+            // stream implementations of the symmetric runtime.
+            self.c_include("\"wit_async_support.h\"");
+            uwriteln!(
+                self.src.c_async,
+                r#"
+{snake}_subtask_status_t {snake}_subtask_cancel({snake}_subtask_t subtask) {{
+    return wit_subtask_cancel(subtask);
+}}
+
+void {snake}_subtask_drop({snake}_subtask_t subtask) {{
+    wit_subtask_drop(subtask);
+}}
+
+{snake}_waitable_set_t {snake}_waitable_set_new(void) {{
+    return wit_waitable_set_new();
+}}
+
+void {snake}_waitable_join(uintptr_t waitable, {snake}_waitable_set_t set) {{
+    wit_waitable_join(waitable, set);
+}}
+
+void {snake}_waitable_set_drop({snake}_waitable_set_t set) {{
+    wit_waitable_set_drop(set);
+}}
+
+void {snake}_waitable_set_wait({snake}_waitable_set_t set, {snake}_event_t *event) {{
+    uint32_t code;
+    event->event = ({snake}_event_code_t) wit_waitable_set_wait(set, &event->waitable, &code);
+    event->code = code;
+}}
+
+void {snake}_waitable_set_poll({snake}_waitable_set_t set, {snake}_event_t *event) {{
+    uint32_t code;
+    event->event = ({snake}_event_code_t) wit_waitable_set_poll(set, &event->waitable, &code);
+    event->code = code;
+}}
+
+void {snake}_task_cancel(void) {{
+    wit_unsupported("task.cancel");
+}}
+
+void {snake}_backpressure_inc(void) {{
+    wit_unsupported("backpressure.inc");
+}}
+
+void {snake}_backpressure_dec(void) {{
+    wit_unsupported("backpressure.dec");
+}}
+
+void* {snake}_context_get_0(void) {{
+    return wit_task_context_get(0);
+}}
+
+void {snake}_context_set_0(void *value) {{
+    wit_task_context_set(0, value);
+}}
+
+void {snake}_thread_yield(void) {{
+    wit_thread_yield();
+}}
+                "#
+            );
+            return;
+        }
         uwriteln!(
             self.src.c_async,
             r#"
@@ -1293,19 +1374,27 @@ impl C {
         // overridden from some other symbol.
         self.src.c_fns("\n// Canonical ABI intrinsics");
         self.src.c_fns("\n");
-        self.src.c_fns(
-            r#"#ifdef __wasm32__
-                __attribute__((__weak__, __export_name__("cabi_realloc")))
-                #endif
-                void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {
+        // Symmetric components are plain shared objects which can be linked
+        // together with other generated bindings (each defining this
+        // function), so it must always be weak there.
+        let weak_attr = if self.opts.symmetric {
+            "__attribute__((__weak__))"
+        } else {
+            "#ifdef __wasm32__
+                __attribute__((__weak__, __export_name__(\"cabi_realloc\")))
+                #endif"
+        };
+        self.src.c_fns(&format!(
+            r#"{weak_attr}
+                void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {{
                     (void) old_size;
                     if (new_size == 0) return (void*) align;
                     void *ret = realloc(ptr, new_size);
                     if (!ret) abort();
                     return ret;
-                }
+                }}
             "#,
-        );
+        ));
     }
 }
 
@@ -1434,12 +1523,31 @@ extern void {ns}_{snake}_drop_own({own} handle);
             format!("[export]{module}")
         };
 
-        let drop_fn = format!("__wasm_import_{ns}_{snake}_drop");
+        // Symmetric handles are opaque pointers shared between the components
+        // instead of indices into a handle table, and the drop function is a
+        // plain (mangled) symbol instead of a wasm import.
+        let symmetric = self.r#gen.opts.symmetric;
+        let handle_ty = if symmetric { "uint8_t *" } else { "int32_t" };
+        let drop_fn = if symmetric {
+            make_external_symbol(
+                &import_module,
+                &format!("[resource-drop]{name}"),
+                AbiVariant::GuestImport,
+            )
+        } else {
+            format!("__wasm_import_{ns}_{snake}_drop")
+        };
+        let drop_attr = if symmetric {
+            String::new()
+        } else {
+            format!(
+                "__attribute__((__import_module__(\"{import_module}\"), __import_name__(\"[resource-drop]{name}\")))\n"
+            )
+        };
 
         self.src.c_helpers(&format!(
             r#"
-__attribute__((__import_module__("{import_module}"), __import_name__("[resource-drop]{name}")))
-extern void {drop_fn}(int32_t handle);
+{drop_attr}extern void {drop_fn}({handle_ty} handle);
 
 void {ns}_{snake}_drop_own({own} handle) {{
     {drop_fn}(handle.__handle);
@@ -1450,7 +1558,7 @@ void {ns}_{snake}_drop_own({own} handle) {{
         // All resources, whether or not they're imported or exported, have an
         // handle-index-based representation for "own" handles.
         self.src.h_defs(&format!(
-            "\ntypedef struct {own} {{\nint32_t __handle;\n}} {own};\n"
+            "\ntypedef struct {own} {{\n{handle_ty} __handle;\n}} {own};\n"
         ));
 
         if self.in_import {
@@ -1458,7 +1566,7 @@ void {ns}_{snake}_drop_own({own} handle) {{
             // way as owned handles. They're given a unique type, however, to
             // prevent type confusion at runtime in theory.
             self.src.h_defs(&format!(
-                "\ntypedef struct {borrow} {{\nint32_t __handle;\n}} {borrow};\n"
+                "\ntypedef struct {borrow} {{\n{handle_ty} __handle;\n}} {borrow};\n"
             ));
 
             // Explicit borrow dropping is not required if autodrop is enabled.
@@ -1474,7 +1582,7 @@ void {ns}_{snake}_drop_own({own} handle) {{
                 self.src.c_helpers(&format!(
                     "
 void {ns}_{snake}_drop_borrow({borrow} handle) {{
-    __wasm_import_{ns}_{snake}_drop(handle.__handle);
+    {drop_fn}(handle.__handle);
 }}
                 "
                 ));
@@ -1749,14 +1857,16 @@ void __wasm_export_{ns}_{snake}_dtor({ns}_{snake}_t* arg) {{
     fn type_future(&mut self, id: TypeId, _name: &str, _ty: &Option<Type>, docs: &Docs) {
         self.src.h_defs("\n");
         self.docs(docs, SourceType::HDefs);
-        self.src.h_defs("\ntypedef uint32_t ");
+        self.src
+            .h_defs(&format!("\ntypedef {} ", self.async_handle_ty()));
         self.print_typedef_target(id);
     }
 
     fn type_stream(&mut self, id: TypeId, _name: &str, _ty: &Option<Type>, docs: &Docs) {
         self.src.h_defs("\n");
         self.docs(docs, SourceType::HDefs);
-        self.src.h_defs("\ntypedef uint32_t ");
+        self.src
+            .h_defs(&format!("\ntypedef {} ", self.async_handle_ty()));
         self.print_typedef_target(id);
     }
 
@@ -1845,12 +1955,14 @@ impl<'a> wit_bindgen_core::AnonymousTypeGenerator<'a> for InterfaceGenerator<'a>
     }
 
     fn anonymous_type_future(&mut self, id: TypeId, _ty: &Option<Type>, _docs: &Docs) {
-        self.src.h_defs("\ntypedef uint32_t ");
+        self.src
+            .h_defs(&format!("\ntypedef {} ", self.async_handle_ty()));
         self.print_typedef_target(id);
     }
 
     fn anonymous_type_stream(&mut self, id: TypeId, _ty: &Option<Type>, _docs: &Docs) {
-        self.src.h_defs("\ntypedef uint32_t ");
+        self.src
+            .h_defs(&format!("\ntypedef {} ", self.async_handle_ty()));
         self.print_typedef_target(id);
     }
 
@@ -2108,6 +2220,24 @@ impl InterfaceGenerator<'_> {
         }
     }
 
+    fn wasm_signature(&self, variant: AbiVariant, func: &Function) -> WasmSignature {
+        if self.r#gen.opts.symmetric {
+            self.resolve.wasm_signature_symmetric(variant, func, true)
+        } else {
+            self.resolve.wasm_signature(variant, func)
+        }
+    }
+
+    /// C type of future/stream handles and waitables: indices into the
+    /// handle table of the canonical ABI, but plain pointers when symmetric.
+    fn async_handle_ty(&self) -> &'static str {
+        if self.r#gen.opts.symmetric {
+            "uintptr_t"
+        } else {
+            "uint32_t"
+        }
+    }
+
     fn abi_symbol(&self, interface_id: Option<&WorldKey>, func: &Function) -> String {
         let mut name = String::new();
         match interface_id {
@@ -2149,19 +2279,20 @@ impl InterfaceGenerator<'_> {
         }
 
         self.docs(&func.docs, SourceType::HFns);
+        let symmetric = self.r#gen.opts.symmetric;
         let (variant, import_prefix) = if async_ {
             (AbiVariant::GuestImportAsync, "[async-lower]")
         } else {
             (AbiVariant::GuestImport, "")
         };
-        let sig = self.resolve.wasm_signature(variant, func);
+        let sig = self.wasm_signature(variant, func);
 
         self.src.c_fns("\n");
 
         // In the private C file, print a function declaration which is the
         // actual wasm import that we'll be calling, and this has the raw wasm
         // signature.
-        if !self.r#gen.opts.symmetric {
+        if !symmetric {
             uwriteln!(
                 self.src.c_fns,
                 "__attribute__((__import_module__(\"{}\"), __import_name__(\"{import_prefix}{}\")))",
@@ -2239,6 +2370,7 @@ impl InterfaceGenerator<'_> {
             }
         }
 
+        let symmetric = self.r#gen.opts.symmetric;
         let mut f = FunctionBindgen::new(self, c_sig, &import_name);
         for (pointer, param) in f.sig.params.iter() {
             if *pointer {
@@ -2254,7 +2386,11 @@ impl InterfaceGenerator<'_> {
         abi::call(
             f.r#gen.resolve,
             AbiVariant::GuestImport,
-            LiftLower::LowerArgsLiftResults,
+            if symmetric {
+                LiftLower::Symmetric
+            } else {
+                LiftLower::LowerArgsLiftResults
+            },
             func,
             &mut f,
             false,
@@ -2288,6 +2424,7 @@ impl InterfaceGenerator<'_> {
         wasm_sig: &WasmSignature,
         import_name: &str,
     ) {
+        let symmetric = self.r#gen.opts.symmetric;
         let mut params = Vec::new();
         if wasm_sig.indirect_params {
             params.push(format!("(uint8_t*) {}", c_sig.params[0].1));
@@ -2300,7 +2437,7 @@ impl InterfaceGenerator<'_> {
                     &mut f,
                     param.clone(),
                     ty,
-                    false,
+                    symmetric,
                 ));
             }
             f.r#gen.src.c_adapters.push_str(&f.src);
@@ -2308,11 +2445,21 @@ impl InterfaceGenerator<'_> {
         if func.result.is_some() {
             params.push(format!("(uint8_t*) {}", c_sig.params.last().unwrap().1));
         }
-        uwriteln!(
-            self.src.c_adapters,
-            "return {import_name}({});",
-            params.join(", "),
-        );
+        if symmetric {
+            // The callee returns a pointer to an event subscription which
+            // fires once the call has completed, or NULL if it already has.
+            uwriteln!(
+                self.src.c_adapters,
+                "return wit_subtask_status({import_name}({}));",
+                params.join(", "),
+            );
+        } else {
+            uwriteln!(
+                self.src.c_adapters,
+                "return {import_name}({});",
+                params.join(", "),
+            );
+        }
     }
 
     fn export(&mut self, func: &Function, interface_name: Option<&WorldKey>) {
@@ -2322,6 +2469,7 @@ impl InterfaceGenerator<'_> {
             .async_
             .is_async(self.resolve, interface_name, func, false);
 
+        let symmetric = self.r#gen.opts.symmetric;
         let (variant, prefix) = if async_ {
             self.r#gen.needs_async = true;
             (AbiVariant::GuestExportAsync, "[async-lift]")
@@ -2329,7 +2477,7 @@ impl InterfaceGenerator<'_> {
             (AbiVariant::GuestExport, "")
         };
 
-        let sig = self.resolve.wasm_signature(variant, func);
+        let sig = self.wasm_signature(variant, func);
 
         self.src.c_fns("\n");
 
@@ -2339,10 +2487,13 @@ impl InterfaceGenerator<'_> {
         // Print the actual header for this function into the header file, and
         // it's what we'll be calling.
         let h_sig = self.print_sig(interface_name, func, &sig, async_);
+        // The name users define (and call for `_callback`/`_return`), as
+        // opposed to the name of the raw ABI function generated below.
+        let user_facing_name = h_sig.name.clone();
 
         // Generate, in the C source file, the raw wasm signature that has the
         // canonical ABI.
-        if !self.r#gen.opts.symmetric {
+        if !symmetric {
             uwriteln!(
                 self.src.c_adapters,
                 "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
@@ -2352,7 +2503,7 @@ impl InterfaceGenerator<'_> {
             make_external_symbol(
                 &module,
                 &func.name,
-                if self.r#gen.opts.symmetric {
+                if symmetric {
                     AbiVariant::GuestImport
                 } else {
                     AbiVariant::GuestExport
@@ -2381,6 +2532,11 @@ impl InterfaceGenerator<'_> {
             uwrite!(f.r#gen.src.c_adapters, "{} {}", wasm_type(*param), name);
             f.params.push(name);
         }
+        if symmetric && async_ && func.result.is_some() {
+            // The caller passes the location where the result of the task
+            // needs to be written to (by `_return`) as last parameter.
+            f.async_export_retptr = f.params.last().cloned();
+        }
         if sig.params.len() == 0 {
             f.r#gen.src.c_adapters("void");
         }
@@ -2390,7 +2546,11 @@ impl InterfaceGenerator<'_> {
         abi::call(
             f.r#gen.resolve,
             variant,
-            LiftLower::LiftArgsLowerResults,
+            if symmetric {
+                LiftLower::Symmetric
+            } else {
+                LiftLower::LiftArgsLowerResults
+            },
             func,
             &mut f,
             async_,
@@ -2428,40 +2588,69 @@ impl InterfaceGenerator<'_> {
                 .collect::<Vec<_>>()
                 .join(", ");
             let task_return_body = task_return_body.as_mut_string();
+            // `_callback` and `_return` are what users interact with, so they
+            // are named after the user facing function. The raw ABI function
+            // name is only used for symbols and wasm imports/exports.
+            let fn_name = &user_facing_name;
             uwriteln!(
                 self.src.h_fns,
-                "{snake}_callback_code_t {import_name}_callback({snake}_event_t *event);",
+                "{snake}_callback_code_t {fn_name}_callback({snake}_event_t *event);",
             );
-            uwriteln!(
-                self.src.h_helpers,
-                "void {import_name}_return({return_ty});"
-            );
+            uwriteln!(self.src.h_helpers, "void {fn_name}_return({return_ty});");
             let import_module = match interface_name {
                 Some(name) => self.resolve.name_world_key(name),
                 None => "$root".to_string(),
             };
-            uwriteln!(
-                self.src.c_helpers,
-                r#"
-__attribute__((__export_name__("[callback]{prefix}{export_name}")))
-uint32_t {import_name}_callback(uint32_t event_raw, uint32_t waitable, uint32_t code) {{
+            if symmetric {
+                // Both the callback and `_return` run in the context of the
+                // task which is currently being executed, `_return` writes
+                // the result to the location provided by the caller and
+                // reports completion of the call.
+                uwriteln!(
+                    self.src.c_fns,
+                    r#"
+static uint32_t __{import_name}_callback_adapter(uint32_t event_raw, uintptr_t waitable, uint32_t code) {{
     {snake}_event_t event;
     event.event = ({snake}_event_code_t) event_raw;
     event.waitable = waitable;
     event.code = code;
-    return {import_name}_callback(&event);
+    return {fn_name}_callback(&event);
+}}
+                    "#
+                );
+                uwriteln!(
+                    self.src.c_helpers,
+                    r#"
+void {fn_name}_return({return_ty}) {{
+    {task_return_body}
+    wit_task_return();
+}}
+                    "#
+                );
+            } else {
+                uwriteln!(
+                    self.src.c_helpers,
+                    r#"
+__attribute__((__export_name__("[callback]{prefix}{export_name}")))
+uint32_t __{import_name}_callback_adapter(uint32_t event_raw, uint32_t waitable, uint32_t code) {{
+    {snake}_event_t event;
+    event.event = ({snake}_event_code_t) event_raw;
+    event.waitable = waitable;
+    event.code = code;
+    return {fn_name}_callback(&event);
 }}
 
 __attribute__((__import_module__("[export]{import_module}"), __import_name__("{task_return_name}")))
-void {import_name}__task_return({task_return_param_tys});
+void __{import_name}__task_return({task_return_param_tys});
 
-void {import_name}_return({return_ty}) {{
+void {fn_name}_return({return_ty}) {{
     {task_return_body}
-    {import_name}__task_return({task_return_param_exprs});
+    __{import_name}__task_return({task_return_param_exprs});
 }}
-                "#
-            );
-        } else if abi::guest_export_needs_post_return(self.resolve, func) {
+                    "#
+                );
+            }
+        } else if abi::guest_export_needs_post_return(self.resolve, func) && !symmetric {
             uwriteln!(
                 self.src.c_fns,
                 "#ifdef __wasm32__\n__attribute__((__weak__, __export_name__(\"cabi_post_{export_name}\")))\n#endif"
@@ -2942,10 +3131,11 @@ void {import_name}_return({return_ty}) {{
         // TODO: this is a hack around space-stripping in `source.rs`, ideally
         // wouldn't be necessary.
         let empty = "";
+        let handle_ty = self.async_handle_ty();
         uwriteln!(
             self.src.h_helpers,
             r#"
-typedef uint32_t {name}_writer_t;
+typedef {handle_ty} {name}_writer_t;
 
 {ty} {name}_new({name}_writer_t *writer);
 {snake}_waitable_status_t {name}_read({ty} reader{read_arg_ty});
@@ -2956,6 +3146,10 @@ void {name}_drop_readable({ty} reader);{empty}
 void {name}_drop_writable({name}_writer_t writer);
             "#,
         );
+        if self.r#gen.opts.symmetric {
+            self.generate_symmetric_future_or_stream(payload_for, &name, &ty, payload_type);
+            return;
+        }
         uwriteln!(
             self.src.c_helpers,
             r#"
@@ -3008,6 +3202,114 @@ void {name}_drop_writable({name}_writer_t writer) {{
     }
 }
 
+impl InterfaceGenerator<'_> {
+    /// Futures and streams of symmetric components are implemented by
+    /// `wit_async_support.c` on top of the stream object of the symmetric
+    /// runtime, there are no per-type intrinsics. All it needs to know about
+    /// the payload is how large an element is and how to take ownership of
+    /// the data it points to.
+    fn generate_symmetric_future_or_stream(
+        &mut self,
+        payload_for: PayloadFor,
+        name: &str,
+        ty: &str,
+        payload_type: Option<&Type>,
+    ) {
+        let snake = self.r#gen.world.to_snake_case();
+        let is_future = matches!(payload_for, PayloadFor::Future);
+        let elem_size = match payload_type {
+            Some(payload) => format!("sizeof({})", self.r#gen.type_name(payload)),
+            None => "0".to_string(),
+        };
+        let (read_arg_ty, read_args, write_arg_ty, write_args) = match (payload_for, payload_type) {
+            (PayloadFor::Future, None) => ("".to_string(), "NULL, 1", "".to_string(), "NULL, 1"),
+            (PayloadFor::Stream, None) => (
+                ", size_t amt".to_string(),
+                "NULL, amt",
+                ", size_t amt".to_string(),
+                "NULL, amt",
+            ),
+            (PayloadFor::Future, Some(payload)) => {
+                let payload = self.r#gen.type_name(payload);
+                (
+                    format!(", {payload} *buf"),
+                    "buf, 1",
+                    format!(", const {payload} *buf"),
+                    "buf, 1",
+                )
+            }
+            (PayloadFor::Stream, Some(payload)) => {
+                let payload = self.r#gen.type_name(payload);
+                (
+                    format!(", {payload} *buf, size_t amt"),
+                    "buf, amt",
+                    format!(", const {payload} *buf, size_t amt"),
+                    "buf, amt",
+                )
+            }
+        };
+        // Reader and writer must not share memory, so strings are copied when
+        // written. Other payloads containing pointers are not.
+        let (own_fn, own_def) = if matches!(payload_type, Some(Type::String)) {
+            let string_ty = self.r#gen.type_name(&Type::String);
+            let char_ty = self.r#gen.char_type();
+            self.r#gen.c_include("<string.h>");
+            (
+                format!("{name}__own"),
+                format!(
+                    r#"
+static void {name}__own(void *elems, size_t count) {{
+    {string_ty} *strings = ({string_ty} *) elems;
+    for (size_t i = 0; i < count; i++) {{
+        if (strings[i].len == 0) continue;
+        {char_ty} *copy = ({char_ty} *) malloc(strings[i].len * sizeof({char_ty}));
+        memcpy(copy, strings[i].ptr, strings[i].len * sizeof({char_ty}));
+        strings[i].ptr = copy;
+    }}
+}}
+"#
+                ),
+            )
+        } else {
+            ("NULL".to_string(), String::new())
+        };
+        let empty = "";
+        uwriteln!(
+            self.src.c_helpers,
+            r#"{own_def}
+{ty} {name}_new({name}_writer_t *writer) {{
+    return wit_stream_new(writer);
+}}
+
+{snake}_waitable_status_t {name}_read({ty} reader{read_arg_ty}) {{
+    return wit_stream_read(reader, {read_args}, {elem_size}, {is_future});
+}}
+
+{snake}_waitable_status_t {name}_write({name}_writer_t writer{write_arg_ty}) {{
+    return wit_stream_write(writer, {write_args}, {elem_size}, {is_future}, {own_fn});
+}}
+
+{snake}_waitable_status_t {name}_cancel_read({ty} reader){empty} {{
+    return wit_stream_cancel_read(reader);
+}}
+
+{snake}_waitable_status_t {name}_cancel_write({name}_writer_t writer) {{
+    return wit_stream_cancel_write(writer);
+}}
+
+void {name}_drop_readable({ty} reader){empty} {{
+    wit_stream_drop_readable(reader);
+}}
+
+void {name}_drop_writable({name}_writer_t writer) {{
+    wit_stream_drop_writable(writer);
+}}
+            "#,
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
 enum PayloadFor {
     Future,
     Stream,
@@ -3041,6 +3343,10 @@ struct FunctionBindgen<'a, 'b> {
     /// instruction. For some more information see the documentation on
     /// `DeferredTaskReturn`.
     deferred_task_return: DeferredTaskReturn,
+
+    /// For symmetric async exports with a result: the name of the (wasm)
+    /// parameter holding the location the caller wants the result written to.
+    async_export_retptr: Option<String>,
 
     /// Borrows observed during lifting an export, that will need to be dropped when the guest
     /// function exits.
@@ -3123,7 +3429,49 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             borrow_decls: Default::default(),
             borrows: Vec::new(),
             deferred_task_return: DeferredTaskReturn::None,
+            async_export_retptr: None,
         }
+    }
+
+    fn symmetric(&self) -> bool {
+        self.r#gen.r#gen.opts.symmetric
+    }
+
+    /// Whether strings and lists are about to be written to the caller's
+    /// result location by `_return` of a symmetric async export.
+    ///
+    /// The caller takes ownership of that data, but (as with `task.return`
+    /// which copies) the callee keeps ownership of what it passes to
+    /// `_return`, so a copy has to be made.
+    fn copy_lowered_data(&self) -> bool {
+        self.symmetric()
+            && matches!(
+                self.deferred_task_return,
+                DeferredTaskReturn::Generating { .. }
+            )
+    }
+
+    /// Whether what is lifted from the arguments of an export has to be
+    /// copied: the caller of a symmetric call keeps ownership of them, but
+    /// exports own what they receive.
+    fn copy_arguments(&self) -> bool {
+        self.symmetric() && !self.r#gen.in_import
+    }
+
+    /// Declares `tmp` as copy of the `len` elements of `elem_ty` at `ptr`
+    /// (allocated by `malloc`, so users can `free` it) and returns its name.
+    fn copy_data(&mut self, ptr: &str, len: &str, elem_ty: &str) -> String {
+        let tmp = self.locals.tmp("copy");
+        uwriteln!(
+            self.src,
+            "{elem_ty} *{tmp} = NULL;
+            if (({len}) > 0) {{
+                {tmp} = ({elem_ty}*) malloc(({len}) * sizeof({elem_ty}));
+                memcpy({tmp}, ({ptr}), ({len}) * sizeof({elem_ty}));
+            }}"
+        );
+        self.r#gen.r#gen.c_include("<string.h>");
+        tmp
     }
 
     fn store_op(&mut self, op: &str, loc: &str) {
@@ -3216,6 +3564,18 @@ impl Bindgen for FunctionBindgen<'_, '_> {
     fn return_pointer(&mut self, size: ArchitectureSize, align: Alignment) -> String {
         let ptr = self.locals.tmp("ptr");
 
+        if self.symmetric()
+            && matches!(
+                self.deferred_task_return,
+                DeferredTaskReturn::Generating { .. }
+            )
+        {
+            // The body of `_return` of a symmetric async export writes the
+            // result to the location the caller provided for the current task.
+            uwriteln!(self.src, "uint8_t *{ptr} = wit_task_retptr();");
+            return ptr;
+        }
+
         // Use a stack-based return area for imports, because exports need
         // their return area to be live until the post-return call.
         if self.r#gen.in_import {
@@ -3237,6 +3597,10 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
     fn is_list_canonical(&self, resolve: &Resolve, ty: &Type) -> bool {
         resolve.all_bits_valid(ty)
+    }
+
+    fn symmetric_deferred_task_return(&self) -> bool {
+        self.symmetric()
     }
 
     fn emit(
@@ -3675,6 +4039,20 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             Instruction::EnumLower { .. } => results.push(format!("(int32_t) {}", operands[0])),
             Instruction::EnumLift { .. } => results.push(operands.pop().unwrap()),
 
+            Instruction::ListCanonLower { element, .. } if self.copy_lowered_data() => {
+                let elem_name = self.r#gen.r#gen.type_name(element);
+                let len = format!("({}).len", operands[0]);
+                let copy = self.copy_data(&format!("({}).ptr", operands[0]), &len, &elem_name);
+                results.push(format!("(uint8_t *) {copy}"));
+                results.push(len);
+            }
+            Instruction::StringLower { .. } if self.copy_lowered_data() => {
+                let char_ty = self.r#gen.r#gen.char_type();
+                let len = format!("({}).len", operands[0]);
+                let copy = self.copy_data(&format!("({}).ptr", operands[0]), &len, char_ty);
+                results.push(format!("(uint8_t *) {copy}"));
+                results.push(len);
+            }
             Instruction::ListCanonLower { .. } | Instruction::StringLower { .. } => {
                 results.push(format!("(uint8_t *) ({}).ptr", operands[0]));
                 results.push(format!("({}).len", operands[0]));
@@ -3684,26 +4062,65 @@ impl Bindgen for FunctionBindgen<'_, '_> {
 
                 let list_name = self.r#gen.r#gen.type_name(&Type::Id(*ty));
                 let elem_name = self.r#gen.r#gen.type_name(element);
-                results.push(format!(
-                    "({}) {{ ({}*)({}), ({}) }}",
-                    list_name, elem_name, operands[0], operands[1]
-                ));
+                if self.copy_arguments() {
+                    let copy = self.copy_data(&operands[0], &operands[1], &elem_name);
+                    results.push(format!("({list_name}) {{ {copy}, ({}) }}", operands[1]));
+                } else {
+                    results.push(format!(
+                        "({}) {{ ({}*)({}), ({}) }}",
+                        list_name, elem_name, operands[0], operands[1]
+                    ));
+                }
             }
             Instruction::StringLift { .. } => {
                 let list_name = self.r#gen.r#gen.type_name(&Type::String);
-                results.push(format!(
-                    "({}) {{ ({}*)({}), ({}) }}",
-                    list_name,
-                    self.r#gen.r#gen.char_type(),
-                    operands[0],
-                    operands[1]
-                ));
+                let char_ty = self.r#gen.r#gen.char_type();
+                if self.copy_arguments() {
+                    let copy = self.copy_data(&operands[0], &operands[1], char_ty);
+                    results.push(format!("({list_name}) {{ {copy}, ({}) }}", operands[1]));
+                } else {
+                    results.push(format!(
+                        "({}) {{ ({}*)({}), ({}) }}",
+                        list_name, char_ty, operands[0], operands[1]
+                    ));
+                }
             }
 
             Instruction::ListLower { .. } => {
                 let _body = self.blocks.pop().unwrap();
                 results.push(format!("(uint8_t *) ({}).ptr", operands[0]));
                 results.push(format!("({}).len", operands[0]));
+            }
+
+            Instruction::ListLift { element, ty, .. } if self.copy_arguments() => {
+                self.assert_no_droppable_borrows("list", &Type::Id(*ty));
+
+                // Copy the list while lifting each element, which copies
+                // what the elements refer to.
+                let (body, body_results) = self.blocks.pop().unwrap();
+                let list_name = self.r#gen.r#gen.type_name(&Type::Id(*ty));
+                let elem_name = self.r#gen.r#gen.type_name(element);
+                let list = self.locals.tmp("list");
+                let i = self.locals.tmp("i");
+                let src = self.locals.tmp("src");
+                let (ptr, len) = (&operands[0], &operands[1]);
+                let elem = &body_results[0];
+                uwriteln!(
+                    self.src,
+                    "{list_name} {list};
+                    uint8_t *{src} = (uint8_t *) ({ptr});
+                    {list}.len = {len};
+                    {list}.ptr = NULL;
+                    if ({list}.len > 0) {{
+                        {list}.ptr = ({elem_name}*) malloc({list}.len * sizeof({elem_name}));
+                        for (size_t {i} = 0; {i} < {list}.len; {i}++) {{
+                            uint8_t *base = {src} + {i} * sizeof({elem_name});
+                            {body}
+                            {list}.ptr[{i}] = {elem};
+                        }}
+                    }}"
+                );
+                results.push(list);
             }
 
             Instruction::ListLift { element, ty, .. } => {
@@ -3726,6 +4143,40 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let _body = self.blocks.pop().unwrap();
                 results.push(format!("(uint8_t *) ({}).ptr", operands[0]));
                 results.push(format!("({}).len", operands[0]));
+            }
+
+            Instruction::MapLift { ty, .. } if self.copy_arguments() => {
+                self.assert_no_droppable_borrows("map", &Type::Id(*ty));
+
+                // see `ListLift`
+                let (body, body_results) = self.blocks.pop().unwrap();
+                let map_name = self.r#gen.r#gen.type_name(&Type::Id(*ty));
+                let entry_name = {
+                    let prefix = map_name.strip_suffix("_t").unwrap_or(&map_name);
+                    format!("{prefix}_entry_t")
+                };
+                let map = self.locals.tmp("map");
+                let i = self.locals.tmp("i");
+                let src = self.locals.tmp("src");
+                let (ptr, len) = (&operands[0], &operands[1]);
+                let (key, value) = (&body_results[0], &body_results[1]);
+                uwriteln!(
+                    self.src,
+                    "{map_name} {map};
+                    uint8_t *{src} = (uint8_t *) ({ptr});
+                    {map}.len = {len};
+                    {map}.ptr = NULL;
+                    if ({map}.len > 0) {{
+                        {map}.ptr = ({entry_name}*) malloc({map}.len * sizeof({entry_name}));
+                        for (size_t {i} = 0; {i} < {map}.len; {i}++) {{
+                            uint8_t *base = {src} + {i} * sizeof({entry_name});
+                            {body}
+                            {map}.ptr[{i}].key = {key};
+                            {map}.ptr[{i}].value = {value};
+                        }}
+                    }}"
+                );
+                results.push(map);
             }
 
             Instruction::MapLift { ty, .. } => {
@@ -3800,12 +4251,35 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 if *async_ {
                     let ret = self.locals.tmp("ret");
                     let snake = self.r#gen.r#gen.world.to_snake_case();
-                    uwriteln!(
-                        self.src,
-                        "{snake}_callback_code_t {ret} = {}({args});",
-                        self.sig.name,
-                    );
-                    uwriteln!(self.src, "return {ret};");
+                    if self.symmetric() {
+                        // Run the export as task, which has to be known to
+                        // `_return` and the callback. Whatever isn't finished
+                        // by the time the export returns is continued by the
+                        // executor, the caller gets an event to wait for.
+                        let task = self.locals.tmp("task");
+                        let retptr = self.async_export_retptr.as_deref().unwrap_or("NULL");
+                        uwriteln!(
+                            self.src,
+                            "struct wit_task *{task} = wit_task_enter({retptr});"
+                        );
+                        uwriteln!(
+                            self.src,
+                            "{snake}_callback_code_t {ret} = {}({args});",
+                            self.sig.name,
+                        );
+                        uwriteln!(
+                            self.src,
+                            "return wit_task_exit({task}, {ret}, __{}_callback_adapter);",
+                            self.func_to_call,
+                        );
+                    } else {
+                        uwriteln!(
+                            self.src,
+                            "{snake}_callback_code_t {ret} = {}({args});",
+                            self.sig.name,
+                        );
+                        uwriteln!(self.src, "return {ret};");
+                    }
                     if func.result.is_some() {
                         results.push("ret".to_string());
                     }
@@ -4128,17 +4602,19 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 };
             }
 
-            Instruction::FutureLift { .. } => {
-                results.push(format!("((uint32_t) {})", operands[0]));
+            Instruction::FutureLift { .. } | Instruction::StreamLift { .. } => {
+                if self.symmetric() {
+                    results.push(format!("((uintptr_t) {})", operands[0]));
+                } else {
+                    results.push(format!("((uint32_t) {})", operands[0]));
+                }
             }
-            Instruction::FutureLower { .. } => {
-                results.push(format!("((int32_t) {})", operands[0]));
-            }
-            Instruction::StreamLift { .. } => {
-                results.push(format!("((uint32_t) {})", operands[0]));
-            }
-            Instruction::StreamLower { .. } => {
-                results.push(format!("((int32_t) {})", operands[0]));
+            Instruction::FutureLower { .. } | Instruction::StreamLower { .. } => {
+                if self.symmetric() {
+                    results.push(format!("((uint8_t *) (uintptr_t) {})", operands[0]));
+                } else {
+                    results.push(format!("((int32_t) {})", operands[0]));
+                }
             }
 
             i => unimplemented!("{:?}", i),

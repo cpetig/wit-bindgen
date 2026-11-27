@@ -45,8 +45,8 @@ fn needs_dealloc2(resolve: &Resolve, tp: &Type) -> bool {
                         .map_or(false, |tp| needs_dealloc2(resolve, tp))
             }
             TypeDefKind::List(_l) => true,
-            TypeDefKind::Future(_) => todo!(),
-            TypeDefKind::Stream(_) => todo!(),
+            TypeDefKind::Future(_) => false,
+            TypeDefKind::Stream(_) => false,
             TypeDefKind::Type(tp) => needs_dealloc2(resolve, tp),
             TypeDefKind::Unknown => false,
             TypeDefKind::FixedLengthList(_, _) => todo!(),

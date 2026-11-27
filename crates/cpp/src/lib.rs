@@ -1344,7 +1344,14 @@ impl CppInterfaceGenerator<'_> {
         };
         let mut module_name = self.wasm_import_module.clone();
         let mut symbol_variant = variant;
-        if self.r#gen.opts.symmetric && matches!(variant, AbiVariant::GuestExport) {
+        if self.r#gen.opts.symmetric
+            && matches!(
+                variant,
+                AbiVariant::GuestExport
+                    | AbiVariant::GuestExportAsync
+                    | AbiVariant::GuestExportAsyncStackful
+            )
+        {
             // symmetric doesn't distinguish
             symbol_variant = AbiVariant::GuestImport;
         }
@@ -1373,10 +1380,11 @@ impl CppInterfaceGenerator<'_> {
             Some(ref module_name) => make_external_symbol(&module_name, &func_name, symbol_variant),
             None => make_external_component(&func_name),
         };
-        let export_name = if matches!(
-            variant,
-            AbiVariant::GuestExportAsync | AbiVariant::GuestExportAsyncStackful
-        ) {
+        let export_name = if !self.r#gen.opts.symmetric
+            && matches!(
+                variant,
+                AbiVariant::GuestExportAsync | AbiVariant::GuestExportAsyncStackful
+            ) {
             export_name
         } else {
             export_name + symbol_extensions(func)
@@ -1391,6 +1399,13 @@ impl CppInterfaceGenerator<'_> {
                 self.r#gen.c_src.src,
                 "static wit::Task<void> __wasm_export_{export_prefix}{export_name}_task("
             );
+            if self.r#gen.opts.symmetric {
+                // reports the completion of the call to the caller
+                self.r#gen
+                    .c_src
+                    .src
+                    .push_str("wit::detail::ExportTask* _task");
+            }
         } else {
             if self.r#gen.opts.symmetric {
                 uwriteln!(self.r#gen.c_src.src, r#"extern "C" "#);
@@ -1417,7 +1432,8 @@ impl CppInterfaceGenerator<'_> {
             self.r#gen.c_src.src.push_str(&export_name);
             self.r#gen.c_src.src.push_str("(");
         }
-        let mut first_arg = true;
+        let mut first_arg =
+            !(self.r#gen.opts.symmetric && matches!(variant, AbiVariant::GuestExportAsync));
         let mut params = Vec::new();
         for (n, ty) in signature.params.iter().enumerate() {
             let name = format!("arg{n}");
@@ -1940,12 +1956,45 @@ impl CppInterfaceGenerator<'_> {
                     );
                     abi::call(f.r#gen.resolve, variant, lift_lower, func, &mut f, is_async);
                     let ret_area_decl = f.emit_ret_area_if_needed();
-                    let code = format!("{}{}", ret_area_decl, String::from(f.src));
+                    let mut code = format!("{}{}", ret_area_decl, String::from(f.src));
+                    if self.r#gen.opts.symmetric && matches!(variant, AbiVariant::GuestExportAsync)
+                    {
+                        // the results are written, wake up the caller
+                        code.push_str("_task->complete();\nco_return;\n");
+                    }
                     self.r#gen.c_src.src.push_str(&code);
                 }
             }
             self.r#gen.c_src.src.push_str("}\n");
-            if matches!(variant, AbiVariant::GuestExportAsync) {
+            if self.r#gen.opts.symmetric && matches!(variant, AbiVariant::GuestExportAsync) {
+                let sig = self.patched_wasm_signature(variant, func);
+                let module_name = self.wasm_import_module.clone();
+                let func_name = &func.name;
+                let export_name = match module_name {
+                    Some(ref module_name) => {
+                        make_external_symbol(module_name, func_name, AbiVariant::GuestImport)
+                    }
+                    None => make_external_component(func_name),
+                } + symbol_extensions(func);
+                let export_prefix = self.r#gen.opts.export_prefix.clone().unwrap_or_default();
+                let mut param_decls = Vec::new();
+                let mut param_names = vec![String::from("_task")];
+                for (n, ty) in sig.params.iter().enumerate() {
+                    let name = format!("arg{n}");
+                    param_decls.push(format!("{} {name}", self.r#gen.opts.wasm_type(*ty)));
+                    param_names.push(name);
+                }
+                let param_decls_str = param_decls.join(", ");
+                let param_names_str = param_names.join(", ");
+                uwriteln!(
+                    self.r#gen.c_src.src,
+                    r#"extern "C" uint8_t* {export_prefix}{export_name}({param_decls_str}) {{
+                        return wit::detail::start_task_symmetric([=](wit::detail::ExportTask* _task) {{
+                            return __wasm_export_{export_prefix}{export_name}_task({param_names_str});
+                        }});
+                    }}"#
+                );
+            } else if matches!(variant, AbiVariant::GuestExportAsync) {
                 let sig = self.resolve.wasm_signature(variant, func);
                 let module_name = self.wasm_import_module.clone();
                 let func_name = &func.name;
@@ -4523,7 +4572,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 name,
                 sig,
                 module_prefix,
-                func: _,
+                func,
             } => {
                 let module_name = self
                     .r#gen
@@ -4541,7 +4590,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     })
                     .unwrap();
 
-                let import_name = if self.variant == AbiVariant::GuestImportAsync {
+                let import_name = if self.r#gen.r#gen.opts.symmetric {
+                    // symmetric async functions are only distinguished by a suffix
+                    format!("{name}{}", symbol_extensions(func))
+                } else if self.variant == AbiVariant::GuestImportAsync {
                     format!("[async-lower]{name}")
                 } else {
                     name.to_string()
@@ -4573,7 +4625,10 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         .join(", "),
                 );
                 self.src.push_str(");\n");
-                if self.variant == AbiVariant::GuestImportAsync {
+                if self.variant == AbiVariant::GuestImportAsync && self.r#gen.r#gen.opts.symmetric {
+                    // the event is null if the call has completed already
+                    uwriteln!(self.src, "co_await wit::detail::EventAwaiter{{ret}};");
+                } else if self.variant == AbiVariant::GuestImportAsync {
                     uwriteln!(
                             self.src,
                             "if ((ret & 0xfU) != wit::SUBTASK_RETURNED) {{
@@ -4658,6 +4713,21 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         "for (auto i: _deallocate) {{ free(i); }}\n
                         _deallocate.clear();"
                     );
+                }
+            }
+            abi::Instruction::Return { amt, func }
+                if self.variant == AbiVariant::GuestImportAsync
+                    && self.r#gen.r#gen.opts.symmetric =>
+            {
+                // the import is a coroutine, the results were read from the
+                // return area after the call completed
+                match amt {
+                    0 => uwriteln!(self.src, "co_return;"),
+                    _ => {
+                        assert!(*amt == operands.len() && *amt == 1);
+                        let _ = func;
+                        uwriteln!(self.src, "co_return {};", operands[0]);
+                    }
                 }
             }
             abi::Instruction::Return { amt, func } => {

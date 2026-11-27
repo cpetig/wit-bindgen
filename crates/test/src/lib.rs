@@ -1069,7 +1069,16 @@ impl Runner {
         for (i, (_component, component_path)) in test_components.iter().enumerate() {
             let main = match last_bytes.take() {
                 Some(bytes) => {
-                    path = runner_wasm.with_extension(&format!("composition{i}.wasm"));
+                    // Combinations sharing the same runner are composed in
+                    // parallel, so name the intermediate file after all
+                    // components composed so far to keep it unique.
+                    let composed_so_far = test_components[..i]
+                        .iter()
+                        .map(|(_, p)| p.file_stem().unwrap_or_default().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("-");
+                    path = runner_wasm
+                        .with_extension(&format!("composition{i}-{composed_so_far}.wasm"));
                     std::fs::write(&path, &bytes)
                         .with_context(|| format!("failed to write temporary file {path:?}"))?;
                     path.as_path()

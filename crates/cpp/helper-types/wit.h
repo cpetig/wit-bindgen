@@ -16,6 +16,7 @@
 #include <stdlib.h> // free
 #include <new>
 #include <span>
+#include <type_traits>
 #include <utility> // pair
 #include <vector>
 #ifdef __cpp_impl_coroutine
@@ -475,33 +476,58 @@ inline void sym_register(uint8_t *event, uint8_t (*callback)(void *),
 
 /// Wait for a subscription returned by an async call of the symmetric ABI
 /// (null means that the call has completed already).
+///
+/// The callback of the executor refers to a heap allocated state, so it is
+/// safe to destroy the coroutine while it still waits.
 struct EventAwaiter {
+  struct State {
+    std::coroutine_handle<> handle = nullptr;
+    bool registering = false;
+    bool fired = false;
+    bool dead = false;
+  };
+
   uint8_t *event;
-  std::coroutine_handle<> handle = nullptr;
-  bool registering = false;
-  bool fired = false;
+  State *state = nullptr;
 
   explicit EventAwaiter(void *e) : event(static_cast<uint8_t *>(e)) {}
   EventAwaiter(const EventAwaiter &) = delete;
   EventAwaiter &operator=(const EventAwaiter &) = delete;
+  ~EventAwaiter() {
+    if (state) {
+      // abandoned while waiting, the callback cleans up
+      state->dead = true;
+    }
+  }
 
   bool await_ready() const noexcept { return event == nullptr; }
   bool await_suspend(std::coroutine_handle<> h) noexcept {
-    handle = h;
-    registering = true;
-    sym_register(event, &EventAwaiter::on_event, this);
-    registering = false;
+    state = new State;
+    state->handle = h;
+    state->registering = true;
+    sym_register(event, &EventAwaiter::on_event, state);
+    state->registering = false;
     // the executor calls back immediately for events which are active
-    return !fired;
+    if (state->fired) {
+      delete state;
+      state = nullptr;
+      return false;
+    }
+    return true;
   }
-  void await_resume() noexcept {}
+  void await_resume() noexcept { state = nullptr; }
 
   static uint8_t on_event(void *data) {
-    auto *self = static_cast<EventAwaiter *>(data);
-    if (self->registering) {
-      self->fired = true;
+    auto *s = static_cast<State *>(data);
+    if (s->registering) {
+      s->fired = true;
     } else {
-      self->handle.resume();
+      bool dead = s->dead;
+      auto handle = s->handle;
+      delete s;
+      if (!dead) {
+        handle.resume();
+      }
     }
     return 1; // CallbackState::ready
   }
@@ -882,7 +908,11 @@ struct YieldAwaiter {
     }
     return suspend;
   }
-  void await_resume() noexcept {}
+  void await_resume() noexcept {
+    if (awaiter) {
+      awaiter->await_resume();
+    }
+  }
 };
 #else
 struct YieldAwaiter {
@@ -1271,6 +1301,7 @@ struct FutureVtable {
   void (*lower)(T value, uint8_t *dst);
   void (*dealloc_lists)(uint8_t *dst);
   T (*lift)(uint8_t *src);
+#ifndef WIT_SYMMETRIC // the symmetric ABI only needs the representation
   uint32_t (*start_write)(uint32_t future, const uint8_t *val);
   uint32_t (*start_read)(uint32_t future, uint8_t *val);
   uint32_t (*cancel_write)(uint32_t future);
@@ -1278,6 +1309,7 @@ struct FutureVtable {
   void (*drop_writable)(uint32_t future);
   void (*drop_readable)(uint32_t future);
   uint64_t (*new_future)();
+#endif
 };
 
 template <>
@@ -1287,6 +1319,7 @@ struct FutureVtable<void> {
   void (*lower)(uint8_t *dst);
   void (*dealloc_lists)(uint8_t *dst);
   void (*lift)(uint8_t *src);
+#ifndef WIT_SYMMETRIC // the symmetric ABI only needs the representation
   uint32_t (*start_write)(uint32_t future, const uint8_t *val);
   uint32_t (*start_read)(uint32_t future, uint8_t *val);
   uint32_t (*cancel_write)(uint32_t future);
@@ -1294,6 +1327,7 @@ struct FutureVtable<void> {
   void (*drop_writable)(uint32_t future);
   void (*drop_readable)(uint32_t future);
   uint64_t (*new_future)();
+#endif
 };
 
 template <typename T>
@@ -1303,6 +1337,7 @@ struct StreamVtable {
   void (*lower)(T value, uint8_t *dst);
   void (*dealloc_lists)(uint8_t *dst);
   T (*lift)(uint8_t *src);
+#ifndef WIT_SYMMETRIC // the symmetric ABI only needs the representation
   uint32_t (*start_write)(uint32_t stream, const uint8_t *val, size_t amt);
   uint32_t (*start_read)(uint32_t stream, uint8_t *val, size_t amt);
   uint32_t (*cancel_write)(uint32_t stream);
@@ -1310,6 +1345,7 @@ struct StreamVtable {
   void (*drop_writable)(uint32_t stream);
   void (*drop_readable)(uint32_t stream);
   uint64_t (*new_stream)();
+#endif
 };
 
 template <>
@@ -1319,6 +1355,7 @@ struct StreamVtable<void> {
   void (*lower)(uint8_t *dst);
   void (*dealloc_lists)(uint8_t *dst);
   void (*lift)(uint8_t *src);
+#ifndef WIT_SYMMETRIC // the symmetric ABI only needs the representation
   uint32_t (*start_write)(uint32_t stream, const uint8_t *val, size_t amt);
   uint32_t (*start_read)(uint32_t stream, uint8_t *val, size_t amt);
   uint32_t (*cancel_write)(uint32_t stream);
@@ -1326,6 +1363,7 @@ struct StreamVtable<void> {
   void (*drop_writable)(uint32_t stream);
   void (*drop_readable)(uint32_t stream);
   uint64_t (*new_stream)();
+#endif
 };
 
 template <typename T>
@@ -1340,6 +1378,355 @@ const StreamVtable<void> *get_stream_vtable<void>();
 
 } // namespace detail
 
+#ifdef WIT_SYMMETRIC
+namespace detail {
+// The symmetric stream runtime (see crates/symmetric_executor/wit/stream.wit),
+// accessed with plain pointers like the executor above.
+#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00##x
+extern "C" void WIT_SYM_STR(X5Bresource_dropX5Dbuffer)(uint8_t *);
+extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dbuffer)(uint8_t *, int64_t);
+extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(uint8_t *);
+extern "C" int64_t WIT_SYM_STR(X5BmethodX5DbufferX2Eget_size)(uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5DbufferX2Eset_size)(uint8_t *, int64_t);
+extern "C" int64_t WIT_SYM_STR(X5BmethodX5DbufferX2Ecapacity)(uint8_t *);
+extern "C" void WIT_SYM_STR(X5Bresource_dropX5Dstream_obj)(uint8_t *);
+extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dstream_obj)();
+extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5Dstream_objX2Eclone)(uint8_t *, int32_t);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_reading)(uint8_t *, uint8_t *, uint8_t *);
+extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_ready_subscribe)(uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_result)(uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_writing)(uint8_t *, uint8_t *);
+extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5Dstream_objX2Ewrite_ready_subscribe)(uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Efinish_writing)(uint8_t *, uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_subscriptionX2Ereset)(uint8_t *);
+
+/// Elements without a payload use this as their (unused) memory
+inline uint8_t sym_no_payload[8];
+
+/// The ownership of a stream object, the reader and writer are different
+/// objects (`clone`) sharing the state.
+inline void sym_stream_drop(uint8_t *stream) {
+  WIT_SYM_STR(X5Bresource_dropX5Dstream_obj)(stream);
+}
+
+inline uint8_t *sym_buffer_new(void *addr, size_t capacity) {
+  return WIT_SYM_STR(X5BconstructorX5Dbuffer)(static_cast<uint8_t *>(addr),
+                                              static_cast<int64_t>(capacity));
+}
+inline uint8_t *sym_buffer_address(uint8_t *buf) {
+  return WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(buf);
+}
+inline size_t sym_buffer_size(uint8_t *buf) {
+  return static_cast<size_t>(WIT_SYM_STR(X5BmethodX5DbufferX2Eget_size)(buf));
+}
+inline size_t sym_buffer_capacity(uint8_t *buf) {
+  return static_cast<size_t>(WIT_SYM_STR(X5BmethodX5DbufferX2Ecapacity)(buf));
+}
+inline void sym_buffer_set_size(uint8_t *buf, size_t size) {
+  WIT_SYM_STR(X5BmethodX5DbufferX2Eset_size)(buf, static_cast<int64_t>(size));
+}
+inline void sym_buffer_drop(uint8_t *buf) {
+  WIT_SYM_STR(X5Bresource_dropX5Dbuffer)(buf);
+}
+
+enum class SymState { Ok, Eof, Pending };
+struct SymResult {
+  SymState state;
+  uint8_t *buffer;
+};
+
+/// The data the writer has handed over
+inline SymResult sym_read_result(uint8_t *stream) {
+  alignas(void *) uint8_t ret[2 * sizeof(void *)];
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_result)(stream, ret);
+  if (ret[0] == 0) {
+    return {SymState::Ok, *reinterpret_cast<uint8_t **>(ret + sizeof(void *))};
+  }
+  return {ret[sizeof(void *)] == 0 ? SymState::Eof : SymState::Pending,
+          nullptr};
+}
+
+/// The buffer a reader is waiting with
+inline SymResult sym_start_writing(uint8_t *stream) {
+  alignas(void *) uint8_t ret[2 * sizeof(void *)];
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_writing)(stream, ret);
+  if (ret[0] == 0) {
+    return {SymState::Ok, *reinterpret_cast<uint8_t **>(ret + sizeof(void *))};
+  }
+  return {ret[sizeof(void *)] == 0 ? SymState::Eof : SymState::Pending,
+          nullptr};
+}
+
+/// Returns null if the buffer was accepted, otherwise it is handed back
+inline uint8_t *sym_start_reading(uint8_t *stream, uint8_t *buffer) {
+  alignas(void *) uint8_t ret[2 * sizeof(void *)];
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_reading)(stream, buffer, ret);
+  return ret[0] == 0 ? nullptr
+                     : *reinterpret_cast<uint8_t **>(ret + sizeof(void *));
+}
+
+/// Returns null if the buffer was accepted, otherwise it is handed back
+inline uint8_t *sym_finish_writing(uint8_t *stream, uint8_t *buffer) {
+  alignas(void *) uint8_t ret[2 * sizeof(void *)];
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Efinish_writing)(stream, buffer, ret);
+  return ret[0] == 0 ? nullptr
+                     : *reinterpret_cast<uint8_t **>(ret + sizeof(void *));
+}
+
+/// A subscription which only reports what happens from now on
+inline uint8_t *sym_subscription_new(uint8_t *event) {
+  WIT_SYM_EXE(X5BmethodX5Devent_subscriptionX2Ereset)(event);
+  return event;
+}
+inline void sym_subscription_drop(uint8_t *event) {
+  WIT_SYM_EXE(X5Bresource_dropX5Devent_subscription)(event);
+}
+
+/// Memory for the elements a reader is waiting for. If the reader gives up
+/// while the buffer is lent to the writer it must not be freed.
+struct SymReadBuffer {
+  uint8_t *ptr;
+  bool owned;
+  bool offered = false;
+  explicit SymReadBuffer(size_t bytes)
+      : ptr(bytes > 0 ? static_cast<uint8_t *>(malloc(bytes)) : sym_no_payload),
+        owned(bytes > 0) {}
+  SymReadBuffer(const SymReadBuffer &) = delete;
+  SymReadBuffer &operator=(const SymReadBuffer &) = delete;
+  ~SymReadBuffer() {
+    if (owned && !offered) {
+      free(ptr);
+    }
+  }
+};
+
+struct SymRead {
+  size_t count; // zero: the writer is gone
+  uint8_t *data;
+};
+
+/// Wait for the writer to provide up to `max` elements (in `buf` if it
+/// uses the buffer we offer)
+inline Task<SymRead> sym_read(uint8_t *stream, SymReadBuffer &buf, size_t max) {
+  for (;;) {
+    uint8_t *event = sym_subscription_new(
+        WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_ready_subscribe)(stream));
+    SymResult r = sym_read_result(stream);
+    if (r.state == SymState::Ok) {
+      sym_subscription_drop(event);
+      size_t count = sym_buffer_size(r.buffer);
+      uint8_t *data = sym_buffer_address(r.buffer);
+      sym_buffer_drop(r.buffer);
+      if (data == buf.ptr) {
+        buf.offered = false;
+      }
+      co_return SymRead{count, data};
+    }
+    if (r.state == SymState::Eof) {
+      sym_subscription_drop(event);
+      co_return SymRead{0, nullptr};
+    }
+    if (!buf.offered) {
+      uint8_t *rejected = sym_start_reading(stream, sym_buffer_new(buf.ptr, max));
+      if (rejected) {
+        // an earlier offer is still open, which is as good
+        sym_buffer_drop(rejected);
+      }
+      buf.offered = true;
+    }
+    co_await EventAwaiter(event);
+  }
+}
+
+/// Wait for a reader to offer a buffer, null if there are no readers anymore
+inline Task<uint8_t *> sym_wait_writable(uint8_t *stream) {
+  for (;;) {
+    uint8_t *event = sym_subscription_new(
+        WIT_SYM_STR(X5BmethodX5Dstream_objX2Ewrite_ready_subscribe)(stream));
+    SymResult r = sym_start_writing(stream);
+    if (r.state == SymState::Ok) {
+      sym_subscription_drop(event);
+      co_return r.buffer;
+    }
+    if (r.state == SymState::Eof) {
+      sym_subscription_drop(event);
+      co_return nullptr;
+    }
+    co_await EventAwaiter(event);
+  }
+}
+
+/// Hand over the first `count` elements (the buffer is consumed)
+inline void sym_finish_write(uint8_t *stream, uint8_t *buffer, size_t count) {
+  sym_buffer_set_size(buffer, count);
+  uint8_t *rejected = sym_finish_writing(stream, buffer);
+  if (rejected) {
+    // can't happen, the reader's offer was just taken
+    sym_buffer_drop(rejected);
+  }
+}
+} // namespace detail
+
+template <typename T = void>
+class FutureReader {
+public:
+  uint8_t *handle = nullptr;
+  FutureReader() = default;
+  explicit FutureReader(uint8_t *h) : handle(h) {}
+  FutureReader(FutureReader &&other) noexcept : handle(other.handle) {
+    other.handle = nullptr;
+  }
+  FutureReader &operator=(FutureReader &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      other.handle = nullptr;
+    }
+    return *this;
+  }
+  ~FutureReader() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  FutureReader(const FutureReader &) = delete;
+  FutureReader &operator=(const FutureReader &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    return h;
+  }
+
+  Task<T> read() {
+    assert(handle);
+    FutureReader<T> self(into_handle());
+    const auto *vt = detail::get_future_vtable<T>();
+    detail::SymReadBuffer buf(vt->size);
+    detail::SymRead res = co_await detail::sym_read(self.handle, buf, 1);
+    // the writer has to provide a value
+    if (res.count == 0) {
+      abort();
+    }
+    if constexpr (std::is_void_v<T>) {
+      co_return;
+    } else {
+      co_return vt->lift(res.data);
+    }
+  }
+
+  Task<T> operator co_await() { return read(); }
+};
+
+template <typename T = void>
+class FutureWriter {
+public:
+  uint8_t *handle = nullptr;
+  FutureWriter() = default;
+  explicit FutureWriter(uint8_t *h) : handle(h) {}
+  FutureWriter(FutureWriter &&other) noexcept : handle(other.handle) {
+    other.handle = nullptr;
+  }
+  FutureWriter &operator=(FutureWriter &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      other.handle = nullptr;
+    }
+    return *this;
+  }
+  ~FutureWriter() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  FutureWriter(const FutureWriter &) = delete;
+  FutureWriter &operator=(const FutureWriter &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    return h;
+  }
+
+  /// Returns false if the reader was dropped before the value was delivered
+  Task<bool> write(T value) {
+    assert(handle);
+    FutureWriter<T> self(into_handle());
+    const auto *vt = detail::get_future_vtable<T>();
+    uint8_t *buffer = co_await detail::sym_wait_writable(self.handle);
+    if (!buffer) {
+      co_return false;
+    }
+    vt->lower(std::move(value), detail::sym_buffer_address(buffer));
+    detail::sym_finish_write(self.handle, buffer, 1);
+    co_return true;
+  }
+};
+
+template <>
+class FutureWriter<void> {
+public:
+  uint8_t *handle = nullptr;
+  FutureWriter() = default;
+  explicit FutureWriter(uint8_t *h) : handle(h) {}
+  FutureWriter(FutureWriter &&other) noexcept : handle(other.handle) {
+    other.handle = nullptr;
+  }
+  FutureWriter &operator=(FutureWriter &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      other.handle = nullptr;
+    }
+    return *this;
+  }
+  ~FutureWriter() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  FutureWriter(const FutureWriter &) = delete;
+  FutureWriter &operator=(const FutureWriter &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    return h;
+  }
+
+  Task<bool> write() {
+    assert(handle);
+    FutureWriter<void> self(into_handle());
+    uint8_t *buffer = co_await detail::sym_wait_writable(self.handle);
+    if (!buffer) {
+      co_return false;
+    }
+    detail::sym_finish_write(self.handle, buffer, 1);
+    co_return true;
+  }
+};
+
+template <typename T = void>
+inline std::pair<FutureWriter<T>, FutureReader<T>> future_new() {
+  uint8_t *writer = detail::WIT_SYM_STR(X5BconstructorX5Dstream_obj)();
+  uint8_t *reader =
+      detail::WIT_SYM_STR(X5BmethodX5Dstream_objX2Eclone)(writer, 0);
+  return {FutureWriter<T>(writer), FutureReader<T>(reader)};
+}
+#else
 template <typename T = void>
 class FutureReader {
 public:
@@ -1595,6 +1982,8 @@ inline std::pair<FutureWriter<T>, FutureReader<T>> future_new() {
   return {FutureWriter<T>(writer), FutureReader<T>(reader)};
 }
 
+#endif // WIT_SYMMETRIC
+
 enum class StreamState {
   Complete,
   Dropped,
@@ -1606,6 +1995,369 @@ struct StreamStatus {
   size_t count;
 };
 
+#ifdef WIT_SYMMETRIC
+template <typename T = void>
+class StreamReader {
+public:
+  uint8_t *handle = nullptr;
+  bool peer_dropped = false;
+  // elements a writer provided beyond what has been asked for
+  std::vector<T> leftover;
+  StreamReader() = default;
+  explicit StreamReader(uint8_t *h) : handle(h) {}
+  StreamReader(StreamReader &&other) noexcept
+      : handle(other.handle), peer_dropped(other.peer_dropped),
+        leftover(std::move(other.leftover)) {
+    other.handle = nullptr;
+    other.peer_dropped = false;
+  }
+  StreamReader &operator=(StreamReader &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      peer_dropped = other.peer_dropped;
+      leftover = std::move(other.leftover);
+      other.handle = nullptr;
+      other.peer_dropped = false;
+    }
+    return *this;
+  }
+  ~StreamReader() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  StreamReader(const StreamReader &) = delete;
+  StreamReader &operator=(const StreamReader &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    peer_dropped = false;
+    return h;
+  }
+
+  Task<std::optional<T>> next() {
+    auto [st, items] = co_await read_chunk(1);
+    (void)st;
+    if (items.empty()) {
+      co_return std::nullopt;
+    }
+    co_return std::move(items[0]);
+  }
+
+  Task<std::pair<StreamStatus, std::vector<T>>> read_chunk(size_t max_count) {
+    assert(handle);
+    std::vector<T> result;
+    if (leftover.empty()) {
+      if (peer_dropped) {
+        co_return std::make_pair(StreamStatus{StreamState::Dropped, 0},
+                                 std::vector<T>{});
+      }
+      const auto *vt = detail::get_stream_vtable<T>();
+      detail::SymReadBuffer buf(vt->size * max_count);
+      detail::SymRead res = co_await detail::sym_read(handle, buf, max_count);
+      if (res.count == 0) {
+        peer_dropped = true;
+        co_return std::make_pair(StreamStatus{StreamState::Dropped, 0},
+                                 std::vector<T>{});
+      }
+      result.reserve(res.count);
+      for (size_t i = 0; i < res.count; ++i) {
+        result.push_back(vt->lift(res.data + i * vt->size));
+      }
+    } else {
+      result = std::move(leftover);
+      leftover.clear();
+    }
+    if (result.size() > max_count) {
+      // the writer handed over more than requested
+      for (size_t i = max_count; i < result.size(); ++i) {
+        leftover.push_back(std::move(result[i]));
+      }
+      while (result.size() > max_count) {
+        result.pop_back();
+      }
+    }
+    size_t amt = result.size();
+    co_return std::make_pair(StreamStatus{StreamState::Complete, amt},
+                             std::move(result));
+  }
+
+  Task<std::vector<T>> read(size_t max_count) {
+    auto [st, vec] = co_await read_chunk(max_count);
+    (void)st;
+    co_return std::move(vec);
+  }
+
+  Task<std::vector<T>> collect() {
+    std::vector<T> result;
+    while (true) {
+      auto item = co_await next();
+      if (!item.has_value()) {
+        break;
+      }
+      result.push_back(std::move(*item));
+    }
+    co_return result;
+  }
+};
+
+template <>
+class StreamReader<void> {
+public:
+  uint8_t *handle = nullptr;
+  bool peer_dropped = false;
+  size_t leftover = 0;
+  StreamReader() = default;
+  explicit StreamReader(uint8_t *h) : handle(h) {}
+  StreamReader(StreamReader &&other) noexcept
+      : handle(other.handle), peer_dropped(other.peer_dropped),
+        leftover(other.leftover) {
+    other.handle = nullptr;
+    other.peer_dropped = false;
+    other.leftover = 0;
+  }
+  StreamReader &operator=(StreamReader &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      peer_dropped = other.peer_dropped;
+      leftover = other.leftover;
+      other.handle = nullptr;
+      other.peer_dropped = false;
+      other.leftover = 0;
+    }
+    return *this;
+  }
+  ~StreamReader() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  StreamReader(const StreamReader &) = delete;
+  StreamReader &operator=(const StreamReader &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    peer_dropped = false;
+    return h;
+  }
+
+  Task<StreamStatus> read(size_t max_count = 1) {
+    assert(handle);
+    size_t amt = leftover;
+    if (amt == 0) {
+      if (peer_dropped) {
+        co_return StreamStatus{StreamState::Dropped, 0};
+      }
+      detail::SymReadBuffer buf(0);
+      detail::SymRead res = co_await detail::sym_read(handle, buf, max_count);
+      if (res.count == 0) {
+        peer_dropped = true;
+        co_return StreamStatus{StreamState::Dropped, 0};
+      }
+      amt = res.count;
+    }
+    leftover = amt > max_count ? amt - max_count : 0;
+    amt = amt > max_count ? max_count : amt;
+    co_return StreamStatus{StreamState::Complete, amt};
+  }
+
+  Task<bool> next() {
+    auto st = co_await read(1);
+    co_return st.count > 0;
+  }
+};
+
+template <typename T = void>
+class StreamWriter {
+public:
+  uint8_t *handle = nullptr;
+  bool peer_dropped = false;
+  StreamWriter() = default;
+  explicit StreamWriter(uint8_t *h) : handle(h) {}
+  StreamWriter(StreamWriter &&other) noexcept
+      : handle(other.handle), peer_dropped(other.peer_dropped) {
+    other.handle = nullptr;
+    other.peer_dropped = false;
+  }
+  StreamWriter &operator=(StreamWriter &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      peer_dropped = other.peer_dropped;
+      other.handle = nullptr;
+      other.peer_dropped = false;
+    }
+    return *this;
+  }
+  ~StreamWriter() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  StreamWriter(const StreamWriter &) = delete;
+  StreamWriter &operator=(const StreamWriter &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    peer_dropped = false;
+    return h;
+  }
+
+  /// Writes all of the values unless the reader goes away, the status tells
+  /// how many were written. Values which weren't written are dropped.
+  Task<StreamStatus> write(std::vector<T> values) {
+    assert(handle);
+    if (peer_dropped) {
+      co_return StreamStatus{StreamState::Dropped, 0};
+    }
+    const auto *vt = detail::get_stream_vtable<T>();
+    size_t count = values.size();
+    size_t done = 0;
+    while (done < count) {
+      uint8_t *buffer = co_await detail::sym_wait_writable(handle);
+      if (!buffer) {
+        peer_dropped = true;
+        break;
+      }
+      size_t n = detail::sym_buffer_capacity(buffer);
+      if (n > count - done) {
+        n = count - done;
+      }
+      uint8_t *dest = detail::sym_buffer_address(buffer);
+      for (size_t i = 0; i < n; ++i) {
+        vt->lower(std::move(values[done + i]), dest + i * vt->size);
+      }
+      detail::sym_finish_write(handle, buffer, n);
+      done += n;
+    }
+    StreamState s = done > 0               ? StreamState::Complete
+                    : peer_dropped         ? StreamState::Dropped
+                                           : StreamState::Cancelled;
+    co_return StreamStatus{s, done};
+  }
+
+  Task<bool> write_one(T value) {
+    std::vector<T> values;
+    values.push_back(std::move(value));
+    auto st = co_await write(std::move(values));
+    co_return st.count > 0;
+  }
+
+  Task<size_t> write_all(std::vector<T> values) {
+    if (values.empty() || peer_dropped) {
+      co_return 0;
+    }
+    auto st = co_await write(std::move(values));
+    co_return st.count;
+  }
+
+  Task<size_t> write_all(wit::vector<T> values) {
+    std::vector<T> vec;
+    vec.reserve(values.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+      vec.push_back(std::move(values[i]));
+    }
+    co_return co_await write_all(std::move(vec));
+  }
+};
+
+template <>
+class StreamWriter<void> {
+public:
+  uint8_t *handle = nullptr;
+  bool peer_dropped = false;
+  StreamWriter() = default;
+  explicit StreamWriter(uint8_t *h) : handle(h) {}
+  StreamWriter(StreamWriter &&other) noexcept
+      : handle(other.handle), peer_dropped(other.peer_dropped) {
+    other.handle = nullptr;
+    other.peer_dropped = false;
+  }
+  StreamWriter &operator=(StreamWriter &&other) noexcept {
+    if (this != &other) {
+      if (handle) {
+        detail::sym_stream_drop(handle);
+      }
+      handle = other.handle;
+      peer_dropped = other.peer_dropped;
+      other.handle = nullptr;
+      other.peer_dropped = false;
+    }
+    return *this;
+  }
+  ~StreamWriter() {
+    if (handle) {
+      detail::sym_stream_drop(handle);
+      handle = nullptr;
+    }
+  }
+  StreamWriter(const StreamWriter &) = delete;
+  StreamWriter &operator=(const StreamWriter &) = delete;
+
+  uint8_t *get_handle() const { return handle; }
+  uint8_t *into_handle() {
+    uint8_t *h = handle;
+    handle = nullptr;
+    peer_dropped = false;
+    return h;
+  }
+
+  Task<StreamStatus> write(size_t count = 1) {
+    assert(handle);
+    if (peer_dropped) {
+      co_return StreamStatus{StreamState::Dropped, 0};
+    }
+    size_t done = 0;
+    while (done < count) {
+      uint8_t *buffer = co_await detail::sym_wait_writable(handle);
+      if (!buffer) {
+        peer_dropped = true;
+        break;
+      }
+      size_t n = detail::sym_buffer_capacity(buffer);
+      if (n > count - done) {
+        n = count - done;
+      }
+      detail::sym_finish_write(handle, buffer, n);
+      done += n;
+    }
+    StreamState s = done > 0               ? StreamState::Complete
+                    : peer_dropped         ? StreamState::Dropped
+                                           : StreamState::Cancelled;
+    co_return StreamStatus{s, done};
+  }
+
+  Task<bool> write_one() {
+    auto st = co_await write(1);
+    co_return st.count > 0;
+  }
+};
+
+template <typename T = void>
+inline std::pair<StreamWriter<T>, StreamReader<T>> stream_new() {
+  uint8_t *writer = detail::WIT_SYM_STR(X5BconstructorX5Dstream_obj)();
+  uint8_t *reader =
+      detail::WIT_SYM_STR(X5BmethodX5Dstream_objX2Eclone)(writer, 0);
+  return {StreamWriter<T>(writer), StreamReader<T>(reader)};
+}
+#else
 template <typename T = void>
 class StreamReader {
 public:
@@ -2069,6 +2821,8 @@ inline std::pair<StreamWriter<T>, StreamReader<T>> stream_new() {
   int32_t writer = static_cast<int32_t>(handles >> 32);
   return {StreamWriter<T>(writer), StreamReader<T>(reader)};
 }
+
+#endif // WIT_SYMMETRIC
 
 #endif // __cpp_impl_coroutine
 

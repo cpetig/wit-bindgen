@@ -1,7 +1,6 @@
 # Cpp
 
 * Nested lists
-* Host: Strings inside records
 * Strings test: return-unicode should get out parameter
 * with argument (class, [header])
 

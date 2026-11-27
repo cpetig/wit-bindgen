@@ -389,9 +389,6 @@ WIT types.
 
 This relies on wasi-SDK for guest compilation.
 
-A separate subcommand (cpp-host) will generate C++ host code for 
-WebAssembly micro runtime.
-
 ### Guest: MoonBit
 
 MoonBit can be compiled to WebAssembly using [its toolchain](https://moonbitlang.com/download):
@@ -410,10 +407,10 @@ wasm-tools component new target/gen.wasm -o target/gen.component.wasm
 You may use `--gen-dir` to specify which package should be responsible for the exportation. The default is `gen` as mentioned above.
 This can be useful having one project that exports multiple worlds.
 
-Generated projects use `moon.mod` and `moon.pkg`, with WebAssembly export mappings
-configured in the export package's `moon.pkg`.
+Generated projects use `moon.mod` and `moon.pkg`, with WebAssembly export names
+specified by `#export_name` annotations in the export package.
 
-When using `wit-bindgen moonbit`, you may use `--derive-show` or `--derive-eq` to derive `Show` or `Eq` traits for all types.
+When using `wit-bindgen moonbit`, you may use `--derive-debug` or `--derive-eq` to generate `#derive(Debug)` or `#derive(Eq)` annotations for types without future or stream fields.
 You may also use `--derive-error`, which will make types containing `Error` as error types in MoonBit.
 
 #### MoonBit ABI compatibility
@@ -501,8 +498,6 @@ components:
   that works similar to the JS integration. Given a concrete component this will
   generate Python source code to interact with the component using an embedding
   of Wasmtime for its core WebAssembly support.
-
-- C++-17+: see above chapter for WAMR host code generation.
 
 - Ruby: the [`wasmtime-rb`](https://github.com/bytecodealliance/wasmtime-rb)
   project has initial support for components since

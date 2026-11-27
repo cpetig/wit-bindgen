@@ -1,3 +1,0 @@
-[workspace]
-members = [ "source", "main", "stream"]
-resolver = "2"

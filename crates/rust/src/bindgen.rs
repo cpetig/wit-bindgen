@@ -96,6 +96,8 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             &rust_name,
             params,
             results,
+            self.r#gen.r#gen.runtime_path(),
+            self.r#gen.r#gen.opts.symmetric,
         ));
         rust_name
     }
@@ -276,8 +278,8 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 "let ptr{tmp} = ret_area.0.as_mut_ptr().cast::<u8>();"
             );
         } else {
-            // Export return areas are stored in `static` memory as they need to
-            // persist beyond the function call itself (and are cleaned-up in
+            // Export return areas are stored in `static` memory as they need
+            // to persist beyond the function call itself (and are cleaned-up in
             // `post-return`).
             self.r#gen.return_pointer_area_size = self.r#gen.return_pointer_area_size.max(size);
             self.r#gen.return_pointer_area_align = self.r#gen.return_pointer_area_align.max(align);
@@ -854,12 +856,12 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(&format!(
                     "let ({result}, {cleanup}) = {rt}::Cleanup::new({layout});"
                 ));
-                if self.r#gen.r#gen.opts.symmetric && self.r#gen.in_import {
-                    //if !self.r#gen.needs_deallocate {
-                    //    self.push_str("// ");
-                    //} else {
-                    assert!(self.r#gen.needs_deallocate);
-                    //}
+                // `needs_deallocate` is only set while generating an imported function with list
+                // parameters; the payload code of futures and streams has no `_deallocate` list.
+                if self.r#gen.r#gen.opts.symmetric
+                    && self.r#gen.in_import
+                    && self.r#gen.needs_deallocate
+                {
                     self.push_str(&format!(
                         "if !{result}.is_null() {{ _deallocate.push(({result}, {layout})); }}\n"
                     ));

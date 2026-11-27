@@ -51,18 +51,11 @@ impl LanguageMethods for Cpp {
     fn should_fail_verify(
         &self,
         _runner: &Runner,
-        name: &str,
-        config: &crate::config::WitConfig,
+        _name: &str,
+        _config: &crate::config::WitConfig,
         _args: &[String],
     ) -> bool {
-        // Compiles on C++ despite the blanket async exclusion below.
-        if name == "issue-1598.wit" {
-            return false;
-        }
-        return match name {
-            "named-fixed-length-list.wit" => true,
-            _ => false,
-        } || config.async_;
+        false
     }
 
     fn prepare(&self, runner: &mut crate::Runner, test_name: &str) -> anyhow::Result<()> {
@@ -292,9 +285,28 @@ impl LanguageMethods for Cpp {
         test: &crate::Test,
         component: &crate::Component,
     ) -> bool {
+        // The coroutine based async bindings are not available for the symmetric ABI
+        const ASYNC_TESTS: &[&str] = &[
+            "async-export-namespace",
+            "async-export-result",
+            "async-import-results",
+            "cancel-import",
+            "pending-import",
+            "ping-pong",
+            "return-string",
+            "simple-call-import",
+            "simple-future",
+            "simple-import-params-results",
+            "simple-pending-import",
+            "simple-stream",
+            "simple-stream-payload",
+            "simple-yield",
+            "stream-param-future-result",
+        ];
         runner.is_symmetric()
-            && ((matches!(component.kind, crate::Kind::Test)
-                && (test.name == "resources" || test.name == "resource_borrow_in_record"))
+            && (ASYNC_TESTS.contains(&test.name.as_str())
+                || (matches!(component.kind, crate::Kind::Test)
+                    && (test.name == "resources" || test.name == "resource_borrow_in_record"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "results"
                         || test.name == "common-types"

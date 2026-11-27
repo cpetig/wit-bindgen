@@ -66,7 +66,9 @@ impl<T: Unpin + Send + 'static> StreamWrite<'_, T> {
         } else {
             // send data
             if self.writer.ready_buffer.is_none() {
-                todo!("handle all readers closed");
+                // all readers closed, hand back the values
+                let values = std::mem::replace(&mut self.values, RustBuffer::new(Vec::new()));
+                return Poll::Ready((StreamResult::Dropped, values));
             }
             let buffer = self.writer.ready_buffer.take().unwrap();
             let addr = buffer.get_address().take_handle() as *mut u8;
@@ -78,13 +80,12 @@ impl<T: Unpin + Send + 'static> StreamWrite<'_, T> {
                     dest = unsafe { dest.byte_add(self.writer._vtable.layout.size()) };
                 }
             } else {
-                assert_eq!(self.writer._vtable.layout.size(), core::mem::size_of::<T>());
-                unsafe { std::slice::from_raw_parts_mut(dest.cast::<MaybeUninit<T>>(), size) }
-                    .iter_mut()
-                    .zip(self.values.drain_n(size))
-                    .for_each(|(d, s)| {
-                        d.write(s);
-                    });
+                // the element stride is the layout size, which is not the size of the
+                // Rust type for e.g. `()` (zero sized in Rust, one byte in the ABI)
+                for i in self.values.drain_n(size) {
+                    unsafe { dest.cast::<T>().write(i) };
+                    dest = unsafe { dest.byte_add(self.writer._vtable.layout.size()) };
+                }
             }
             buffer.set_size(size as u64);
             self.writer.handle.finish_writing(buffer).expect("write ok");
@@ -309,6 +310,25 @@ impl<T> StreamReader<T> {
 }
 
 impl<T: Send + Unpin + 'static> StreamReader<T> {
+    /// Read all remaining items from this stream into a list and await the
+    /// stream to be dropped.
+    pub async fn collect(mut self) -> Vec<T> {
+        let mut ret = Vec::new();
+        loop {
+            // reserve room, the reader fills at most the capacity
+            if ret.len() == ret.capacity() {
+                ret.reserve(1);
+            }
+            let (status, buf) = self.read(ret).await;
+            ret = buf;
+            match status {
+                StreamResult::Complete(_) => {}
+                StreamResult::Dropped | StreamResult::Cancelled => break,
+            }
+        }
+        ret
+    }
+
     pub async fn next(&mut self) -> Option<T> {
         let (status, mut buf) = self.read(Vec::with_capacity(1)).await;
         #[cfg(feature = "trace")]
@@ -376,7 +396,7 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
             #[cfg(feature = "trace")]
             println!("creating future");
             if me.handle.is_write_closed() {
-                return Poll::Ready((StreamResult::Dropped, Vec::new()));
+                return Poll::Ready((StreamResult::Dropped, std::mem::take(&mut me2.buf)));
             }
             let mut buffer2 = Vec::new();
             std::mem::swap(&mut buffer2, &mut me2.buf);
@@ -392,7 +412,7 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                     Ok(()) => (),
                     Err(_buf) => {
                         if handle.is_write_closed() {
-                            return (StreamResult::Dropped, Vec::new());
+                            return (StreamResult::Dropped, buffer2);
                         } else {
                             todo!();
                         }
@@ -420,7 +440,7 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                             }
                             break (StreamResult::Complete(count as usize), buffer2);
                         }
-                        Err(StreamState::Eof) => break (StreamResult::Dropped, Vec::new()),
+                        Err(StreamState::Eof) => break (StreamResult::Dropped, buffer2),
                         Err(StreamState::Pending) => {
                             wait_on(subsc).await;
                             #[cfg(feature = "trace")]

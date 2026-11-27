@@ -24,7 +24,8 @@ impl<T: 'static> RustBuffer<T> {
         self.buf.drain(0..n)
     }
 
-    pub(crate) fn into_vec(&mut self) -> Vec<T> {
-        todo!()
+    /// Returns the values which were not yet written.
+    pub fn into_vec(self) -> Vec<T> {
+        self.buf.into()
     }
 }

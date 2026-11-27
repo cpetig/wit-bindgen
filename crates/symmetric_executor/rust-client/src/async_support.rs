@@ -1,4 +1,9 @@
-use futures::{future::FusedFuture, task::Waker, FutureExt};
+use futures::{
+    channel::oneshot,
+    future::{AbortHandle, Abortable, Aborted, FusedFuture},
+    task::Waker,
+    FutureExt,
+};
 use std::{
     future::Future,
     mem::MaybeUninit,
@@ -272,12 +277,18 @@ pub fn start_task(future: impl Future<Output = ()> + 'static) -> *mut u8 {
 }
 
 /// Await the completion of a call to an async-lowered import.
+///
+/// The import is called right away, the returned future does not hold on to
+/// `function` (which captures raw pointers) to stay `Send`.
 #[doc(hidden)]
-pub async unsafe fn await_result(function: impl Fn() -> *mut u8) {
+pub unsafe fn await_result(function: impl Fn() -> *mut u8) -> impl Future<Output = ()> + Send {
     let wait_for = function();
-    if !wait_for.is_null() {
-        let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
-        wait_on(wait_for).await;
+    let wait_for =
+        (!wait_for.is_null()).then(|| unsafe { EventSubscription::from_handle(wait_for as usize) });
+    async move {
+        if let Some(wait_for) = wait_for {
+            wait_on(wait_for).await;
+        }
     }
 }
 
@@ -297,7 +308,75 @@ pub unsafe fn spawn_unchecked(future: impl Future<Output = ()>) {
     }
 }
 
-pub fn block_on<T: 'static>(future: impl Future<Output = T> + 'static) -> T {
+/// Spawn the future on the executor, it is polled right away and then
+/// whenever the events it waits for (or its waker) fire.
+///
+/// Like in the canonical ABI runtime the result can be awaited using the
+/// returned [`JoinHandle`], dropping the handle detaches the task.
+pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> JoinHandle<T> {
+    let (sender, receiver) = oneshot::channel();
+    let (abort, registration) = AbortHandle::new_pair();
+    unsafe {
+        spawn_unchecked(async move {
+            let _ = sender.send(Abortable::new(future, registration).await);
+        });
+    }
+    JoinHandle { receiver, abort }
+}
+
+/// A handle to a spawned task which can be awaited for its result.
+///
+/// Dropping the handle allows the task to continue running in the background.
+/// Awaiting the handle returns `None` if the task was cancelled or otherwise
+/// terminated without producing a result.
+pub struct JoinHandle<T> {
+    receiver: oneshot::Receiver<Result<T, Aborted>>,
+    abort: AbortHandle,
+}
+
+impl<T> JoinHandle<T> {
+    /// Cancels the spawned task. It is possible the task resolved and produced
+    /// a result before cancelation completed and the [`JoinHandle`] can still
+    /// be awaited to check for that case.
+    pub fn cancel(&mut self) {
+        self.abort.abort();
+    }
+}
+
+impl<T> Future for JoinHandle<T> {
+    type Output = Option<T>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
+        match Pin::new(&mut self.receiver).poll(cx) {
+            Poll::Ready(Ok(Ok(result))) => Poll::Ready(Some(result)),
+            Poll::Ready(Ok(Err(_)) | Err(_)) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+/// Gives other tasks the chance to progress, then continues.
+pub async fn yield_async() {
+    let mut yielded = false;
+    std::future::poll_fn(move |cx| {
+        if yielded {
+            Poll::Ready(())
+        } else {
+            yielded = true;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
+    })
+    .await
+}
+
+/// Blocking counterpart of [`yield_async`]. There is no other thread of control
+/// to switch to here, so this only reports that the task was not cancelled.
+pub fn yield_blocking() -> bool {
+    true
+}
+
+pub fn block_on<T>(future: impl Future<Output = T>) -> T {
     // ugly but might do the trick
     let result: Arc<RwLock<MaybeUninit<T>>> = Arc::new(RwLock::new(MaybeUninit::uninit()));
     let result2 = Arc::clone(&result);
@@ -305,6 +384,12 @@ pub fn block_on<T: 'static>(future: impl Future<Output = T> + 'static) -> T {
         let vec = future.await;
         result2.write().unwrap().write(vec);
     };
+    // SAFETY: we don't return before the future is finished, so it can't
+    // outlive the borrows it contains (same as the canonical `block_on`).
+    // The future is never moved to another thread.
+    let future2: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(future2);
+    let future2: Pin<Box<dyn Future<Output = ()> + 'static>> =
+        unsafe { std::mem::transmute(future2) };
     let wait_for = first_poll(future2);
     if !wait_for.is_null() {
         let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };

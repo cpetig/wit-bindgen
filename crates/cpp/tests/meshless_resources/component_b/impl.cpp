@@ -1,1 +1,0 @@
-../../native_mesh/component_b/impl.cpp

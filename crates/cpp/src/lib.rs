@@ -573,6 +573,9 @@ impl Cpp {
             if self.opts.symmetric {
                 uwriteln!(header, "#define WIT_SYMMETRIC");
             }
+            if self.opts.autosar {
+                uwriteln!(header, "#define WIT_ARA_SPAN");
+            }
             for include in self.includes.iter() {
                 uwriteln!(header, "#include {include}");
             }
@@ -901,6 +904,9 @@ impl WorldGenerator for Cpp {
 
         if self.opts.symmetric {
             uwriteln!(h_str.src, "#define WIT_SYMMETRIC");
+        }
+        if self.opts.autosar {
+            uwriteln!(h_str.src, "#define WIT_ARA_SPAN");
         }
         for include in self.includes.iter() {
             uwriteln!(h_str.src, "#include {include}");
@@ -4412,7 +4418,14 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     && !is_function_param
                 {
                     // Import from struct/variant field: optional<wit::string> needs .get_view()
-                    format!("({op0}).value().get_view()")
+                    if self.r#gen.r#gen.opts.autosar {
+                        format!("(*({op0})).get_view()")
+                    } else {
+                        format!("({op0}).value().get_view()")
+                    }
+                } else if self.r#gen.r#gen.opts.autosar {
+                    // ara::core::Optional has no value()
+                    format!("(*({op0}))")
                 } else {
                     format!("({op0}).value()")
                 };
@@ -4561,7 +4574,7 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                     };
                     uwriteln!(
                         self.src,
-                        "::ara::core::Optional<{full_type}> {resultname};
+                        "::ara::core::Optional<{full_type}> {resultname};\n
                         if ({operand}==0) {{
                             {ok}
                             {ok_assign}

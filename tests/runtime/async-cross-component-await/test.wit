@@ -1,0 +1,28 @@
+//@ async = true
+//@ dependencies = ['middle', 'leaf']
+
+package test:cross;
+
+interface wait {
+    // Completes only after the event loop ran a few times.
+    sleep: async func(rounds: u32);
+}
+
+interface string-delay {
+    forward: async func(s: string) -> string;
+}
+
+world runner {
+    import string-delay;
+
+    export run: async func();
+}
+
+world middle {
+    import wait;
+    export string-delay;
+}
+
+world leaf {
+    export wait;
+}

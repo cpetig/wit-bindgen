@@ -303,6 +303,7 @@ impl LanguageMethods for Cpp {
     ) -> bool {
         // The coroutine based async bindings are not available for the symmetric ABI
         const ASYNC_TESTS: &[&str] = &[
+            "async-cross-component-await",
             "async-export-namespace",
             "async-export-result",
             "async-import-results",

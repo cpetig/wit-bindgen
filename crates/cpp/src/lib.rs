@@ -3863,8 +3863,13 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 uwriteln!(self.src, "auto {} = {};\n", len, operands[1]);
                 let result = if self.r#gen.r#gen.opts.symmetric
                     && self.r#gen.r#gen.opts.api_style == APIStyle::Asymmetric
-                    && matches!(self.variant, AbiVariant::GuestExport)
-                {
+                    && matches!(
+                        self.variant,
+                        AbiVariant::GuestExport
+                            | AbiVariant::GuestExportAsync
+                            | AbiVariant::GuestExportAsyncStackful
+                    ) {
+                    // the caller keeps ownership of the argument, copy it
                     uwriteln!(
                         self.src,
                         "auto string{tmp} = wit::string::from_view(std::string_view(reinterpret_cast<char const *>({}), {len}));\n",

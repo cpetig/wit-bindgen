@@ -1,0 +1,9 @@
+[package]
+name = "symmetric-link-search"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+# only to have the cdylibs built before the build script using this crate runs
+symmetric_executor = { path = ".." }
+symmetric_stream = { path = "../symmetric_stream" }

@@ -302,33 +302,33 @@ impl LanguageMethods for Cpp {
         component: &crate::Component,
     ) -> bool {
         // The coroutine based async bindings are not available for the symmetric ABI
+        // Async functions (`wit::Task`) work, these remain because of futures and
+        // streams (to be mapped to `wit::FutureReader`/`StreamReader`) or
+        // cancellation.
         const ASYNC_TESTS: &[&str] = &[
-            "async-cross-component-await",
-            "async-export-namespace",
-            "async-export-result",
+            // streams
             "async-import-results",
+            // cancellation is not supported by the symmetric ABI
             "cancel-import",
+            // futures
             "pending-import",
             "ping-pong",
-            "return-string",
-            "simple-call-import",
             "simple-future",
-            "simple-import-params-results",
-            "simple-pending-import",
             "simple-stream",
             "simple-stream-payload",
-            "simple-yield",
             "stream-param-future-result",
         ];
         runner.is_symmetric()
             && (ASYNC_TESTS.contains(&test.name.as_str())
                 || (matches!(component.kind, crate::Kind::Test)
                     && (test.name == "resources" || test.name == "resource_borrow_in_record"))
+                // The C++ components work (verified by linking runner, middle and a
+                // C++ leaf manually), but the test harness can't link a chain of
+                // components (runner -> middle -> leaf) with the symmetric ABI yet.
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "results"
                         || test.name == "common-types"
-                        || test.name == /*async*/"future-string"
-                        || test.name == /*async*/"stream-string")))
+                        || test.name == "async-cross-component-await")))
     }
 
     fn should_fail_runtime2(
@@ -339,6 +339,10 @@ impl LanguageMethods for Cpp {
     ) -> bool {
         // dbg!(runner);
         runner.is_symmetric()
-            && (matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
+            && ((matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
+                // These compile, but futures and streams still map to `std::future`
+                // (to be replaced by `wit::FutureReader`/`StreamReader`)
+                || name == "future-string"
+                || name == "stream-string")
     }
 }

@@ -820,6 +820,14 @@ impl Runner {
                             should_fail = true;
                         }
                     }
+                    let files = [&runner]
+                        .into_iter()
+                        .chain(test_components.iter().map(|p| &p.0))
+                        .map(|c| c.path.file_name().unwrap().to_str().unwrap())
+                        .collect::<Vec<_>>();
+                    if should_fail_combination(&me, &case_name, &files) {
+                        should_fail = true;
+                    }
                     let case_name = case_name.to_string();
                     let runner = runner.clone();
                     let runner_path = runner_path.to_path_buf();
@@ -1408,6 +1416,43 @@ impl<'a> StepResult<'a> {
         self.metadata.push((name, value.to_string()));
         self
     }
+}
+
+/// Combinations of components (file names, the runner first) of a runtime test
+/// which are expected to fail with the symmetric ABI. The
+/// `should_fail_runtime2` of the languages can only judge one component at a
+/// time, but these fail only in this combination.
+///
+/// * "pending writer": a C reader (`test.c`) reads a future or stream while
+///   a writer in another language has started to write, and asserts that the
+///   read completes. Rust and C++ writers hand elements over only to the
+///   buffer which a reader has offered (`start_writing` is pending until
+///   then, there is nothing a reader could take), so the read can't complete
+///   before the executor has run the writer.
+/// * "pending reader": the Rust reader of a future, written by C, is expected
+///   to finish in the call which started it. A C writer waits for a reader's
+///   buffer like the Rust and C++ writers, which only happens when the
+///   executor runs it.
+const SYMMETRIC_EXPECTED_FAILURES: &[(&str, &[&str])] = &[
+    // pending writer
+    ("simple-future", &["runner.cpp", "test.c"]),
+    ("simple-future", &["runner.rs", "test.c"]),
+    ("simple-future", &["runner-nostd.rs", "test.c"]),
+    ("simple-stream", &["runner.cpp", "test.c"]),
+    ("simple-stream", &["runner.rs", "test.c"]),
+    ("simple-stream", &["runner-nostd.rs", "test.c"]),
+    ("simple-stream-payload", &["runner.cpp", "test.c"]),
+    ("ping-pong", &["runner.c", "test.rs"]),
+    ("ping-pong", &["runner.c", "test.cpp"]),
+    // pending reader
+    ("simple-future", &["runner.c", "test.rs"]),
+];
+
+fn should_fail_combination(runner: &Runner, name: &str, files: &[&str]) -> bool {
+    runner.is_symmetric()
+        && SYMMETRIC_EXPECTED_FAILURES
+            .iter()
+            .any(|(n, f)| *n == name && *f == files)
 }
 
 /// Helper trait for each language to implement which encapsulates

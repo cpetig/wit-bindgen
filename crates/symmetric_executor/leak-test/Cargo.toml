@@ -1,0 +1,12 @@
+[package]
+name = "symmetric-leak-test"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dev-dependencies]
+wit-bindgen-symmetric-rt = { path = "../rust-client" }
+futures = "0.3.31"
+
+[build-dependencies]
+symmetric-link-search = { path = "../link-search" }

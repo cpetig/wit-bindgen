@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{Kind, LanguageMethods, Runner};
+use crate::{LanguageMethods, Runner};
 use anyhow::Context;
 use heck::ToSnakeCase;
 use serde::Deserialize;
@@ -236,12 +236,9 @@ impl LanguageMethods for Cpp {
                 }
             }
             cmd.arg("-shared");
-            if matches!(compile.component.kind, Kind::Runner) {
-                let mut bindings_parent: PathBuf = compile.bindings_dir.into();
-                bindings_parent.pop();
-                cmd.arg("-L")
-                    .arg(bindings_parent.to_str().unwrap().to_string());
-                cmd.arg("-ltest");
+            cmd.arg("-L").arg(compile.artifacts_dir);
+            for lib in compile.link_libs {
+                cmd.arg(format!("-l{lib}"));
             }
             cmd.arg("-L")
                 .arg(helper_dir3.to_str().unwrap().to_string())
@@ -295,40 +292,30 @@ impl LanguageMethods for Cpp {
         &["--format"]
     }
 
+    fn extra_bindgen_args(&self, runner: &Runner, bindgen: &crate::Bindgen) -> Vec<&'static str> {
+        // These tests are written for the `std::future` based API of the
+        // symmetric ABI, which is not the default (`wit::FutureReader`).
+        let std_future_test = bindgen
+            .wit_path
+            .parent()
+            .and_then(|dir| dir.file_name())
+            .is_some_and(|name| name == "future-string" || name == "stream-string");
+        if runner.is_symmetric() && std_future_test {
+            vec!["--async-api", "future"]
+        } else {
+            Vec::new()
+        }
+    }
+
     fn should_fail_runtime1(
         &self,
         runner: &Runner,
         test: &crate::Test,
         component: &crate::Component,
     ) -> bool {
-        // The coroutine based async bindings are not available for the symmetric ABI
-        const ASYNC_TESTS: &[&str] = &[
-            "async-cross-component-await",
-            "async-export-namespace",
-            "async-export-result",
-            "async-import-results",
-            "cancel-import",
-            "pending-import",
-            "ping-pong",
-            "return-string",
-            "simple-call-import",
-            "simple-future",
-            "simple-import-params-results",
-            "simple-pending-import",
-            "simple-stream",
-            "simple-stream-payload",
-            "simple-yield",
-            "stream-param-future-result",
-        ];
         runner.is_symmetric()
-            && (ASYNC_TESTS.contains(&test.name.as_str())
-                || (matches!(component.kind, crate::Kind::Test)
-                    && (test.name == "resources" || test.name == "resource_borrow_in_record"))
-                || (matches!(component.kind, crate::Kind::Runner)
-                    && (test.name == "results"
-                        || test.name == "common-types"
-                        || test.name == /*async*/"future-string"
-                        || test.name == /*async*/"stream-string")))
+            && matches!(component.kind, crate::Kind::Test)
+            && (test.name == "resources" || test.name == "resource_borrow_in_record")
     }
 
     fn should_fail_runtime2(
@@ -339,6 +326,12 @@ impl LanguageMethods for Cpp {
     ) -> bool {
         // dbg!(runner);
         runner.is_symmetric()
-            && (matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
+            && ((matches!(component.kind, crate::Kind::Test) && name == "param-ownership")
+                // cancellation is not supported by the symmetric ABI
+                || name == "cancel-import"
+                // Generated with `--async-api future` (`std::future`), these
+                // still don't work (callbacks and threads of the old API).
+                || name == "future-string"
+                || name == "stream-string")
     }
 }

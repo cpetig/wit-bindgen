@@ -435,10 +435,20 @@ path = 'lib.rs'
             cmd.arg(arg);
         }
         compile_cdylib(&mut cmd);
-        if runner.is_symmetric() && matches!(compile.component.kind, crate::Kind::Runner) {
-            // the generated import library (libtest.so) lives next to the bindings
-            if let Some(parent) = compile.bindings_dir.parent() {
-                cmd.arg(&format!("-Lnative={}", parent.display()));
+        if runner.is_symmetric() {
+            // the generated import libraries live next to the bindings
+            cmd.arg(&format!("-Lnative={}", compile.artifacts_dir.display()));
+            let has_link_name = compile
+                .component
+                .bindgen
+                .args
+                .iter()
+                .any(|arg| arg.starts_with("--link-name"));
+            if !has_link_name && !compile.link_libs.is_empty() {
+                cmd.arg("-Clink-arg=-Wl,--no-as-needed");
+                for lib in compile.link_libs {
+                    cmd.arg(&format!("-Clink-arg=-l{lib}"));
+                }
             }
         }
         runner.run_command(&mut cmd)?;
@@ -520,8 +530,17 @@ mod core {}
                 || (test.name == "resource_floats" && component.name != "leaf")
                 || test.name == "map"
                 || test.name == /*rust*/"with-types")
-                || (test.name == /*async*/"yield-loop-receives-events"
-                    && component.name != "middle")
+                || (test.name == /*async*/"yield-loop-receives-events" && component.name == "leaf")
+                // The symmetric Rust runtime lacks `spawn_local`, `yield_async`,
+                // `StreamReader::collect` and `StreamWriter::write`'s
+                // `into_vec`.
+                || (matches!(component.kind, crate::Kind::Test)
+                    && (test.name == "ping-pong"
+                        || test.name == "stream-param-future-result"
+                        || test.name == "async-import-results"))
+                || (matches!(component.kind, crate::Kind::Runner)
+                    && (test.name == "simple-stream-payload"
+                        || test.name == "async-import-results"))
                 || (matches!(component.kind, crate::Kind::Test)
                     && (test.name == /*async*/"simple-pending-import"
                         || test.name == "simple-yield"
@@ -529,15 +548,7 @@ mod core {}
                         || test.name == /*async*/"cancel-import"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "cancel-import"
-                        // async import with a result: the symmetric generator panics in abi.rs
-                        || test.name == /*async*/"async-cross-component-await"
                         || test.name == "pending-import"
-                        || test.name == "results"
-                        || test.name == "resources"
-                        || test.name == "resource-import-and-export"
-                        || test.name == "resource_with_lists"
-                        || test.name == /*rust*/"equal-types"
-                        || test.name == /*rust*/"xcrate"
                         || test.name == /*async*/"rust-cross-task-wakeup"
                         || test.name == /*async*/"rust-lowered-send")))
     }
@@ -546,9 +557,28 @@ mod core {}
         &self,
         runner: &Runner,
         name: &str,
-        _component: &crate::Component,
+        component: &crate::Component,
     ) -> bool {
-        runner.is_symmetric() && (name == "skip" || name == "with-only-affects-imports")
+        runner.is_symmetric()
+            && (name == "skip"
+                || name == "with-only-affects-imports"
+                // The Rust leaf's yield (`wake_by_ref` in a `poll_fn`) is
+                // ignored by the symmetric Rust runtime, which asserts in
+                // async_support.rs.
+                || (name == "async-cross-component-await"
+                    && component.path.file_stem().is_some_and(|s| s == "leaf"))
+                // An async export which completes without waiting is never
+                // run, as the symmetric Rust runtime ignores its own
+                // `wake_by_ref` (`drop-future` hangs).
+                || (name == "simple-future" && matches!(component.kind, crate::Kind::Test))
+                // `stream<_>` without payload: the layout size of `()`
+                // is not zero (assert in the symmetric Rust `StreamWrite`).
+                || (name == "simple-stream" && matches!(component.kind, crate::Kind::Runner))
+                // `intermediate` imports `toplevel-import`, which the wasm
+                // composition (compose.wac) satisfies with the
+                // `toplevel-export` of `leaf-toplevel`; symmetric linking
+                // resolves by symbol name only, so it stays undefined.
+                || name == "resource-import-and-export")
     }
 }
 

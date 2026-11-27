@@ -448,6 +448,82 @@ inline void *wit_async_context_get() { return wit_async_tls_slot(); }
 inline void wit_async_context_set(void *val) { wit_async_tls_slot() = val; }
 #endif
 
+#ifdef WIT_SYMMETRIC
+// Access to the symmetric executor (see crates/symmetric_executor/wit). The
+// symbols are declared here directly, as the generated bindings of the
+// executor include this header.
+#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00##x
+extern "C" uint8_t *WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
+extern "C" uint8_t *WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(uint8_t *);
+extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(uint8_t *);
+extern "C" void WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(uint8_t *);
+extern "C" void WIT_SYM_EXE(X5Bresource_dropX5Devent_subscription)(uint8_t *);
+extern "C" void WIT_SYM_EXE(X5Bresource_dropX5Dcallback_registration)(uint8_t *);
+extern "C" uint8_t *WIT_SYM_EXE(register)(uint8_t *, uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_EXE(block_on)(uint8_t *);
+
+/// Register `callback(data)` to be called once `event` (consumed) triggers.
+/// The callback can be called immediately if the event is active already.
+inline void sym_register(uint8_t *event, uint8_t (*callback)(void *),
+                         void *data) {
+  uint8_t *reg = WIT_SYM_EXE(register)(event, reinterpret_cast<uint8_t *>(callback),
+                                       reinterpret_cast<uint8_t *>(data));
+  if (reg) {
+    WIT_SYM_EXE(X5Bresource_dropX5Dcallback_registration)(reg);
+  }
+}
+
+/// Wait for a subscription returned by an async call of the symmetric ABI
+/// (null means that the call has completed already).
+struct EventAwaiter {
+  uint8_t *event;
+  std::coroutine_handle<> handle = nullptr;
+  bool registering = false;
+  bool fired = false;
+
+  explicit EventAwaiter(void *e) : event(static_cast<uint8_t *>(e)) {}
+  EventAwaiter(const EventAwaiter &) = delete;
+  EventAwaiter &operator=(const EventAwaiter &) = delete;
+
+  bool await_ready() const noexcept { return event == nullptr; }
+  bool await_suspend(std::coroutine_handle<> h) noexcept {
+    handle = h;
+    registering = true;
+    sym_register(event, &EventAwaiter::on_event, this);
+    registering = false;
+    // the executor calls back immediately for events which are active
+    return !fired;
+  }
+  void await_resume() noexcept {}
+
+  static uint8_t on_event(void *data) {
+    auto *self = static_cast<EventAwaiter *>(data);
+    if (self->registering) {
+      self->fired = true;
+    } else {
+      self->handle.resume();
+    }
+    return 1; // CallbackState::ready
+  }
+};
+
+/// A coroutine which nobody waits for, it destroys itself when done.
+struct Detached {
+  struct promise_type {
+    Detached get_return_object() { return {}; }
+    std::suspend_never initial_suspend() noexcept { return {}; }
+    std::suspend_never final_suspend() noexcept { return {}; }
+    void return_void() {}
+    void unhandled_exception() {
+      assert(false && "unhandled exception in wit::Task");
+    }
+  };
+};
+
+/// Per call state of an async export, see `start_task_symmetric`.
+struct ExportTask;
+#endif
+
 struct WaitableEntry {
   uint32_t waitable = 0;
   std::coroutine_handle<> continuation = nullptr;
@@ -778,6 +854,37 @@ struct WaitableAwaiter {
   }
 };
 
+#ifdef WIT_SYMMETRIC
+// Let the executor run other callbacks before continuing.
+struct YieldAwaiter {
+  uint8_t *generator = nullptr;
+  EventAwaiter *awaiter = nullptr;
+
+  YieldAwaiter() = default;
+  YieldAwaiter(const YieldAwaiter &) = delete;
+  YieldAwaiter &operator=(const YieldAwaiter &) = delete;
+  ~YieldAwaiter() {
+    delete awaiter;
+    if (generator) {
+      WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(generator);
+    }
+  }
+
+  bool await_ready() const noexcept { return false; }
+  bool await_suspend(std::coroutine_handle<> h) noexcept {
+    generator = WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
+    uint8_t *event = WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(generator);
+    awaiter = new EventAwaiter(event);
+    // not active yet, so this registers the callback without running it
+    bool suspend = awaiter->await_suspend(h);
+    if (suspend) {
+      WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(generator);
+    }
+    return suspend;
+  }
+  void await_resume() noexcept {}
+};
+#else
 struct YieldAwaiter {
   AsyncTaskContext *ctx = nullptr;
   std::coroutine_handle<> handle = nullptr;
@@ -805,6 +912,28 @@ struct YieldAwaiter {
     pending = false;
   }
 };
+
+#endif // WIT_SYMMETRIC
+
+#ifdef WIT_SYMMETRIC
+/// Let the executor run until `task` has finished.
+template <class TaskT> inline void block_on_task(TaskT &task) {
+  uint8_t *generator = WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
+  uint8_t *event = WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(generator);
+  bool done = false;
+  [](TaskT &t, uint8_t *gen, bool *finished) -> Detached {
+    co_await t;
+    *finished = true;
+    WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(gen);
+  }(task, generator, &done);
+  if (done) {
+    WIT_SYM_EXE(X5Bresource_dropX5Devent_subscription)(event);
+  } else {
+    WIT_SYM_EXE(block_on)(event);
+  }
+  WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(generator);
+}
+#endif
 
 inline void drive_task_synchronously(std::coroutine_handle<> handle) {
   if (!handle || handle.done()) {
@@ -914,7 +1043,11 @@ public:
 
   void wait() {
     if (handle && !handle.done()) {
+#ifdef WIT_SYMMETRIC
+      detail::block_on_task(*this);
+#else
       detail::drive_task_synchronously(handle);
+#endif
     }
   }
 
@@ -995,7 +1128,11 @@ public:
 
   void wait() {
     if (handle && !handle.done()) {
+#ifdef WIT_SYMMETRIC
+      detail::block_on_task(*this);
+#else
       detail::drive_task_synchronously(handle);
+#endif
     }
   }
 
@@ -1010,7 +1147,12 @@ public:
 
 inline void spawn(Task<void> task) {
   if (!task.done()) {
+#ifdef WIT_SYMMETRIC
+    // continues from executor callbacks, the wrapper cleans up when done
+    [](Task<void> t) -> detail::Detached { co_await t; }(std::move(task));
+#else
     detail::ensure_current_context()->spawned_handles.push_back(task.release());
+#endif
   }
 }
 
@@ -1022,6 +1164,51 @@ inline void spawn(F &&func) {
 }
 
 namespace detail {
+
+#ifdef WIT_SYMMETRIC
+/// State of a call of an async export using the symmetric ABI
+struct ExportTask {
+  Task<void> task;
+  uint8_t *generator = nullptr;
+  // still in the initial call (the caller doesn't need to wait if we are done)
+  bool initial_call = true;
+
+  /// The results have been written to the caller's buffer
+  void complete() {
+    if (!initial_call) {
+      WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(generator);
+    }
+  }
+
+  static uint8_t cleanup(void *data) {
+    auto *self = static_cast<ExportTask *>(data);
+    // the coroutine is suspended at its end by now
+    WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(self->generator);
+    delete self;
+    return 1; // CallbackState::ready
+  }
+};
+
+/// Start an async export, `make_task` is called with the `ExportTask` to
+/// report completion to (`ExportTask::complete`) and returns the coroutine.
+/// Returns null if the call has completed, otherwise the event subscription
+/// which triggers when the coroutine completes (and has written the results).
+template <typename F> inline uint8_t *start_task_symmetric(F &&make_task) {
+  auto *state = new ExportTask;
+  state->task = make_task(state);
+  if (state->task.done()) {
+    delete state;
+    return nullptr;
+  }
+  state->initial_call = false;
+  state->generator = WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
+  uint8_t *result = WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(state->generator);
+  // free the state after the completion has been signalled
+  uint8_t *cleanup_event = WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(state->generator);
+  sym_register(cleanup_event, &ExportTask::cleanup, state);
+  return result;
+}
+#endif
 
 template <typename F>
 inline int32_t start_task(F &&make_task) {

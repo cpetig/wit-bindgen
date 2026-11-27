@@ -88,30 +88,25 @@ impl LanguageMethods for C {
         &self,
         runner: &Runner,
         test: &crate::Test,
-        _component: &crate::Component,
+        component: &crate::Component,
     ) -> bool {
+        // Resources exported by symmetric components are not supported yet
+        // (there are no `resource-new`/`resource-rep` and destructors are
+        // not hooked up), these components don't compile.
+        let file = component
+            .path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default();
         runner.is_symmetric()
-            && (test.name == "resources"
-                || test.name == "resource-import-and-export"
-                || test.name == "resource-borrow"
-                || test.name == /*c*/"autodrop-borrows"
-                || test.name == /*async*/"simple-future"
-                || test.name == /*async*/"simple-pending"
-                || test.name == /*async*/"cancel-import"
-                || test.name == /*async*/"simple-stream"
-                || test.name == /*async*/"simple-yield"
-                || test.name == /*async*/"simple-import-params-results"
-                || test.name == /*async*/"pending-import"
-                || test.name == /*async*/"future-write-then-read-comes-back"
-                || test.name == /*async*/"future-write-then-read-remote"
-                || test.name == /*async*/"future-write-then-read"
-                || test.name == /*async*/"future-cancel-write"
-                || test.name == /*async*/"future-cancel-read"
-                || test.name == /*async*/"simple-pending-import"
-                || test.name == /*async*/"simple-call-import"
-                || test.name == /*async*/"simple-stream-payload"
-                || test.name == /*async*/"threading-builtins"
-                || test.name == /*async*/"ping-pong")
+            && matches!(
+                (test.name.as_str(), file),
+                ("accessors", "test")
+                    | ("resources", "resources")
+                    | ("resource-import-and-export", "intermediate")
+                    | ("resource-borrow", "test")
+                    | ("autodrop-borrows", "runner" | "autodropper" | "exporter")
+            )
     }
 
     fn should_fail_runtime2(
@@ -121,12 +116,16 @@ impl LanguageMethods for C {
         component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
-            && (name == "strings"/* utf-16 */
-                || matches!(component.kind, crate::Kind::Test) && (
-                    name == "variants"
-                    || name == "records"
-                    || name == "flavorful"
-                    || name == "lists"))
+            && (
+                // The C runner passes a list of lists it never allocated
+                // (`a.ptr` is uninitialized), which is harmless in a wasm
+                // module but crashes when running natively.
+                matches!(component.kind, crate::Kind::Runner) && name == "lists"
+                // Cancelling an import is not supported: the callee can't be
+                // asked to stop, as there are no backpressure and
+                // `task.cancel` either.
+                || name == "cancel-import"
+            )
     }
 
     fn generate_bindings_prepare(
@@ -159,6 +158,11 @@ impl LanguageMethods for C {
     }
 }
 
+/// Where the support library for async in symmetric C components lives.
+fn c_client_dir() -> Result<PathBuf> {
+    Ok(env::current_dir()?.join("crates/symmetric_executor/c-client"))
+}
+
 fn prepare(runner: &mut Runner, compiler: PathBuf) -> Result<()> {
     let cwd = env::current_dir()?;
     let dir = cwd.join(&runner.opts.artifacts).join("c");
@@ -174,6 +178,15 @@ fn prepare(runner: &mut Runner, compiler: PathBuf) -> Result<()> {
                 compiler.display()
             );
         })?;
+
+    if runner.is_symmetric() {
+        // libruntime.a (async/stream support) for the C components
+        runner.run_command(
+            Command::new("make")
+                .current_dir(c_client_dir()?)
+                .arg(format!("CC={}", compiler.display())),
+        )?;
+    }
 
     Ok(())
 }
@@ -198,6 +211,10 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
     .arg("-c")
     .arg("-o")
     .arg(&bindings_object);
+    if runner.is_symmetric() {
+        // for wit_async_support.h
+        cmd.arg("-I").arg(c_client_dir()?).arg("-fPIC");
+    }
     for flag in Vec::from(config.cflags.clone()) {
         cmd.arg(flag);
     }
@@ -248,6 +265,22 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
                 .arg(bindings_parent.to_str().unwrap().to_string());
             cmd.arg("-ltest");
         }
+        // the executor and stream implementation, and the async support
+        // built on top of it
+        let debug_dir = env::current_dir()?
+            .join(&runner.opts.artifacts)
+            .join("rust")
+            .join("wit-bindgen")
+            .join("target")
+            .join("debug");
+        cmd.arg("-I").arg(c_client_dir()?);
+        cmd.arg("-L").arg(c_client_dir()?).arg("-lruntime");
+        for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
+            if let Some(found) = crate::find_cdylib(&debug_dir, lib) {
+                cmd.arg("-L").arg(found.parent().unwrap());
+            }
+        }
+        cmd.arg("-lsymmetric_stream").arg("-lsymmetric_executor");
     }
     runner.run_command(&mut cmd)?;
 

@@ -729,6 +729,9 @@ impl Runner {
 
         println!("=== Compiling components ===");
         let compilations = Arc::new(Mutex::new(Vec::new()));
+        // A test can't be run with the components of a language of which one
+        // is expected to fail to compile, even if the others compile.
+        let incomplete_tests = Arc::new(Mutex::new(HashSet::new()));
         self.run_tests(
             components
                 .into_iter()
@@ -745,6 +748,12 @@ impl Runner {
                         .language
                         .obj()
                         .should_fail_runtime1(self, &test, &component);
+                    if should_fail {
+                        incomplete_tests
+                            .lock()
+                            .unwrap()
+                            .insert((test.name.clone(), component.language.clone()));
+                    }
                     Trial::test(&component.path.display().to_string(), move || {
                         let result = me.compile_component(&test, &component).with_context(|| {
                             format!("failed to compile component {:?}", component.path)
@@ -765,7 +774,13 @@ impl Runner {
                 })
                 .collect(),
         );
-        let compilations = mem::take(&mut *compilations.lock().unwrap());
+        let incomplete_tests = mem::take(&mut *incomplete_tests.lock().unwrap());
+        let compilations = mem::take(&mut *compilations.lock().unwrap())
+            .into_iter()
+            .filter(|(test, component, _): &(Test, Component, _)| {
+                !incomplete_tests.contains(&(test.name.clone(), component.language.clone()))
+            })
+            .collect::<Vec<_>>();
 
         // Next, massage the data a bit. Create a map of all tests to where
         // their components are located. Then perform a product of runners/tests
@@ -1565,8 +1580,15 @@ impl Component {
 pub(crate) fn find_cdylib(debug_dir: &Path, lib_name: &str) -> Option<PathBuf> {
     let mut candidates = vec![debug_dir.join("deps").join(lib_name)];
     if let Ok(crates) = std::fs::read_dir(debug_dir.join("build")) {
-        for hashes in crates.flatten().filter_map(|c| std::fs::read_dir(c.path()).ok()) {
-            candidates.extend(hashes.flatten().map(|h| h.path().join("out").join(lib_name)));
+        for hashes in crates
+            .flatten()
+            .filter_map(|c| std::fs::read_dir(c.path()).ok())
+        {
+            candidates.extend(
+                hashes
+                    .flatten()
+                    .map(|h| h.path().join("out").join(lib_name)),
+            );
         }
     }
     candidates

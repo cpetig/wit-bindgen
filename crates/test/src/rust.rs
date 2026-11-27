@@ -529,6 +529,8 @@ mod core {}
                         || test.name == /*async*/"cancel-import"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "cancel-import"
+                        // async import with a result: the symmetric generator panics in abi.rs
+                        || test.name == /*async*/"async-cross-component-await"
                         || test.name == "pending-import"
                         || test.name == "results"
                         || test.name == "resources"

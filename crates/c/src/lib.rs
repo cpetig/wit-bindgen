@@ -11,8 +11,8 @@ use wit_bindgen_core::abi::{
 };
 use wit_bindgen_core::{
     AnonymousTypeGenerator, AsyncFilterSet, Direction, Files, InterfaceGenerator as _, Ns,
-    WorldGenerator, dealias, make_external_component, make_external_symbol, uwrite, uwriteln,
-    wit_parser::*,
+    WorldGenerator, dealias, make_external_component, make_external_symbol, symbol_extensions,
+    uwrite, uwriteln, wit_parser::*,
 };
 use wit_component::StringEncoding;
 
@@ -2246,7 +2246,7 @@ impl InterfaceGenerator<'_> {
                 name.push_str(&self.r#gen.world);
             }
         }
-        make_external_symbol(
+        let mut symbol = make_external_symbol(
             &name,
             &func.name,
             if self.in_import || self.r#gen.opts.symmetric {
@@ -2254,7 +2254,12 @@ impl InterfaceGenerator<'_> {
             } else {
                 AbiVariant::GuestExport
             },
-        )
+        );
+        if self.r#gen.opts.symmetric {
+            // async functions carry a suffix in the symmetric ABI (as in Rust and C++)
+            symbol.push_str(symbol_extensions(func));
+        }
+        symbol
     }
 
     fn c_func_name(&self, interface_id: Option<&WorldKey>, func: &Function) -> String {
@@ -2499,7 +2504,7 @@ impl InterfaceGenerator<'_> {
                 "\n__attribute__((__export_name__(\"{prefix}{export_name}\")))"
             );
         }
-        let import_name = if let Some(module) = core_module_name {
+        let mut import_name = if let Some(module) = core_module_name {
             make_external_symbol(
                 &module,
                 &func.name,
@@ -2512,11 +2517,21 @@ impl InterfaceGenerator<'_> {
         } else {
             make_external_component(&export_name)
         };
+        if symmetric {
+            // async functions carry a suffix in the symmetric ABI (as in Rust and C++)
+            import_name.push_str(symbol_extensions(func));
+        }
         //        self.abi_symbol(interface_name, func);
         //let import_name = self.r#gen.names.tmp(&format!("__wasm_export_{name}"));
 
         let mut f = FunctionBindgen::new(self, h_sig, &import_name);
+        // An async function implemented synchronously (`--sync`) still has the
+        // symbol of an async function, so it must return the (absent) event
+        // subscription the caller waits for.
+        let sync_impl_of_async =
+            symmetric && !async_ && sig.results.is_empty() && !symbol_extensions(func).is_empty();
         match sig.results.len() {
+            0 if sync_impl_of_async => f.r#gen.src.c_adapters("uint8_t *"),
             0 => f.r#gen.src.c_adapters("void"),
             1 => f.r#gen.src.c_adapters(wasm_type(sig.results[0])),
             _ => unimplemented!("multi-value return not supported"),
@@ -2561,6 +2576,9 @@ impl InterfaceGenerator<'_> {
             ..
         } = f;
         self.src.c_adapters(&src);
+        if sync_impl_of_async {
+            self.src.c_adapters("return NULL;\n");
+        }
         self.src.c_adapters("}\n");
 
         if async_ {

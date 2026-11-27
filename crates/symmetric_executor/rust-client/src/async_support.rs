@@ -4,7 +4,10 @@ use std::{
     mem::MaybeUninit,
     ops::DerefMut,
     pin::Pin,
-    sync::{Arc, Mutex, RwLock},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, Mutex, RwLock,
+    },
     task::{Context, Poll, RawWaker, RawWakerVTable},
 };
 
@@ -28,26 +31,65 @@ struct FutureState<F: FusedFuture<Output = ()>> {
     future: F,
     // signal to activate once the current async future has finished
     completion_event: Option<EventGenerator>,
-    // the event(s) this future should wake on, turn to heapless for FuSa
-    waiting_for: Vec<EventSubscription>,
+    // the event(s) this future should wake on (collected in `wake`),
+    // and the means to wake the future by its `Waker`
+    wake: Arc<WakeInner>,
     // number of times this future is registered for events
     instances: u32,
 }
 
 type StateContainer<F> = Mutex<FutureState<F>>;
 
+/// State shared between a task and the `Waker`s handed out to its futures.
+struct WakeInner {
+    // the event(s) this future should wake on, turn to heapless for FuSa
+    waiting_for: Mutex<Vec<EventSubscription>>,
+    // activated by `wake`/`wake_by_ref`, the task registers on it
+    // whenever someone could still wake it
+    generator: EventGenerator,
+    // set by `wake` since the last time the task was polled
+    woken: AtomicBool,
+    // references to this structure held by the executor itself
+    internal_refs: AtomicUsize,
+}
+
+// The executor (and with it all tasks and wakers) is not shared between
+// threads of the same task, the handles inside are plain integers.
+unsafe impl Send for WakeInner {}
+unsafe impl Sync for WakeInner {}
+
+impl WakeInner {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            waiting_for: Mutex::new(Vec::new()),
+            generator: EventGenerator::new(),
+            woken: AtomicBool::new(false),
+            internal_refs: AtomicUsize::new(0),
+        })
+    }
+
+    fn wake(&self) {
+        self.woken.store(true, Ordering::Release);
+        self.generator.activate();
+    }
+}
+
 static VTABLE: RawWakerVTable = RawWakerVTable::new(
-    |_| RawWaker::new(core::ptr::null(), &VTABLE),
-    // `wake` does nothing
-    |_| {},
-    // `wake_by_ref` does nothing
-    |_| {},
-    // Dropping does nothing as we don't allocate anything
-    |_| {},
+    |data| {
+        unsafe { Arc::increment_strong_count(data.cast::<WakeInner>()) };
+        RawWaker::new(data, &VTABLE)
+    },
+    |data| {
+        let inner = unsafe { Arc::from_raw(data.cast::<WakeInner>()) };
+        inner.wake();
+    },
+    |data| unsafe { &*data.cast::<WakeInner>() }.wake(),
+    |data| drop(unsafe { Arc::from_raw(data.cast::<WakeInner>()) }),
 );
 
-pub fn new_waker(waiting_for_ptr: *mut Vec<EventSubscription>) -> Waker {
-    unsafe { Waker::from_raw(RawWaker::new(waiting_for_ptr.cast(), &VTABLE)) }
+fn new_waker(wake: &Arc<WakeInner>) -> Waker {
+    let data = Arc::into_raw(Arc::clone(wake));
+    unsafe { Waker::from_raw(RawWaker::new(data.cast(), &VTABLE)) }
 }
 
 unsafe fn poll<F: FusedFuture<Output = ()>>(state: Pin<&mut FutureState<F>>) -> Poll<()> {
@@ -57,7 +99,9 @@ unsafe fn poll<F: FusedFuture<Output = ()>>(state: Pin<&mut FutureState<F>>) -> 
     } else {
         // pin projection
         let mut pinned = unsafe { Pin::new_unchecked(&mut state_ref.future) };
-        let waker = new_waker(&mut state_ref.waiting_for as *mut Vec<EventSubscription>);
+        // wakes from before this poll are served by it
+        state_ref.wake.woken.store(false, Ordering::Release);
+        let waker = new_waker(&state_ref.wake);
         let mut context = Context::from_waker(&waker);
         #[cfg(feature = "trace")]
         println!(" Poll wait cx {:x?}", &context as *const _ as usize,);
@@ -73,13 +117,13 @@ pub fn context_set_wait(cx: &Context, wait_for: EventSubscription) {
         cx as *const _ as usize,
         wait_for.handle()
     );
-    let data = cx
-        .waker()
-        .data()
-        .cast_mut()
-        .cast::<Vec<EventSubscription>>();
-    if !data.is_null() {
-        unsafe { &mut *data }.push(wait_for);
+    let data = cx.waker().data();
+    if core::ptr::eq(cx.waker().vtable(), &VTABLE) {
+        unsafe { &*data.cast::<WakeInner>() }
+            .waiting_for
+            .lock()
+            .unwrap()
+            .push(wait_for);
     } else {
         println!("await in wrong context");
     }
@@ -112,6 +156,11 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
     match unsafe { poll(pinned_state) } {
         Poll::Ready(_) => {
             // free obj if last instance finished
+            // registrations on the wake event are left, let them fire
+            // so the state gets freed
+            if state_inner.instances > 0 {
+                state_inner.wake.generator.activate();
+            }
             if state_inner.instances == 0 {
                 if let Some(waker) = &state_inner.completion_event {
                     waker.activate();
@@ -126,7 +175,19 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
             core::ptr::null_mut()
         }
         Poll::Pending => {
-            assert!(!state_inner.waiting_for.is_empty() || state_inner.instances > 0);
+            let mut events_to_register_to =
+                std::mem::take(&mut *state_inner.wake.waiting_for.lock().unwrap());
+            // someone holding a `Waker` can wake us at any time (or already did)
+            let woken = state_inner.wake.woken.load(Ordering::Acquire);
+            // (the state owns one reference)
+            let held_elsewhere = Arc::strong_count(&state_inner.wake)
+                > 1 + state_inner.wake.internal_refs.load(Ordering::Acquire);
+            if woken || held_elsewhere {
+                let subscription = state_inner.wake.generator.subscribe();
+                // only wakes after this point count
+                subscription.reset();
+                events_to_register_to.push(subscription);
+            }
             let wait_chain = if state_inner.completion_event.is_none() {
                 state_inner
                     .completion_event
@@ -143,9 +204,10 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                 // core::ptr::null_mut()
             };
             // we want to register without holding the lock to enable direct recursion on ready
-            let mut events_to_register_to = Vec::new();
-            std::mem::swap(&mut state_inner.waiting_for, &mut events_to_register_to);
             state_inner.instances += events_to_register_to.len() as u32;
+            // keep it alive in case the task finishes while registering
+            let wake = Arc::clone(&state_inner.wake);
+            wake.internal_refs.fetch_add(1, Ordering::AcqRel);
             drop(state_inner);
             // now the mutex is unlocked
             for waiting_for in events_to_register_to.drain(..) {
@@ -156,6 +218,12 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                     state_inner.instances -= 1;
                 }
             }
+            // wake after registering, to not call back directly (which would recurse
+            // endlessly for futures which yield in a loop)
+            if woken {
+                wake.generator.activate();
+            }
+            wake.internal_refs.fetch_sub(1, Ordering::AcqRel);
             #[cfg(feature = "trace")]
             println!(" chain {:x?}", wait_chain);
             wait_chain
@@ -179,7 +247,7 @@ pub fn first_poll_sub<F: FusedFuture<Output = ()>>(future: F) -> *mut () {
     let state = Box::into_raw(Box::new(Mutex::new(FutureState {
         future,
         completion_event: None,
-        waiting_for: Vec::new(),
+        wake: WakeInner::new(),
         instances: 1,
     })));
     // the future needs to be pinned, but we need a mutex around it for later,

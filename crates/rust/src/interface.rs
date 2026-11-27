@@ -719,7 +719,14 @@ macro_rules! {macro_name} {{
                 true,
                 &module,
             );
-            lower = self.lower_to_memory("ptr", "value", &payload_type, &module);
+            lower = self.lower_to_memory(
+                "ptr",
+                "value",
+                &payload_type,
+                &module,
+                // symmetric readers take ownership of the payload
+                self.r#gen.opts.symmetric,
+            );
         } else {
             lift = format!("let _ = ptr;");
             lower = format!("let _ = (ptr, value);");
@@ -928,9 +935,17 @@ pub mod vtable{ordinal} {{
         }
     }
 
-    fn lower_to_memory(&mut self, address: &str, value: &str, ty: &Type, module: &str) -> String {
+    fn lower_to_memory(
+        &mut self,
+        address: &str,
+        value: &str,
+        ty: &Type,
+        module: &str,
+        handover: bool,
+    ) -> String {
         let symmetric = self.r#gen.opts.symmetric;
         let mut f = FunctionBindgen::new(self, Vec::new(), module, true, None);
+        f.handover = handover;
         abi::lower_to_memory(
             f.r#gen.resolve,
             &mut f,
@@ -1211,7 +1226,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                     "let _param_ptr = unsafe {{ _ptr.add({}) }};\n",
                     offset.format(POINTER_SIZE_EXPRESSION)
                 );
-                let lower = self.lower_to_memory("_param_ptr", &name, ty, module);
+                let lower = self.lower_to_memory("_param_ptr", &name, ty, module, false);
                 start.push_str(&lower);
                 lowers.push(start);
                 param_lowers.push(name);

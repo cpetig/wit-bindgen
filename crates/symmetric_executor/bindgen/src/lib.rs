@@ -11,7 +11,8 @@ compile_error!(
 pub mod rt {
     pub use dummy_rt::rt::{maybe_link_cabi_realloc, Resource, ResourceRep};
     pub use wit_bindgen_symmetric_rt::{
-        async_support, bitflags, run, Cleanup, EventGenerator, EventSubscription,
+        async_support, bitflags, keep_alive, run, Cleanup, EventGenerator, EventSubscription,
+        KeepAlive,
     };
 }
 

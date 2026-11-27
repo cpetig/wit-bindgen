@@ -24,6 +24,9 @@ pub(super) struct FunctionBindgen<'a, 'b> {
     pub import_return_pointer_area_align: Alignment,
     pub handle_decls: Vec<String>,
     always_owned: bool,
+    /// The lowered values are handed over to the receiver (the payload of a
+    /// symmetric future or stream), they must neither be freed nor borrowed.
+    pub(super) handover: bool,
     return_self: Option<ChainingMode>,
 }
 
@@ -50,6 +53,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             import_return_pointer_area_align: Default::default(),
             handle_decls: Vec::new(),
             always_owned,
+            handover: false,
             return_self,
         }
     }
@@ -735,18 +739,38 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let ptr = format!("ptr{tmp}");
                 let len = format!("len{tmp}");
                 let vec = self.r#gen.path_to_vec();
-                if realloc.is_none() || (self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
-                    self.push_str(&format!("let {} = {};\n", val, operands[0]));
-                } else {
+                // The callee reads borrowed values after the lowering code has finished
+                // (e.g. the strings of a list), so they must outlive the loop lowering them.
+                let keepalive = !self.handover
+                    && self.r#gen.needs_deallocate
+                    && self.r#gen.in_import
+                    && self.r#gen.r#gen.opts.symmetric;
+                if keepalive {
+                    let rt = self.r#gen.r#gen.runtime_path().to_string();
                     let op0 = operands.pop().unwrap();
                     self.push_str(&format!(
-                        "let {val} = <_ as Into<{vec}<_>>>::into({op0}).into_boxed_slice();\n"
+                        "let ({ptr}, {len}) = {rt}::keep_alive({op0}, &mut _deallocate);\n"
                     ));
-                }
-                self.push_str(&format!("let {ptr} = {val}.as_ptr().cast::<u8>();\n",));
-                self.push_str(&format!("let {len} = {val}.len();\n",));
-                if realloc.is_some() && !(self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
-                    self.push_str(&format!("::core::mem::forget({val});\n"));
+                } else {
+                    if !self.handover
+                        && (realloc.is_none()
+                            || (self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric))
+                    {
+                        self.push_str(&format!("let {} = {};\n", val, operands[0]));
+                    } else {
+                        let op0 = operands.pop().unwrap();
+                        self.push_str(&format!(
+                            "let {val} = <_ as Into<{vec}<_>>>::into({op0}).into_boxed_slice();\n"
+                        ));
+                    }
+                    self.push_str(&format!("let {ptr} = {val}.as_ptr().cast::<u8>();\n",));
+                    self.push_str(&format!("let {len} = {val}.len();\n",));
+                    if self.handover
+                        || (realloc.is_some()
+                            && !(self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric))
+                    {
+                        self.push_str(&format!("::core::mem::forget({val});\n"));
+                    }
                 }
                 results.push(format!("{ptr}.cast_mut()"));
                 results.push(len);
@@ -780,16 +804,35 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let val = format!("vec{tmp}",);
                 let ptr = format!("ptr{tmp}",);
                 let len = format!("len{tmp}",);
-                if realloc.is_none() || (self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
-                    self.push_str(&format!("let {} = {};\n", val, operands[0]));
+                // see `ListCanonLower`
+                let keepalive = !self.handover
+                    && self.r#gen.needs_deallocate
+                    && self.r#gen.in_import
+                    && self.r#gen.r#gen.opts.symmetric;
+                if keepalive {
+                    let rt = self.r#gen.r#gen.runtime_path().to_string();
+                    self.push_str(&format!(
+                        "let ({ptr}, {len}) = {rt}::keep_alive({}, &mut _deallocate);\n",
+                        operands[0]
+                    ));
                 } else {
-                    let op0 = format!("{}.into_bytes()", operands[0]);
-                    self.push_str(&format!("let {val} = ({op0}).into_boxed_slice();\n"));
-                }
-                self.push_str(&format!("let {ptr} = {val}.as_ptr().cast::<u8>();\n"));
-                self.push_str(&format!("let {len} = {val}.len();\n",));
-                if realloc.is_some() && !(self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric) {
-                    self.push_str(&format!("::core::mem::forget({val});\n"));
+                    if !self.handover
+                        && (realloc.is_none()
+                            || (self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric))
+                    {
+                        self.push_str(&format!("let {} = {};\n", val, operands[0]));
+                    } else {
+                        let op0 = format!("{}.into_bytes()", operands[0]);
+                        self.push_str(&format!("let {val} = ({op0}).into_boxed_slice();\n"));
+                    }
+                    self.push_str(&format!("let {ptr} = {val}.as_ptr().cast::<u8>();\n"));
+                    self.push_str(&format!("let {len} = {val}.len();\n",));
+                    if self.handover
+                        || (realloc.is_some()
+                            && !(self.r#gen.in_import && self.r#gen.r#gen.opts.symmetric))
+                    {
+                        self.push_str(&format!("::core::mem::forget({val});\n"));
+                    }
                 }
                 results.push(format!("{ptr}.cast_mut()"));
                 results.push(len);
@@ -870,7 +913,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 //     "if ptr.is_null()\n{{\n{alloc}::handle_alloc_error({layout});\n}}\nptr\n}}",
                 // ));
                 // self.push_str("else {\n::core::ptr::null_mut()\n};\n");
-                if realloc.is_none() {
+                if realloc.is_none() && !self.handover {
                     // If an allocator isn't requested then we must clean up the
                     // allocation ourselves since our callee isn't taking
                     // ownership.
@@ -923,7 +966,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 self.push_str(&format!(
                     "let ({result}, {cleanup}) = {rt}::Cleanup::new({layout});"
                 ));
-                if realloc.is_none() {
+                if realloc.is_none() && !self.handover {
                     self.cleanup(&cleanup);
                 } else {
                     uwriteln!(

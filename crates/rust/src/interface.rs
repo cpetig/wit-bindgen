@@ -253,15 +253,19 @@ impl<'i> InterfaceGenerator<'i> {
                 &[abi::WasmType::Pointer],
                 self.r#gen.runtime_path(),
             );
+            // symmetric handles are the representation pointer itself
+            let (new_body, rep_body) = if self.r#gen.opts.symmetric {
+                ("val as usize".to_string(), "handle as *mut u8".to_string())
+            } else {
+                (
+                    format!("{import_new}\n    unsafe {{ {external_new}(val) as u32 }}"),
+                    format!("{import_rep}\n    unsafe {{ {external_rep}(handle as i32) }}"),
+                )
+            };
             let handle_type = if self.r#gen.opts.symmetric {
                 "usize"
             } else {
                 "u32"
-            };
-            let casting = if self.r#gen.opts.symmetric {
-                " as *mut u8"
-            } else {
-                " as i32"
             };
             uwriteln!(
                 self.src,
@@ -270,16 +274,14 @@ impl<'i> InterfaceGenerator<'i> {
 unsafe fn _resource_new(val: *mut u8) -> {handle_type}
     where Self: Sized
 {{
-    {import_new}
-    unsafe {{ {external_new}(val) as {handle_type} }}
+    {new_body}
 }}
 
 #[doc(hidden)]
 fn _resource_rep(handle: {handle_type}) -> *mut u8
     where Self: Sized
 {{
-    {import_rep}
-    unsafe {{ {external_rep}(handle{casting}) }}
+    {rep_body}
 }}
 
                     "#
@@ -408,7 +410,7 @@ macro_rules! {macro_name} {{
                 let resource_lowercase = name.to_lower_camel_case();
                 uwriteln!(
                     self.src,
-                    r#"    #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                    r#"    #[cfg_attr(not(target_arch = "wasm32"), unsafe(no_mangle))]
     #[allow(non_snake_case)]
     unsafe extern "C" fn {dtor_symbol}(arg0: usize) {{
       $($path_to_types)*::_export_drop_{resource_lowercase}_cabi::<<$ty as $($path_to_types)*::Guest>::{camel}>(arg0)
@@ -427,7 +429,7 @@ macro_rules! {macro_name} {{
                 const _: () = {{
                     #[doc(hidden)]
                     #[cfg_attr(target_arch = "wasm32", unsafe(export_name = "{export_prefix}{module}#[dtor]{name}"))]
-                    #[cfg_attr(not(target_arch = "wasm32"), no_mangle)]
+                    #[cfg_attr(not(target_arch = "wasm32"), unsafe(no_mangle))]
                     #[allow(non_snake_case)]
                     unsafe extern "C" fn {dtor_symbol}(rep: *mut u8) {{
                         unsafe {{
@@ -1486,7 +1488,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             self.src,
             "\
                 #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}{export_name}\"))]
-                #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
+                #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]
                 #[allow(non_snake_case)]
                 unsafe extern \"C\" fn {external_name}\
         ",
@@ -1523,7 +1525,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                 self.src,
                 "\
                     #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}cabi_post_{export_name}\"))]
-                    #[cfg_attr(not(target_arch = \"wasm32\"), no_mangle)]
+                    #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]
                     #[allow(non_snake_case)]
                     unsafe extern \"C\" fn {external_name}\
             "

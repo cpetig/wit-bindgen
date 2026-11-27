@@ -1509,17 +1509,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wit-bindgen-bridge"
-version = "0.63.0"
-dependencies = [
- "anyhow",
- "clap",
- "heck",
- "wit-bindgen-core",
- "wit-component",
-]
-
-[[package]]
 name = "wit-bindgen-c"
 version = "0.63.0"
 dependencies = [
@@ -1541,7 +1530,6 @@ dependencies = [
  "clap",
  "env_logger",
  "wasm-encoder 0.263.0",
- "wit-bindgen-bridge",
  "wit-bindgen-c",
  "wit-bindgen-core",
  "wit-bindgen-cpp",

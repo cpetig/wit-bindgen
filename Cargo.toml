@@ -66,7 +66,6 @@ wit-bindgen-moonbit = { path = 'crates/moonbit', version = '0.63.0' }
 wit-bindgen-go = { path = 'crates/go', version = '0.63.0' }
 wit-bindgen-d = { path = 'crates/d', version = '0.63.0' }
 wit-bindgen-test = { path = 'crates/test', version = '0.63.0' }
-wit-bindgen-bridge = { path = 'crates/bridge', version = '0.63.0' }
 wit-bindgen-importlib = { path = 'crates/importlib', version = '0.63.0' }
 
 [workspace.lints.clippy]
@@ -103,7 +102,6 @@ wit-bindgen-test = { workspace = true }
 wit-bindgen-importlib = { workspace = true, features = ['clap'] }
 wit-component = { workspace = true }
 wasm-encoder = { workspace = true }
-wit-bindgen-bridge = { workspace = true, features = ['clap'], optional = true }
 env_logger = "0.11.7"
 
 [features]
@@ -114,12 +112,10 @@ default = [
   'go',
   'csharp',
   'cpp',
-  'bridge',
   'moonbit',
   'd',
   'async'
 ]
-bridge = ['dep:wit-bindgen-bridge']
 c = ['dep:wit-bindgen-c']
 cpp = ['dep:wit-bindgen-cpp']
 rust = ['dep:wit-bindgen-rust']

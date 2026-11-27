@@ -7,7 +7,7 @@ rust-version.workspace = true
 repository = 'https://github.com/cpetig/wit-bindgen'
 license = "Apache-2.0 WITH LLVM-exception"
 description = """
-C++ guest and host binding generator for WIT and the component model.
+C++ guest binding generator for WIT and the component model.
 """
 
 [lints]

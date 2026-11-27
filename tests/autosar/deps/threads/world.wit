@@ -1,5 +1,0 @@
-package wasi:threads
-
-world example-world {
-    import threads
-}

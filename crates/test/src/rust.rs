@@ -435,6 +435,12 @@ path = 'lib.rs'
             cmd.arg(arg);
         }
         compile_cdylib(&mut cmd);
+        if runner.is_symmetric() && matches!(compile.component.kind, crate::Kind::Runner) {
+            // the generated import library (libtest.so) lives next to the bindings
+            if let Some(parent) = compile.bindings_dir.parent() {
+                cmd.arg(&format!("-Lnative={}", parent.display()));
+            }
+        }
         runner.run_command(&mut cmd)?;
 
         if link_shared {

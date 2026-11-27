@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{Compile, Kind, LanguageMethods, Runner, Verify};
+use crate::{Compile, LanguageMethods, Runner, Verify};
 use anyhow::{Context, Result};
 use clap::Parser;
 use heck::ToSnakeCase;
@@ -105,7 +105,7 @@ impl LanguageMethods for C {
                     | ("resources", "resources")
                     | ("resource-import-and-export", "intermediate")
                     | ("resource-borrow", "test")
-                    | ("autodrop-borrows", "runner" | "autodropper" | "exporter")
+                    | ("autodrop-borrows", "autodropper" | "exporter")
             )
     }
 
@@ -258,12 +258,9 @@ fn compile(runner: &Runner, compile: &Compile<'_>, compiler: PathBuf) -> Result<
         }
     } else {
         cmd.arg("--shared").arg("-fPIC");
-        if matches!(compile.component.kind, Kind::Runner) {
-            let mut bindings_parent: PathBuf = compile.bindings_dir.into();
-            bindings_parent.pop();
-            cmd.arg("-L")
-                .arg(bindings_parent.to_str().unwrap().to_string());
-            cmd.arg("-ltest");
+        cmd.arg("-L").arg(compile.artifacts_dir);
+        for lib in compile.link_libs {
+            cmd.arg(format!("-l{lib}"));
         }
         // the executor and stream implementation, and the async support
         // built on top of it

@@ -435,10 +435,20 @@ path = 'lib.rs'
             cmd.arg(arg);
         }
         compile_cdylib(&mut cmd);
-        if runner.is_symmetric() && matches!(compile.component.kind, crate::Kind::Runner) {
-            // the generated import library (libtest.so) lives next to the bindings
-            if let Some(parent) = compile.bindings_dir.parent() {
-                cmd.arg(&format!("-Lnative={}", parent.display()));
+        if runner.is_symmetric() {
+            // the generated import libraries live next to the bindings
+            cmd.arg(&format!("-Lnative={}", compile.artifacts_dir.display()));
+            let has_link_name = compile
+                .component
+                .bindgen
+                .args
+                .iter()
+                .any(|arg| arg.starts_with("--link-name"));
+            if !has_link_name && !compile.link_libs.is_empty() {
+                cmd.arg("-Clink-arg=-Wl,--no-as-needed");
+                for lib in compile.link_libs {
+                    cmd.arg(&format!("-Clink-arg=-l{lib}"));
+                }
             }
         }
         runner.run_command(&mut cmd)?;
@@ -520,8 +530,7 @@ mod core {}
                 || (test.name == "resource_floats" && component.name != "leaf")
                 || test.name == "map"
                 || test.name == /*rust*/"with-types")
-                || (test.name == /*async*/"yield-loop-receives-events"
-                    && component.name != "middle")
+                || (test.name == /*async*/"yield-loop-receives-events" && component.name == "leaf")
                 || (matches!(component.kind, crate::Kind::Test)
                     && (test.name == /*async*/"simple-pending-import"
                         || test.name == "simple-yield"
@@ -529,15 +538,7 @@ mod core {}
                         || test.name == /*async*/"cancel-import"))
                 || (matches!(component.kind, crate::Kind::Runner)
                     && (test.name == "cancel-import"
-                        // async import with a result: the symmetric generator panics in abi.rs
-                        || test.name == /*async*/"async-cross-component-await"
                         || test.name == "pending-import"
-                        || test.name == "results"
-                        || test.name == "resources"
-                        || test.name == "resource-import-and-export"
-                        || test.name == "resource_with_lists"
-                        || test.name == /*rust*/"equal-types"
-                        || test.name == /*rust*/"xcrate"
                         || test.name == /*async*/"rust-cross-task-wakeup"
                         || test.name == /*async*/"rust-lowered-send")))
     }
@@ -548,7 +549,19 @@ mod core {}
         name: &str,
         _component: &crate::Component,
     ) -> bool {
-        runner.is_symmetric() && (name == "skip" || name == "with-only-affects-imports")
+        runner.is_symmetric()
+            && (name == "skip"
+                || name == "with-only-affects-imports"
+                // The chain links and runs, but the leaf's yield
+                // (`wake_by_ref`) is ignored by the symmetric Rust runtime,
+                // which asserts in async_support.rs (and the C++ middle
+                // double frees).
+                || name == "async-cross-component-await"
+                // `intermediate` imports `toplevel-import`, which the wasm
+                // composition (compose.wac) satisfies with the
+                // `toplevel-export` of `leaf-toplevel`; symmetric linking
+                // resolves by symbol name only, so it stays undefined.
+                || name == "resource-import-and-export")
     }
 }
 

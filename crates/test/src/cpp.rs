@@ -1,5 +1,5 @@
 use crate::config::StringList;
-use crate::{Kind, LanguageMethods, Runner};
+use crate::{LanguageMethods, Runner};
 use anyhow::Context;
 use heck::ToSnakeCase;
 use serde::Deserialize;
@@ -236,12 +236,9 @@ impl LanguageMethods for Cpp {
                 }
             }
             cmd.arg("-shared");
-            if matches!(compile.component.kind, Kind::Runner) {
-                let mut bindings_parent: PathBuf = compile.bindings_dir.into();
-                bindings_parent.pop();
-                cmd.arg("-L")
-                    .arg(bindings_parent.to_str().unwrap().to_string());
-                cmd.arg("-ltest");
+            cmd.arg("-L").arg(compile.artifacts_dir);
+            for lib in compile.link_libs {
+                cmd.arg(format!("-l{lib}"));
             }
             cmd.arg("-L")
                 .arg(helper_dir3.to_str().unwrap().to_string())
@@ -321,14 +318,7 @@ impl LanguageMethods for Cpp {
         runner.is_symmetric()
             && (ASYNC_TESTS.contains(&test.name.as_str())
                 || (matches!(component.kind, crate::Kind::Test)
-                    && (test.name == "resources" || test.name == "resource_borrow_in_record"))
-                // The C++ components work (verified by linking runner, middle and a
-                // C++ leaf manually), but the test harness can't link a chain of
-                // components (runner -> middle -> leaf) with the symmetric ABI yet.
-                || (matches!(component.kind, crate::Kind::Runner)
-                    && (test.name == "results"
-                        || test.name == "common-types"
-                        || test.name == "async-cross-component-await")))
+                    && (test.name == "resources" || test.name == "resource_borrow_in_record")))
     }
 
     fn should_fail_runtime2(
@@ -340,6 +330,10 @@ impl LanguageMethods for Cpp {
         // dbg!(runner);
         runner.is_symmetric()
             && ((matches!(component.kind, crate::Kind::Test) && (name == "param-ownership"))
+                // Links and runs with the Rust leaf, but the leaf's yield
+                // (`wake_by_ref`) is not supported by the symmetric Rust
+                // runtime, so the chain aborts.
+                || name == "async-cross-component-await"
                 // These compile, but futures and streams still map to `std::future`
                 // (to be replaced by `wit::FutureReader`/`StreamReader`)
                 || name == "future-string"

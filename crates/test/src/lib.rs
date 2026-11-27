@@ -247,6 +247,9 @@ struct Compile<'a> {
     bindings_dir: &'a Path,
     artifacts_dir: &'a Path,
     output: &'a Path,
+    /// Symmetric mode only: names (without `lib` prefix) of the import
+    /// libraries to link against, see `Runner::symmetric_import_libs`.
+    link_libs: &'a [String],
 }
 
 /// Helper structure to package up arguments when sent to language-specific
@@ -474,23 +477,6 @@ impl Runner {
         };
         assert!(bindgen.args.is_empty());
         bindgen.args = config.args.into();
-
-        let has_link_name = bindgen
-            .args
-            .iter()
-            .any(|elem| elem.starts_with("--link-name"));
-        if self.is_symmetric() && matches!(kind, Kind::Runner) && !has_link_name {
-            match &language {
-                Language::Rust => {
-                    bindgen.args.push(String::from("--link-name"));
-                    bindgen.args.push(String::from("test"));
-                }
-                _ => {
-                    println!("Symmetric: --link_name missing from language {language:?}");
-                    // todo!();
-                }
-            }
-        }
 
         Ok(Component {
             name: path.file_stem().unwrap().to_str().unwrap().to_string(),
@@ -900,6 +886,18 @@ impl Runner {
             Ok(())
         }
 
+        // If the selected languages (or failed compilations) leave a world
+        // without any component this test can't be run, skip it.
+        for world in test.config.dependency_worlds() {
+            if !components.iter().any(|(c, _)| c.bindgen.world == world) {
+                println!(
+                    "skipping `{}` with {:?}: no components for `{world}`",
+                    test.name, runner.0.path
+                );
+                return Ok(());
+            }
+        }
+
         push(
             &test.config.dependency_worlds(),
             components,
@@ -934,24 +932,18 @@ impl Runner {
             .language
             .obj()
             .generate_bindings(self, &component.bindgen, &bindings_dir)?;
+        let link_libs = if self.is_symmetric() {
+            self.symmetric_import_libs(test, component, &artifacts_dir)?
+        } else {
+            Vec::new()
+        };
         let result = Compile {
             component,
             bindings_dir: &bindings_dir,
             artifacts_dir: &artifacts_dir,
             output: &output,
+            link_libs: &link_libs,
         };
-        // TODO: Figure this out for complex tests
-        if self.is_symmetric() && matches!(component.kind, Kind::Runner) {
-            let mut cmd = Command::new(self.wit_bindgen.clone());
-            cmd.arg("import-lib")
-                .arg(&component.bindgen.wit_path)
-                .arg("--world")
-                .arg("test")
-                .arg("--out-dir")
-                .arg(&artifacts_dir)
-                .arg("--symmetric");
-            self.run_command(&mut cmd)?;
-        }
         component.language.obj().compile(self, &result)?;
 
         if !self.is_symmetric() {
@@ -972,6 +964,55 @@ impl Runner {
         }
 
         Ok(output)
+    }
+
+    /// Symmetric mode: generates the import libraries `component` links
+    /// against and returns their names (without the `lib` prefix).
+    ///
+    /// Components of a test form a chain, in the order of the `dependencies`
+    /// list (the runner first), where each component imports from the ones
+    /// after it, like `compose_wasm_with_wasm_compose` composes them. For
+    /// every such dependency world `W` a stub library `libW.so` defining the
+    /// symbols of the world's exports is generated. At run time the real
+    /// component is found under the same name, see `runtime_test`. The stubs
+    /// are listed in chain order, so the nearest component providing a symbol
+    /// wins when several export the same interface.
+    ///
+    /// Components that also export an interface they import (the bindings then
+    /// name the imports `imp_...`) additionally get `libimp_W.so`, which
+    /// forwards to the symbols of `libW.so`.
+    fn symmetric_import_libs(
+        &self,
+        test: &Test,
+        component: &Component,
+        artifacts_dir: &Path,
+    ) -> Result<Vec<String>> {
+        let worlds = test.config.dependency_worlds();
+        let deps = match component.kind {
+            Kind::Runner => &worlds[..],
+            Kind::Test => match worlds.iter().position(|w| *w == component.bindgen.world) {
+                Some(i) => &worlds[i + 1..],
+                None => &[],
+            },
+        };
+        let mut libs = Vec::new();
+        for world in deps {
+            let mut cmd = Command::new(self.wit_bindgen.clone());
+            cmd.arg("import-lib")
+                .arg(&component.bindgen.wit_path)
+                .arg("--world")
+                .arg(world)
+                .arg("--out-dir")
+                .arg(artifacts_dir)
+                .arg("--symmetric");
+            if matches!(component.kind, Kind::Test) {
+                cmd.arg("--forward-prefix").arg("imp_");
+                libs.push(format!("imp_{world}"));
+            }
+            self.run_command(&mut cmd)?;
+            libs.push(world.clone());
+        }
+        Ok(libs)
     }
 
     /// Executes a single test case.
@@ -1039,6 +1080,21 @@ impl Runner {
                 let mut new_file = composed_wasm.clone();
                 new_file.push(&newname);
                 symlink(p, new_file)?;
+            }
+            // forwarding libraries (`libimp_<world>.so`) generated for the
+            // components importing from the others
+            for (c, _) in test_components.iter() {
+                let artifacts_dir = runner_wasm
+                    .parent()
+                    .unwrap()
+                    .join(format!("{}-{}", c.name, c.language));
+                for world in case.config.dependency_worlds() {
+                    let name = format!("libimp_{world}.so");
+                    let link = composed_wasm.join(&name);
+                    if !link.exists() && artifacts_dir.join(&name).exists() {
+                        symlink(artifacts_dir.join(&name), link)?;
+                    }
+                }
             }
             let cwd = runner_wasm.parent().unwrap().parent().unwrap();
             let dir = cwd.join("rust");

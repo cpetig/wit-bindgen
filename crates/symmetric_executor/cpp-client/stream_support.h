@@ -3,6 +3,7 @@
 #define WIT_STREAM_SUPPORT_H
 
 #include "module_cpp.h"
+#include "result_compat.h"
 #include <functional>
 
 namespace wit {
@@ -40,11 +41,12 @@ private:
 
   static symmetric::runtime::symmetric_executor::CallbackState
   data_available(background_object *data) {
-    auto buffer = data->handle.ReadResult();
-    if (buffer.has_value()) {
-      assert(buffer->GetAddress().into_handle() ==
+    auto read = data->handle.ReadResult();
+    if (wit::result_ok(read)) {
+      auto buffer = wit::result_value(std::move(read));
+      assert(buffer.GetAddress().into_handle() ==
              (wit::ResourceImportBase::handle_t)data->buffer.data());
-      uint32_t size = buffer->GetSize();
+      uint32_t size = buffer.GetSize();
       std::vector<T> lifted;
       lifted.reserve(size);
       for (uint32_t i = 0; i < size; ++i) {
@@ -54,8 +56,8 @@ private:
       if (size > 0)
         data->reader(wit::span<T>(lifted.data(), size));
 
-      auto res = data->handle.StartReading(std::move(*buffer));
-      if (!res.has_value()) {
+      auto res = data->handle.StartReading(std::move(buffer));
+      if (!wit::result_ok(res)) {
         // Pending indicates that other reader was faster (misuse), handle as
         // eof for now
         data->reader(wit::span<T>());
@@ -66,7 +68,7 @@ private:
         return symmetric::runtime::symmetric_executor::CallbackState::kPending;
       }
     } else {
-      assert(buffer.error() ==
+      assert(wit::result_error(read) ==
              symmetric::runtime::symmetric_stream::StreamState::kEof);
       data->reader(wit::span<T>());
       auto release = std::unique_ptr<background_object>(data);
@@ -99,7 +101,7 @@ public:
 
     auto res = object->handle.StartReading(std::move(b));
     // success will trigger the event, a buffer indicates misuse
-    assert(res.has_value());
+    assert(wit::result_ok(res));
     return symmetric::runtime::symmetric_executor::Register(
         object->handle.ReadReadySubscribe(),
         symmetric::runtime::symmetric_executor::CallbackFunction(

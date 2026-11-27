@@ -2,17 +2,21 @@
 #ifndef __CPP_GUEST_BINDINGS_MODULE_H
 #define __CPP_GUEST_BINDINGS_MODULE_H
 #define WIT_SYMMETRIC
+#define WIT_ARA_SPAN
 #include "executor_import_cpp.h"
 #include "wit.h"
+#include <ara/core/optional.h>
+#include <ara/core/result.h>
 #include <cassert>
 #include <cstdint>
-#include <expected>
-#include <optional>
 #include <utility>
 /// language neutral stream implementation
 namespace symmetric {
 namespace runtime {
 namespace symmetric_stream {
+class Address;
+class Buffer;
+class StreamObj;
 using EventSubscription = symmetric_executor::EventSubscription;
 class Address : public wit::ResourceImportBase {
 
@@ -57,17 +61,17 @@ public:
   /// reading (in roughly chronological order)
   /// indicates EOF
   bool IsWriteClosed() const;
-  std::expected<void, Buffer>
+  ::ara::core::Result<void, Buffer>
   StartReading(symmetric_stream::Buffer &&buffer) const;
   symmetric_executor::EventSubscription ReadReadySubscribe() const;
   /// close the reading side, returning any in-flight buffer(s)
   wit::vector<Buffer> CloseRead() const;
-  std::expected<Buffer, StreamState> ReadResult() const;
+  ::ara::core::Result<Buffer, StreamState> ReadResult() const;
   /// writing
   bool IsReadClosed() const;
-  std::expected<Buffer, StreamState> StartWriting() const;
+  ::ara::core::Result<Buffer, StreamState> StartWriting() const;
   symmetric_executor::EventSubscription WriteReadySubscribe() const;
-  std::expected<void, Buffer>
+  ::ara::core::Result<void, Buffer>
   FinishWriting(symmetric_stream::Buffer &&buffer) const;
   StreamObj(wit::ResourceImportBase &&);
   StreamObj(StreamObj &&) = default;

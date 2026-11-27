@@ -183,7 +183,8 @@ symmetric::runtime::symmetric_executor::Register(EventSubscription &&trigger,
       trigger.into_handle(), callback.into_handle(), data.into_handle());
   return wit::ResourceImportBase{ret};
 }
-std::optional<symmetric::runtime::symmetric_executor::CallbackRegistration>
+::ara::core::Optional<
+    symmetric::runtime::symmetric_executor::CallbackRegistration>
 symmetric::runtime::symmetric_executor::RegisterUnique(
     EventSubscription &&trigger, CallbackFunction &&callback,
     CallbackData &&data) {
@@ -193,7 +194,7 @@ symmetric::runtime::symmetric_executor::RegisterUnique(
   symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register_unique(
       trigger.into_handle(), callback.into_handle(), data.into_handle(),
       std::move(ptr0));
-  std::optional<CallbackRegistration> option1;
+  ::ara::core::Optional<CallbackRegistration> option1;
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0))) {
 
     option1.emplace(wit::ResourceImportBase{

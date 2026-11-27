@@ -166,6 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let executor_path = cwd.join("crates/symmetric_executor");
             let stream_path = cwd.join("crates/symmetric_executor/symmetric_stream");
             let rt_path = cwd.join("crates/symmetric_executor/rust-client");
+            let link_search_path = cwd.join("crates/symmetric_executor/link-search");
             super::write_if_different(
                 &test_runner.join("Cargo.toml"),
                 &format!(
@@ -180,21 +181,18 @@ libloading = "0.8"
 wit-bindgen-symmetric-rt = {{ path = {rt_path:?} }}
 symmetric_executor = {{ path = {executor_path:?}, features = ["trace"] }}
 symmetric_stream = {{ path = {stream_path:?}, features = ["trace"] }}
+
+[build-dependencies]
+symmetric-link-search = {{ path = {link_search_path:?} }}
             "#,
                 ),
             )?;
-            // add deps folder to linker path for symmetric_executor
+            // find the runtime cdylibs (location depends on the cargo version)
             super::write_if_different(
                 &test_runner.join("build.rs"),
                 r#"
-use std::env;
-
 fn main() {
-    let out = env::var_os("OUT_DIR").unwrap();
-    println!(
-        r"cargo:rustc-link-search={}/../../../deps",
-        out.into_string().unwrap()
-    );
+    symmetric_link_search::emit();
 }
             "#,
             )?;
@@ -288,7 +286,7 @@ path = 'lib.rs'
                 CargoMessage::CompilerArtifact { target, filenames } => {
                     if target.name == "futures" {
                         futures_files = Some(filenames.clone());
-                    } else if target.name == "wit_bindgen" {
+                    } else if target.name == "wit_bindgen" || target.name == "mini_bindgen" {
                         wit_bindgen_files = Some(filenames.clone());
                     }
                     for file in &filenames {
@@ -310,15 +308,30 @@ path = 'lib.rs'
         }
 
         // The symmetric runtime libraries live in the target directory
-        // containing the `deps` directory.
+        // containing the `deps` directory, or in `build/*/out` with newer cargo.
         let mut native_deps = Vec::new();
         if runner.is_symmetric() {
             for dep in &wit_bindgen_deps {
-                if dep.file_name().is_some_and(|name| name == "deps") {
-                    let target_dir = dep.parent().unwrap().to_path_buf();
-                    if !native_deps.contains(&target_dir) {
-                        native_deps.push(target_dir);
+                // the profile directory is the parent of `deps` or `build`
+                let dep = dep.canonicalize().unwrap_or_else(|_| dep.clone());
+                let Some(target_dir) = dep
+                    .ancestors()
+                    .find(|a| a.file_name().is_some_and(|n| n == "deps" || n == "build"))
+                    .and_then(|a| a.parent())
+                    .map(Path::to_path_buf)
+                else {
+                    continue;
+                };
+                for lib in ["libsymmetric_executor.so", "libsymmetric_stream.so"] {
+                    if let Some(found) = super::find_cdylib(&target_dir, lib) {
+                        let dir = found.parent().unwrap().to_path_buf();
+                        if !native_deps.contains(&dir) {
+                            native_deps.push(dir);
+                        }
                     }
+                }
+                if !native_deps.contains(&target_dir) {
+                    native_deps.push(target_dir);
                 }
             }
         }
@@ -381,7 +394,7 @@ path = 'lib.rs'
 
         let compile_cdylib = |cmd: &mut Command| {
             cmd.arg("--crate-type=cdylib");
-            if runner.produces_component() {
+            if runner.produces_component() && !runner.is_symmetric() {
                 if link_shared {
                     cmd.arg("-Clink-arg=-Wl,--skip-wit-component");
                 } else {
@@ -422,6 +435,12 @@ path = 'lib.rs'
             cmd.arg(arg);
         }
         compile_cdylib(&mut cmd);
+        if runner.is_symmetric() && matches!(compile.component.kind, crate::Kind::Runner) {
+            // the generated import library (libtest.so) lives next to the bindings
+            if let Some(parent) = compile.bindings_dir.parent() {
+                cmd.arg(&format!("-Lnative={}", parent.display()));
+            }
+        }
         runner.run_command(&mut cmd)?;
 
         if link_shared {
@@ -437,7 +456,7 @@ path = 'lib.rs'
             runner
                 .link_dylibs_to_component(&dylibs, compile)
                 .with_context(|| format!("failed to link {output:?}"))?;
-        } else {
+        } else if !runner.is_symmetric() {
             runner
                 .convert_core_module_to_component(&output, compile)
                 .with_context(|| format!("failed to convert {output:?}"))?;

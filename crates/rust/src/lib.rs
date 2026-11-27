@@ -11,7 +11,7 @@ use std::str::FromStr;
 use wit_bindgen_core::abi::{Bitcast, WasmType};
 use wit_bindgen_core::{
     AsyncFilterSet, ChainableMethodFilterSet, ChainingMode, Files, InterfaceGenerator as _, Source,
-    Types, WorldGenerator, dealias, make_external_component, name_package_module, uwrite, uwriteln,
+    Types, WorldGenerator, dealias, name_package_module, symbol_name, uwrite, uwriteln,
     wit_parser::*,
 };
 
@@ -1130,7 +1130,8 @@ macro_rules! __export_{world_name}_impl {{
         self.src.push_str("\";\n");
         self.src.set_indent(old_indent);
 
-        let symbol = make_external_component(&format!("{pkg}/{world_name}{opts_suffix}"));
+        let symbol =
+            symbol_name::make_external_component(&format!("{pkg}/{world_name}{opts_suffix}"));
         uwriteln!(
             self.src,
             "
@@ -2015,13 +2016,13 @@ fn wasm_type(ty: WasmType) -> &'static str {
 }
 
 fn declare_import(
-    //    module_prefix: &str,
     wasm_import_module: &str,
     wasm_import_name: &str,
     rust_name: &str,
     params: &[WasmType],
     results: &[WasmType],
     rt: &str,
+    symmetric: bool,
 ) -> String {
     let mut sig = "(".to_owned();
     for (i, param) in params.iter().enumerate() {
@@ -2033,18 +2034,31 @@ fn declare_import(
         sig.push_str(" -> ");
         sig.push_str(wasm_type(*result));
     }
-    format!(
+    if symmetric {
+        // symmetric imports are resolved by the (dynamic) linker by symbol name
+        format!(
+            "
+            #[link(wasm_import_module = \"{wasm_import_module}\")]
+            unsafe extern \"C\" {{
+                #[allow(non_snake_case)]
+                #[cfg_attr(target_arch = \"wasm32\", link_name = \"{wasm_import_name}\")]
+                fn {rust_name}{sig};
+            }}
         "
+        )
+    } else {
+        format!(
+            "
             {rt}::extern_wasm! {{
                 #[link(wasm_import_module = \"{wasm_import_module}\")]
                 unsafe extern \"C\" {{
-                    #[allow(non_snake_case)]
-                    #[cfg_attr(target_arch = \"wasm32\", link_name = \"{wasm_import_name}\")]
+                    #[link_name = \"{wasm_import_name}\"]
                     fn {rust_name}{sig};
                 }}
             }}
         "
-    )
+        )
+    }
 }
 
 fn int_repr(repr: Int) -> &'static str {

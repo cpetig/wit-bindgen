@@ -97,6 +97,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             params,
             results,
             self.r#gen.r#gen.runtime_path(),
+            self.r#gen.r#gen.opts.symmetric,
         ));
         rust_name
     }

@@ -13,7 +13,8 @@ use std::mem;
 use wit_bindgen_core::abi::{self, AbiVariant, LiftLower};
 use wit_bindgen_core::{
     AnonymousTypeGenerator, ChainingMode, Source, TypeInfo, dealias, make_external_component,
-    make_external_symbol, symbol_extensions, symmetric, uwrite, uwriteln, wit_parser::*,
+    make_external_symbol, symbol_extensions, symbol_name, symmetric, uwrite, uwriteln,
+    wit_parser::*,
 };
 
 pub struct InterfaceGenerator<'a> {
@@ -209,12 +210,12 @@ impl<'i> InterfaceGenerator<'i> {
             let resource_name = self.resolve.types[resource].name.as_ref().unwrap();
             if self.r#gen.opts.symmetric {
                 let resource_type = resource_name.to_pascal_case();
-                let resource_lowercase = resource_name.to_lower_camel_case();
+                let resource_snake = resource_name.to_snake_case();
                 uwriteln!(
                     self.src,
                     r#"#[doc(hidden)]
             #[allow(non_snake_case)]
-            pub unsafe fn _export_drop_{resource_lowercase}_cabi<T: {trait_name}>(arg0: usize) {{
+            pub unsafe fn _export_drop_{resource_snake}_cabi<T: {trait_name}>(arg0: usize) {{
                 #[cfg(target_arch = "wasm32")]
                 _rt::run_ctors_once();
                 {resource_type}::dtor::<T>(arg0 as *mut u8);
@@ -244,6 +245,7 @@ impl<'i> InterfaceGenerator<'i> {
                 &[abi::WasmType::Pointer],
                 &[handle_type],
                 self.r#gen.runtime_path(),
+                self.r#gen.opts.symmetric,
             );
             let import_rep = crate::declare_import(
                 &wasm_import_module,
@@ -252,6 +254,7 @@ impl<'i> InterfaceGenerator<'i> {
                 &[handle_type],
                 &[abi::WasmType::Pointer],
                 self.r#gen.runtime_path(),
+                self.r#gen.opts.symmetric,
             );
             // symmetric handles are the representation pointer itself
             let (new_body, rep_body) = if self.r#gen.opts.symmetric {
@@ -401,37 +404,31 @@ macro_rules! {macro_name} {{
                 }
             };
             let camel = name.to_upper_camel_case();
+            let snake = name.to_snake_case();
             if self.r#gen.opts.symmetric {
                 let dtor_symbol = make_external_symbol(
                     &module,
                     &(String::from("[resource-drop]") + &name),
                     AbiVariant::GuestImport,
                 );
-                let resource_lowercase = name.to_lower_camel_case();
                 uwriteln!(
                     self.src,
                     r#"    #[cfg_attr(not(target_arch = "wasm32"), unsafe(no_mangle))]
     #[allow(non_snake_case)]
     unsafe extern "C" fn {dtor_symbol}(arg0: usize) {{
-      $($path_to_types)*::_export_drop_{resource_lowercase}_cabi::<<$ty as $($path_to_types)*::Guest>::{camel}>(arg0)
+      $($path_to_types)*::_export_drop_{snake}_cabi::<<$ty as $($path_to_types)*::Guest>::{camel}>(arg0)
     }}
 "#
                 );
             } else {
-                let dtor_symbol = make_external_symbol(
-                    &module,
-                    &(String::from("[dtor]") + &name),
-                    AbiVariant::GuestExport,
-                );
+                let attrs = self.core_export_attrs(&format!("{module}#[dtor]{name}"));
                 uwriteln!(
                     self.src,
                     r#"
                 const _: () = {{
                     #[doc(hidden)]
-                    #[cfg_attr(target_arch = "wasm32", unsafe(export_name = "{export_prefix}{module}#[dtor]{name}"))]
-                    #[cfg_attr(not(target_arch = "wasm32"), unsafe(no_mangle))]
-                    #[allow(non_snake_case)]
-                    unsafe extern "C" fn {dtor_symbol}(rep: *mut u8) {{
+                    {attrs}#[allow(non_snake_case)]
+                    unsafe extern "C" fn dtor(rep: *mut u8) {{
                         unsafe {{
                             $($path_to_types)*::{camel}::dtor::<
                                 <$ty as $($path_to_types)*::Guest>::{camel}
@@ -792,21 +789,6 @@ pub mod vtable{ordinal} {{
         if !self.r#gen.opts.symmetric {
             code.push_str(&format!(
                 r#"
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn cancel_write(_: u32) -> u32 {{ unreachable!() }}
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn cancel_read(_: u32) -> u32 {{ unreachable!() }}
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn drop_writable(_: u32) {{ unreachable!() }}
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn drop_readable(_: u32) {{ unreachable!() }}
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn new() -> u64 {{ unreachable!() }}
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn start_read(_: u32, _: *mut u8{start_extra}) -> u32 {{ unreachable!() }}
-    #[cfg(not(target_arch = "wasm32"))]
-    unsafe extern "C" fn start_write(_: u32, _: *const u8{start_extra}) -> u32 {{ unreachable!() }}
-
     // Work around a behavior of LLD where in a shared library when an address
     // is taken of an imported function that only shows up as a `GOT.func`
     // import which means there's not actual import for wit-component to
@@ -1165,6 +1147,7 @@ fn abi_layout(&mut self) -> ::core::alloc::Layout {{
             &sig.params,
             &sig.results,
             self.r#gen.runtime_path(),
+            self.r#gen.opts.symmetric,
         );
         let mut args = String::new();
         for i in 0..params_lower.len() {
@@ -1440,27 +1423,20 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             Identifier::StreamOrFuturePayload => unreachable!(),
         };
         let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
-        // let mut library_name = String::new();
-        let (export_name, external_name) = if self.r#gen.opts.symmetric {
-            if self.r#gen.opts.hash_in_symbol {
+        let symmetric = self.r#gen.opts.symmetric;
+        let (export_name, attrs, fn_name) = if symmetric {
+            let (export_name, external_name) = if self.r#gen.opts.hash_in_symbol {
                 let export_name =
                     func.standard32_core_export_name(wasm_module_export_name.as_deref());
                 let mut external_name = make_external_component(export_name.as_ref());
-                //     &wasm_module_export_name.unwrap_or_default(),
-                //     &func.name,
-                //     AbiVariant::GuestImport,
-                // );
                 if let Some(export_prefix) = self.r#gen.opts.export_prefix.as_ref() {
                     external_name.insert_str(0, export_prefix);
                 }
                 let hash = symmetric::hash(&self.resolve, func);
                 external_name += &format!("H{hash:016x}");
-                // if let Some(library) = &self.r#gen.opts.link_name {
-                //     library_name = format!("\n#[link(name = \"{}\")]", library);
-                // }
                 (export_name.to_string(), external_name)
             } else {
-                let export_name = func.name.clone(); // item_name().to_owned();
+                let export_name = func.name.clone();
                 let mut external_name = make_external_symbol(
                     &wasm_module_export_name.unwrap_or_default(),
                     &func.name,
@@ -1470,7 +1446,13 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                     external_name.insert_str(0, export_prefix);
                 }
                 (export_name, external_name)
-            }
+            };
+            let attrs = format!(
+                "#[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}{export_name}\"))]\n\
+                 #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]\n\
+                 #[allow(non_snake_case)]\n"
+            );
+            (export_name, attrs, external_name)
         } else {
             let export_name = func.legacy_core_export_name(wasm_module_export_name.as_deref());
             let export_name = if async_ {
@@ -1478,20 +1460,15 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             } else {
                 export_name.to_string()
             };
-            let external_name =
-                make_external_component(&(String::from(export_prefix) + &export_name));
-            (export_name, external_name)
+            let attrs = self.core_export_attrs(&export_name);
+            (export_name, attrs, format!("export_{name_snake}"))
         };
 
-        let attrs = self.core_export_attrs(&export_name);
         uwrite!(
             self.src,
             "\
-                #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}{export_name}\"))]
-                #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]
-                #[allow(non_snake_case)]
-                unsafe extern \"C\" fn {external_name}\
-        ",
+                {attrs}unsafe extern \"C\" fn {fn_name}\
+",
         );
         let params = self.print_export_sig(func, async_);
         self.push_str(" {\n");
@@ -1502,8 +1479,8 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
         );
         self.push_str("}\n");
 
-        let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
-        if async_ && !self.r#gen.opts.symmetric {
+        if async_ && !symmetric {
+            let attrs = self.core_export_attrs(&format!("[callback]{export_name}"));
             uwrite!(
                 self.src,
                 "\
@@ -1514,21 +1491,13 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
                     }}
                 "
             );
-        } else if abi::guest_export_needs_post_return(self.resolve, func)
-            && !self.r#gen.opts.symmetric
-        {
-            let export_prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
-            let external_name = make_external_component(export_prefix)
-                + "cabi_post_"
-                + &make_external_component(&export_name);
+        } else if abi::guest_export_needs_post_return(self.resolve, func) && !symmetric {
+            let attrs = self.core_export_attrs(&format!("cabi_post_{export_name}"));
             uwrite!(
                 self.src,
                 "\
-                    #[cfg_attr(target_arch = \"wasm32\", unsafe(export_name = \"{export_prefix}cabi_post_{export_name}\"))]
-                    #[cfg_attr(not(target_arch = \"wasm32\"), unsafe(no_mangle))]
-                    #[allow(non_snake_case)]
-                    unsafe extern \"C\" fn {external_name}\
-            "
+                    {attrs}unsafe extern \"C\" fn _post_return_{name_snake}\
+"
             );
             let params = self.print_post_return_sig(func);
             self.src.push_str("{\n");
@@ -1552,7 +1521,7 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
     /// as `$root` exports, both carry the same string).
     fn core_export_attrs(&self, export_name: &str) -> String {
         let prefix = self.r#gen.opts.export_prefix.as_deref().unwrap_or("");
-        let native = make_external_component(export_name);
+        let native = symbol_name::make_external_component(export_name);
         format!(
             "#[cfg_attr(target_family = \"wasm\", unsafe(export_name = \"{prefix}{export_name}\"))]\n\
              #[cfg_attr(not(target_family = \"wasm\"), unsafe(export_name = \"{prefix}{native}\"))]\n"
@@ -3213,6 +3182,7 @@ impl<'a> {camel}Borrow<'a>{{
             }],
             &[],
             self.r#gen.runtime_path(),
+            self.r#gen.opts.symmetric,
         );
         uwriteln!(
             self.src,

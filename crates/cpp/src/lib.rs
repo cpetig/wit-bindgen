@@ -13,7 +13,8 @@ use wit_bindgen_c::to_c_ident;
 use wit_bindgen_core::{
     AsyncFilterSet, Files, InterfaceGenerator, Source, Types, WorldGenerator,
     abi::{self, AbiVariant, Bindgen, Bitcast, LiftLower, WasmSignature, WasmType},
-    make_external_component, make_external_symbol, name_package_module, symbol_extensions,
+    name_package_module,
+    symbol_name::{make_external_component, make_external_symbol, symbol_extensions},
     symmetric, uwrite, uwriteln,
     wit_parser::{
         Alignment, ArchitectureSize, Docs, Function, FunctionKind, Handle, Int, InterfaceId, Param,
@@ -23,7 +24,7 @@ use wit_bindgen_core::{
 };
 use wit_parser::TypeIdVisitor;
 
-// mod wamr;
+mod wamr;
 
 pub const RESOURCE_IMPORT_BASE_CLASS_NAME: &str = "ResourceImportBase";
 pub const RESOURCE_EXPORT_BASE_CLASS_NAME: &str = "ResourceExportBase";
@@ -2396,6 +2397,10 @@ impl CppInterfaceGenerator<'_> {
     // }
 
     fn generate_futures_and_streams(&mut self, func: &Function, variant: AbiVariant) {
+        // symmetric mode uses lower_future/lift_future instead of canonical ABI vtables
+        if self.r#gen.opts.symmetric {
+            return;
+        }
         let export = matches!(
             variant,
             AbiVariant::GuestExport
@@ -4537,12 +4542,22 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                         }
                     },
                     (Handle::Own(ty), false) => match self.variant {
-                        AbiVariant::GuestImport | AbiVariant::GuestImportAsync => {
+                        // stream/future payloads of exported resources are lifted with the import variant
+                        AbiVariant::GuestImport | AbiVariant::GuestImportAsync
+                            if !{
+                                let rt = &self.r#gen.resolve.types[*ty];
+                                let rt = match &rt.kind {
+                                    TypeDefKind::Type(Type::Id(id)) => {
+                                        &self.r#gen.resolve.types[*id]
+                                    }
+                                    _ => rt,
+                                };
+                                self.r#gen.is_exported_type(rt)
+                            } =>
+                        {
                             results.push(format!("wit::{RESOURCE_IMPORT_BASE_CLASS_NAME}{{{op}}}"))
                         }
-                        AbiVariant::GuestExport
-                        | AbiVariant::GuestExportAsync
-                        | AbiVariant::GuestExportAsyncStackful => {
+                        _ => {
                             let tmp = self.tmp();
                             let var = self.tempname("obj", tmp);
                             let tname = self.r#gen.type_name(
@@ -5112,19 +5127,19 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                             .join(", "),
                     );
                     self.src.push_str(");\n");
-                }
-                if self.variant == AbiVariant::GuestImportAsync {
-                    uwriteln!(
+                    if self.variant == AbiVariant::GuestImportAsync {
+                        uwriteln!(
                             self.src,
                             "if ((ret & 0xfU) != wit::SUBTASK_RETURNED) {{
                                 co_await wit::detail::SubtaskAwaiter{{static_cast<uint32_t>(ret), std::move(_subtask_cleanup)}};
                             }}"
                         );
+                    }
                 }
             }
             abi::Instruction::CallInterface { func, async_ } => {
                 // dbg!(func);
-                let (namespace, func_name_h) =
+                let (mut namespace, func_name_h) =
                     self.r#gen
                         .func_namespace_name(func, !self.r#gen.r#gen.opts.host_side(), true);
                 if *async_ {

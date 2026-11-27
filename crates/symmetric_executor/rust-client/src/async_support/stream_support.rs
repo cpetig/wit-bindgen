@@ -414,7 +414,12 @@ impl<T: Unpin + Send + 'static> Future for StreamRead<'_, T> {
                         if handle.is_write_closed() {
                             return (StreamResult::Dropped, buffer2);
                         } else {
-                            todo!();
+                            // The channel still holds an offer which nobody has
+                            // taken. Writers take the offer of a reader before
+                            // they write, so this can only be the offer of a
+                            // read which was cancelled (its memory is gone) or
+                            // of a writer not following the protocol.
+                            unreachable!("start_reading while an earlier offer is still open");
                         }
                     }
                 }

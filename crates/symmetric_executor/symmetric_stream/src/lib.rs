@@ -441,7 +441,17 @@ impl GuestStreamObj for StreamObj {
             }
             Err(()) => (),
         }
+        // closing the read side is what dropping the reader does, signal it
+        // to the writers (and don't do it again on drop)
         self.1.store(DecreaseOnDrop::None as u8, Ordering::Release);
+        if self.0.empty_buffer.drop_writer() {
+            #[cfg(feature = "trace")]
+            println!(
+                "{} Stream last reader closed {:x}",
+                gettid(),
+                self.0.handle()
+            );
+        }
         res
     }
 

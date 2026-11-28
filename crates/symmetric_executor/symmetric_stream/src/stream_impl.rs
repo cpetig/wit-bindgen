@@ -80,7 +80,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -88,12 +88,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-function"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_function(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_function(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
                             _handle as *mut u8,
                         )
                     };
@@ -126,7 +126,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -134,12 +134,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-data"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_data(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_data(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
                             _handle as *mut u8,
                         )
                     };
@@ -171,7 +171,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -179,12 +179,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]event-subscription"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_subscription(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_subscription(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
                             _handle as *mut u8,
                         )
                     };
@@ -216,7 +216,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -224,12 +224,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]event-generator"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_generator(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_generator(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
                             _handle as *mut u8,
                         )
                     };
@@ -261,7 +261,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -269,12 +269,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-registration"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_registration(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_registration(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
                             _handle as *mut u8,
                         )
                     };
@@ -325,7 +325,7 @@ pub mod symmetric {
                 pub fn ready(&self) -> bool {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -333,11 +333,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.ready"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Eready(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
+                                arg0: *mut u8,
                             ) -> i32;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Eready(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
                             (self).handle() as *mut u8,
                         );
                         _rt::bool_lift(ret as u8)
@@ -351,7 +351,7 @@ pub mod symmetric {
                 pub fn from_timeout(nanoseconds: u64) -> EventSubscription {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -359,11 +359,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[static]event-subscription.from-timeout"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
-                                _: i64,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+                                arg0: i64,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
                             _rt::as_i64(&nanoseconds),
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -377,7 +377,7 @@ pub mod symmetric {
                 pub fn dup(&self) -> EventSubscription {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -385,11 +385,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.dup"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Edup(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
+                                arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Edup(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
                             (self).handle() as *mut u8,
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -403,7 +403,7 @@ pub mod symmetric {
                 pub fn reset(&self) -> () {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -411,11 +411,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.reset"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Ereset(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
+                                arg0: *mut u8,
                             );
                         }
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Ereset(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
                             (self).handle() as *mut u8,
                         );
                     }
@@ -427,7 +427,7 @@ pub mod symmetric {
                 pub fn new() -> Self {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -435,9 +435,9 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[constructor]event-generator"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BconstructorX5Devent_generator() -> *mut u8;
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator() -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BconstructorX5Devent_generator();
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator();
                         EventGenerator::from_handle(ret as usize)
                     }
                 }
@@ -450,7 +450,7 @@ pub mod symmetric {
                 pub fn subscribe(&self) -> EventSubscription {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -458,11 +458,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-generator.subscribe"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Esubscribe(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
+                                arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Esubscribe(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
                             (self).handle() as *mut u8,
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -476,7 +476,7 @@ pub mod symmetric {
                 pub fn activate(&self) -> () {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -484,11 +484,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-generator.activate"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Eactivate(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+                                arg0: *mut u8,
                             );
                         }
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Eactivate(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
                             (self).handle() as *mut u8,
                         );
                     }
@@ -501,7 +501,7 @@ pub mod symmetric {
                 pub fn cancel(obj: CallbackRegistration) -> CallbackData {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -509,11 +509,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[static]callback-registration.cancel"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Dcallback_registrationX2Ecancel(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+                                arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Dcallback_registrationX2Ecancel(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
                             (&obj).take_handle() as *mut u8,
                         );
                         CallbackData::from_handle(ret as usize)
@@ -526,14 +526,14 @@ pub mod symmetric {
             pub fn run() -> () {
                 unsafe {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "run")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00run();
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00run();
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
                 }
             }
             #[allow(unused_unsafe, clippy::all)]
@@ -546,18 +546,18 @@ pub mod symmetric {
             ) -> CallbackRegistration {
                 unsafe {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "register")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register(
-                            _: *mut u8,
-                            _: *mut u8,
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
+                            arg0: *mut u8,
+                            arg1: *mut u8,
+                            arg2: *mut u8,
                         ) -> *mut u8;
                     }
-                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register(
+                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
                         (&trigger).take_handle() as *mut u8,
                         (&callback).take_handle() as *mut u8,
                         (&data).take_handle() as *mut u8,
@@ -587,7 +587,7 @@ pub mod symmetric {
                     );
                     let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -595,14 +595,14 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "register-unique"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register_unique(
-                            _: *mut u8,
-                            _: *mut u8,
-                            _: *mut u8,
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
+                            arg0: *mut u8,
+                            arg1: *mut u8,
+                            arg2: *mut u8,
+                            arg3: *mut u8,
                         );
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register_unique(
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
                         (&trigger).take_handle() as *mut u8,
                         (&callback).take_handle() as *mut u8,
                         (&data).take_handle() as *mut u8,
@@ -630,16 +630,16 @@ pub mod symmetric {
             pub fn block_on(trigger: EventSubscription) -> () {
                 unsafe {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "block-on")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00block_on(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
+                            arg0: *mut u8,
                         );
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00block_on(
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
                         (&trigger).take_handle() as *mut u8,
                     );
                 }
@@ -653,6 +653,71 @@ pub mod exports {
     pub mod symmetric {
         pub mod runtime {
             /// language neutral stream implementation
+            ///
+            /// # Rendezvous protocol (symmetric:runtime 0.4.0)
+            ///
+            /// A stream is a single channel with (at most) one reader operation and one
+            /// writer operation in flight. Like in the canonical ABI whoever arrives
+            /// *second* performs the transfer, so both orders work:
+            ///
+            /// * reader first: the reader offers an empty buffer (`start-reading`, capacity
+            ///   = maximum number of elements). The writer either takes the offered buffer
+            ///   (`start-writing`, fills it directly, hands it back with `finish-writing`)
+            ///   or offers its own filled buffer (`offer-write`), in which case the runtime
+            ///   copies `min(capacity, size)` elements from the writer's into the reader's
+            ///   buffer.
+            /// * writer first: the writer offers a buffer holding `size` lowered elements
+            ///   (`offer-write`). A later `start-reading` copies `min(capacity, size)`
+            ///   elements into the reader's buffer right away.
+            ///
+            /// Whichever side arrived first completes when the transfer happened (its
+            /// ready event is activated), the side arriving second completes in the call.
+            /// Results are collected with `read-result` / `write-result` which return the
+            /// buffer of the operation, `get-size` of it is the number of elements
+            /// transferred (which may be smaller than offered, the operation is complete
+            /// nevertheless: a partial transfer is a completed operation, the owner
+            /// offers the remainder again).
+            ///
+            /// ## Buffers and ownership
+            ///
+            /// A buffer is a caller provided piece of memory holding `capacity` elements of
+            /// `element-size` bytes each (the lowered representation of the element type).
+            /// The runtime only touches it while it is offered (between the call
+            /// offering it and the call returning it, or a successful cancel) and
+            /// `offer-write` + `start-reading` copy bytewise.
+            ///
+            /// Ownership of the elements moves with the copy, per element: the first
+            /// `get-size` elements of a completed *write* buffer now belong to the reader
+            /// (the writer must not free/drop them, it still owns elements
+            /// `[get-size, size)` and lifts them back or offers them again), the first
+            /// `get-size` elements of a completed *read* buffer are initialized and owned by
+            /// the reader (they are lifted from there). An element is never half transferred
+            /// and never transferred without being counted. The writer therefore only
+            /// loses ownership at the moment the count is reported, a cancelled or
+            /// dropped operation transfers whatever was completed before.
+            ///
+            /// ## Cancellation, EOF, drop
+            ///
+            /// * `cancel-read` / `cancel-write` withdraw the operation. They return the
+            ///   buffer with the count transferred so far (`0` if the operation was
+            ///   still waiting, the final count if the counterpart completed it
+            ///   meanwhile; a completed operation is *not* undone). `none` means no
+            ///   operation was in flight. After the call the memory of the buffer is no
+            ///   longer referenced by the runtime. If a writer currently has the buffer
+            ///   of the reader borrowed (`start-writing` .. `finish-writing`, always a
+            ///   short section) `cancel-read` waits for it.
+            /// * EOF: when the last writer handle is dropped a pending read completes with
+            ///   `stream-state.eof` (data already transferred is delivered first), when the last reader
+            ///   handle is dropped a pending write completes with `eof` (offers are
+            ///   withdrawn).
+            /// * `write-detached` is a write whose elements are copied into the stream
+            ///   (it needs no cancel, it is dropped when the reader closes), used for
+            ///   the value of a dropped future writer.
+            ///
+            /// ## Threads
+            ///
+            /// All state of a stream is protected by a lock, readers and writers may run
+            /// on different threads. Events are activated after the state changed.
             #[allow(dead_code, async_fn_in_trait, unused_imports, clippy::all)]
             pub mod symmetric_stream {
                 #[used]
@@ -778,7 +843,7 @@ pub mod exports {
                     #[inline]
                     unsafe fn drop(_handle: usize) {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -786,12 +851,12 @@ pub mod exports {
                                 target_arch = "wasm32",
                                 link_name = "[resource-drop]address"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(
+                                arg0: *mut u8,
                             );
                         }
                         unsafe {
-                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(
+                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(
                                 _handle as *mut u8,
                             )
                         };
@@ -916,7 +981,7 @@ pub mod exports {
                     #[inline]
                     unsafe fn drop(_handle: usize) {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -924,12 +989,12 @@ pub mod exports {
                                 target_arch = "wasm32",
                                 link_name = "[resource-drop]buffer"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(
+                                arg0: *mut u8,
                             );
                         }
                         unsafe {
-                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(
+                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(
                                 _handle as *mut u8,
                             )
                         };
@@ -1107,7 +1172,7 @@ pub mod exports {
                     #[inline]
                     unsafe fn drop(_handle: usize) {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -1115,12 +1180,12 @@ pub mod exports {
                                 target_arch = "wasm32",
                                 link_name = "[resource-drop]stream-obj"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(
+                                arg0: *mut u8,
                             );
                         }
                         unsafe {
-                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(
+                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(
                                 _handle as *mut u8,
                             )
                         };
@@ -1131,12 +1196,17 @@ pub mod exports {
                 pub unsafe fn _export_constructor_buffer_cabi<T_: GuestBuffer>(
                     arg0: *mut u8,
                     arg1: i64,
+                    arg2: i64,
                 ) -> *mut u8 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             Buffer::new(
-                                T_::new(Address::from_handle(arg0 as usize), arg1 as u64),
+                                T_::new(
+                                    Address::from_handle(arg0 as usize),
+                                    arg1 as u64,
+                                    arg2 as u64,
+                                ),
                             )
                         };
                         (result0).take_handle() as *mut u8
@@ -1148,7 +1218,7 @@ pub mod exports {
                     arg0: *mut u8,
                 ) -> *mut u8 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::get_address(
                                 BufferBorrow::lift(
@@ -1166,7 +1236,7 @@ pub mod exports {
                     arg0: *mut u8,
                 ) -> i64 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::get_size(
                                 BufferBorrow::lift(
@@ -1185,7 +1255,7 @@ pub mod exports {
                     arg1: i64,
                 ) {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         {
                             T_::set_size(
                                 BufferBorrow::lift(
@@ -1203,7 +1273,7 @@ pub mod exports {
                     arg0: *mut u8,
                 ) -> i64 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::capacity(
                                 BufferBorrow::lift(
@@ -1219,7 +1289,7 @@ pub mod exports {
                 #[allow(non_snake_case, unused_unsafe)]
                 pub unsafe fn _export_constructor_stream_obj_cabi<T_: GuestStreamObj>() -> *mut u8 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = { StreamObj::new(T_::new()) };
                         (result0).take_handle() as *mut u8
                     }
@@ -1231,7 +1301,7 @@ pub mod exports {
                     arg1: i32,
                 ) -> *mut u8 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::clone(
                                 StreamObjBorrow::lift(
@@ -1250,7 +1320,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8) -> i32 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::is_write_closed(
                                 StreamObjBorrow::lift(
@@ -1271,7 +1341,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8, arg1: *mut u8, arg2: *mut u8) {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::start_reading(
                                 StreamObjBorrow::lift(
@@ -1300,7 +1370,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8) -> *mut u8 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::read_ready_subscribe(
                                 StreamObjBorrow::lift(
@@ -1314,11 +1384,39 @@ pub mod exports {
                 }
                 #[doc(hidden)]
                 #[allow(non_snake_case, unused_unsafe)]
+                pub unsafe fn _export_method_stream_obj_cancel_read_cabi<
+                    T_: GuestStreamObj,
+                >(arg0: *mut u8, arg1: *mut u8) {
+                    unsafe {
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
+                        let result0 = {
+                            T_::cancel_read(
+                                StreamObjBorrow::lift(
+                                        core::ptr::with_exposed_provenance(arg0 as usize),
+                                    )
+                                    .get(),
+                            )
+                        };
+                        match result0 {
+                            Some(e) => {
+                                *arg1.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>() = (e).take_handle() as *mut u8;
+                            }
+                            None => {
+                                *arg1.add(0).cast::<u8>() = (0i32) as u8;
+                            }
+                        };
+                    }
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case, unused_unsafe)]
                 pub unsafe fn _export_method_stream_obj_close_read_cabi<
                     T_: GuestStreamObj,
                 >(arg0: *mut u8, arg1: *mut u8) {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::close_read(
                                 StreamObjBorrow::lift(
@@ -1327,29 +1425,17 @@ pub mod exports {
                                     .get(),
                             )
                         };
-                        let vec1 = result0;
-                        let len1 = vec1.len();
-                        let layout1 = _rt::alloc::Layout::from_size_align(
-                                vec1.len() * ::core::mem::size_of::<*const u8>(),
-                                ::core::mem::size_of::<*const u8>(),
-                            )
-                            .unwrap();
-                        let (result1, _cleanup1) = wit_bindgen::rt::Cleanup::new(
-                            layout1,
-                        );
-                        if let Some(cleanup) = _cleanup1 {
-                            cleanup.forget();
-                        }
-                        for (i, e) in vec1.into_iter().enumerate() {
-                            let base = result1
-                                .add(i * ::core::mem::size_of::<*const u8>());
-                            {
-                                *base.add(0).cast::<*mut u8>() = (e).take_handle()
-                                    as *mut u8;
+                        match result0 {
+                            Some(e) => {
+                                *arg1.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>() = (e).take_handle() as *mut u8;
                             }
-                        }
-                        *arg1.add(::core::mem::size_of::<*const u8>()).cast::<usize>() = len1;
-                        *arg1.add(0).cast::<*mut u8>() = result1;
+                            None => {
+                                *arg1.add(0).cast::<u8>() = (0i32) as u8;
+                            }
+                        };
                     }
                 }
                 #[doc(hidden)]
@@ -1358,7 +1444,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8, arg1: *mut u8) {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::read_result(
                                 StreamObjBorrow::lift(
@@ -1389,7 +1475,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8) -> i32 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::is_read_closed(
                                 StreamObjBorrow::lift(
@@ -1410,7 +1496,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8, arg1: *mut u8) {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::start_writing(
                                 StreamObjBorrow::lift(
@@ -1441,7 +1527,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8) -> *mut u8 {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::write_ready_subscribe(
                                 StreamObjBorrow::lift(
@@ -1459,7 +1545,7 @@ pub mod exports {
                     T_: GuestStreamObj,
                 >(arg0: *mut u8, arg1: *mut u8, arg2: *mut u8) {
                     unsafe {
-                        #[cfg(target_arch = "wasm32")] _rt::run_ctors_once();
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
                         let result0 = {
                             T_::finish_writing(
                                 StreamObjBorrow::lift(
@@ -1478,6 +1564,112 @@ pub mod exports {
                                 *arg2
                                     .add(::core::mem::size_of::<*const u8>())
                                     .cast::<*mut u8>() = (e).take_handle() as *mut u8;
+                            }
+                        };
+                    }
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case, unused_unsafe)]
+                pub unsafe fn _export_method_stream_obj_offer_write_cabi<
+                    T_: GuestStreamObj,
+                >(arg0: *mut u8, arg1: *mut u8, arg2: *mut u8) {
+                    unsafe {
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
+                        let result0 = {
+                            T_::offer_write(
+                                StreamObjBorrow::lift(
+                                        core::ptr::with_exposed_provenance(arg0 as usize),
+                                    )
+                                    .get(),
+                                Buffer::from_handle(arg1 as usize),
+                            )
+                        };
+                        match result0 {
+                            Ok(_) => {
+                                *arg2.add(0).cast::<u8>() = (0i32) as u8;
+                            }
+                            Err(e) => {
+                                *arg2.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg2
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>() = (e).take_handle() as *mut u8;
+                            }
+                        };
+                    }
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case, unused_unsafe)]
+                pub unsafe fn _export_method_stream_obj_write_detached_cabi<
+                    T_: GuestStreamObj,
+                >(arg0: *mut u8, arg1: *mut u8) {
+                    unsafe {
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
+                        {
+                            T_::write_detached(
+                                StreamObjBorrow::lift(
+                                        core::ptr::with_exposed_provenance(arg0 as usize),
+                                    )
+                                    .get(),
+                                Buffer::from_handle(arg1 as usize),
+                            )
+                        };
+                    }
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case, unused_unsafe)]
+                pub unsafe fn _export_method_stream_obj_cancel_write_cabi<
+                    T_: GuestStreamObj,
+                >(arg0: *mut u8, arg1: *mut u8) {
+                    unsafe {
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
+                        let result0 = {
+                            T_::cancel_write(
+                                StreamObjBorrow::lift(
+                                        core::ptr::with_exposed_provenance(arg0 as usize),
+                                    )
+                                    .get(),
+                            )
+                        };
+                        match result0 {
+                            Some(e) => {
+                                *arg1.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>() = (e).take_handle() as *mut u8;
+                            }
+                            None => {
+                                *arg1.add(0).cast::<u8>() = (0i32) as u8;
+                            }
+                        };
+                    }
+                }
+                #[doc(hidden)]
+                #[allow(non_snake_case, unused_unsafe)]
+                pub unsafe fn _export_method_stream_obj_write_result_cabi<
+                    T_: GuestStreamObj,
+                >(arg0: *mut u8, arg1: *mut u8) {
+                    unsafe {
+                        #[cfg(target_family = "wasm")] _rt::run_ctors_once();
+                        let result0 = {
+                            T_::write_result(
+                                StreamObjBorrow::lift(
+                                        core::ptr::with_exposed_provenance(arg0 as usize),
+                                    )
+                                    .get(),
+                            )
+                        };
+                        match result0 {
+                            Ok(e) => {
+                                *arg1.add(0).cast::<u8>() = (0i32) as u8;
+                                *arg1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<*mut u8>() = (e).take_handle() as *mut u8;
+                            }
+                            Err(e) => {
+                                *arg1.add(0).cast::<u8>() = (1i32) as u8;
+                                *arg1
+                                    .add(::core::mem::size_of::<*const u8>())
+                                    .cast::<u8>() = (e.clone() as i32) as u8;
                             }
                         };
                     }
@@ -1608,10 +1800,12 @@ pub mod exports {
                     unsafe fn resource_from_raw_(handle: *mut Self::Rep) -> Self::Rep {
                         *unsafe { _rt::Box::from_raw(handle) }
                     }
+                    /// `capacity` elements of `element-size` bytes each at `addr`
                     #[allow(async_fn_in_trait)]
-                    fn new(addr: Address, capacity: u64) -> Self;
+                    fn new(addr: Address, capacity: u64, element_size: u64) -> Self;
                     #[allow(async_fn_in_trait)]
                     fn get_address(&self) -> Address;
+                    /// number of elements: offered (writer, set before offering) or transferred (completed)
                     #[allow(async_fn_in_trait)]
                     fn get_size(&self) -> u64;
                     #[allow(async_fn_in_trait)]
@@ -1691,6 +1885,8 @@ pub mod exports {
                     /// indicates EOF
                     #[allow(async_fn_in_trait)]
                     fn is_write_closed(&self) -> bool;
+                    /// offer a buffer to read into, completes immediately if a writer is
+                    /// waiting. Returns the buffer if a read is still in flight.
                     #[allow(async_fn_in_trait)]
                     fn start_reading(
                         &self,
@@ -1698,42 +1894,68 @@ pub mod exports {
                     ) -> ::core::result::Result<(), Buffer>;
                     #[allow(async_fn_in_trait)]
                     fn read_ready_subscribe(&self) -> EventSubscription;
-                    /// close the reading side, returning any in-flight buffer(s)
+                    /// cancel the pending read, see above
                     #[allow(async_fn_in_trait)]
-                    fn close_read(&self) -> _rt::Vec<Buffer>;
+                    fn cancel_read(&self) -> ::core::option::Option<Buffer>;
+                    /// close the reading side now (as dropping the last reader does),
+                    /// returning the buffer of a read in flight (like `cancel-read`)
+                    #[allow(async_fn_in_trait)]
+                    fn close_read(&self) -> ::core::option::Option<Buffer>;
+                    /// the completed read, `get-size` is the number of elements read
                     #[allow(async_fn_in_trait)]
                     fn read_result(&self) -> ::core::result::Result<Buffer, StreamState>;
                     /// writing
                     #[allow(async_fn_in_trait)]
                     fn is_read_closed(&self) -> bool;
+                    /// borrow the buffer a reader has offered (fill it, then finish-writing)
                     #[allow(async_fn_in_trait)]
                     fn start_writing(
                         &self,
                     ) -> ::core::result::Result<Buffer, StreamState>;
                     #[allow(async_fn_in_trait)]
                     fn write_ready_subscribe(&self) -> EventSubscription;
+                    /// complete the read of the borrowed buffer with `get-size` elements
                     #[allow(async_fn_in_trait)]
                     fn finish_writing(
                         &self,
                         buffer: Buffer,
                     ) -> ::core::result::Result<(), Buffer>;
+                    /// offer `get-size` elements to read, completes immediately if a reader
+                    /// is waiting. Returns the buffer if a write is still in flight.
+                    #[allow(async_fn_in_trait)]
+                    fn offer_write(
+                        &self,
+                        buffer: Buffer,
+                    ) -> ::core::result::Result<(), Buffer>;
+                    /// like offer-write, but the elements are copied, there is no
+                    /// result and nothing to cancel
+                    #[allow(async_fn_in_trait)]
+                    fn write_detached(&self, buffer: Buffer) -> ();
+                    /// cancel the pending write, see above
+                    #[allow(async_fn_in_trait)]
+                    fn cancel_write(&self) -> ::core::option::Option<Buffer>;
+                    /// the completed write, `get-size` is the number of elements consumed
+                    #[allow(async_fn_in_trait)]
+                    fn write_result(
+                        &self,
+                    ) -> ::core::result::Result<Buffer, StreamState>;
                 }
                 #[doc(hidden)]
-                macro_rules! __export_symmetric_runtime_symmetric_stream_0_3_1_cabi {
+                macro_rules! __export_symmetric_runtime_symmetric_stream_0_4_0_cabi {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
                         const _ : () = { #[cfg_attr(target_arch = "wasm32", unsafe
                         (export_name = "[constructor]buffer"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dbuffer(arg0
-                        : * mut u8, arg1 : i64,) -> * mut u8 { unsafe {
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dbuffer(arg0
+                        : * mut u8, arg1 : i64, arg2 : i64,) -> * mut u8 { unsafe {
                         $($path_to_types)*:: _export_constructor_buffer_cabi::<<$ty as
-                        $($path_to_types)*:: Guest >::Buffer > (arg0, arg1) } }
+                        $($path_to_types)*:: Guest >::Buffer > (arg0, arg1, arg2) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]buffer.get-address"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_address(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_address(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_buffer_get_address_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
@@ -1741,7 +1963,7 @@ pub mod exports {
                         "[method]buffer.get-size"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_size(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_size(arg0
                         : * mut u8,) -> i64 { unsafe { $($path_to_types)*::
                         _export_method_buffer_get_size_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
@@ -1749,7 +1971,7 @@ pub mod exports {
                         "[method]buffer.set-size"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eset_size(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eset_size(arg0
                         : * mut u8, arg1 : i64,) { unsafe { $($path_to_types)*::
                         _export_method_buffer_set_size_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0, arg1) } }
@@ -1757,7 +1979,7 @@ pub mod exports {
                         "[method]buffer.capacity"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Ecapacity(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Ecapacity(arg0
                         : * mut u8,) -> i64 { unsafe { $($path_to_types)*::
                         _export_method_buffer_capacity_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
@@ -1765,7 +1987,7 @@ pub mod exports {
                         "[constructor]stream-obj"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dstream_obj()
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dstream_obj()
                         -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_constructor_stream_obj_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > () } }
@@ -1773,7 +1995,7 @@ pub mod exports {
                         "[method]stream-obj.clone"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclone(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclone(arg0
                         : * mut u8, arg1 : i32,) -> * mut u8 { unsafe {
                         $($path_to_types)*:: _export_method_stream_obj_clone_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -1781,7 +2003,7 @@ pub mod exports {
                         "[method]stream-obj.is-write-closed"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_write_closed(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed(arg0
                         : * mut u8,) -> i32 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_is_write_closed_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -1789,7 +2011,7 @@ pub mod exports {
                         "[method]stream-obj.start-reading"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_reading(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_reading(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_start_reading_cabi::<<$ty as
@@ -1798,15 +2020,23 @@ pub mod exports {
                         "[method]stream-obj.read-ready-subscribe"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_read_ready_subscribe_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
                         #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
+                        "[method]stream-obj.cancel-read"))] #[cfg_attr(not(target_arch =
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_read(arg0
+                        : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
+                        _export_method_stream_obj_cancel_read_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
+                        #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
                         "[method]stream-obj.close-read"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclose_read(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclose_read(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_close_read_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -1814,7 +2044,7 @@ pub mod exports {
                         "[method]stream-obj.read-result"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_result(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_result(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_read_result_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -1822,7 +2052,7 @@ pub mod exports {
                         "[method]stream-obj.is-read-closed"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_read_closed(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed(arg0
                         : * mut u8,) -> i32 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_is_read_closed_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -1830,7 +2060,7 @@ pub mod exports {
                         "[method]stream-obj.start-writing"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_writing(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_writing(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_start_writing_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -1838,7 +2068,7 @@ pub mod exports {
                         "[method]stream-obj.write-ready-subscribe"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_write_ready_subscribe_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -1846,31 +2076,64 @@ pub mod exports {
                         "[method]stream-obj.finish-writing"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Efinish_writing(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_finish_writing_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1, arg2) } }
+                        #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
+                        "[method]stream-obj.offer-write"))] #[cfg_attr(not(target_arch =
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eoffer_write(arg0
+                        : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
+                        $($path_to_types)*::
+                        _export_method_stream_obj_offer_write_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1, arg2) } }
+                        #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
+                        "[method]stream-obj.write-detached"))] #[cfg_attr(not(target_arch
+                        = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached(arg0
+                        : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
+                        _export_method_stream_obj_write_detached_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
+                        #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
+                        "[method]stream-obj.cancel-write"))] #[cfg_attr(not(target_arch =
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_write(arg0
+                        : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
+                        _export_method_stream_obj_cancel_write_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
+                        #[cfg_attr(target_arch = "wasm32", unsafe (export_name =
+                        "[method]stream-obj.write-result"))] #[cfg_attr(not(target_arch =
+                        "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
+                        extern "C" fn
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_result(arg0
+                        : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
+                        _export_method_stream_obj_write_result_cabi::<<$ty as
+                        $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(arg0
                         : usize) { $($path_to_types)*:: _export_drop_address_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::Address > (arg0) }
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(arg0
                         : usize) { $($path_to_types)*:: _export_drop_buffer_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::Buffer > (arg0) }
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(arg0
                         : usize) { $($path_to_types)*::
                         _export_drop_stream_obj_cabi::<<$ty as $($path_to_types)*:: Guest
                         >::StreamObj > (arg0) } };
                     };
                 }
                 #[doc(hidden)]
-                pub(crate) use __export_symmetric_runtime_symmetric_stream_0_3_1_cabi;
+                pub(crate) use __export_symmetric_runtime_symmetric_stream_0_4_0_cabi;
             }
         }
     }
@@ -1993,12 +2256,10 @@ mod _rt {
             unsafe { core::hint::unreachable_unchecked() }
         }
     }
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(target_family = "wasm")]
     pub fn run_ctors_once() {
         wit_bindgen::rt::run_ctors_once();
     }
-    pub use alloc_crate::alloc;
-    pub use alloc_crate::vec::Vec;
     pub use alloc_crate::boxed::Box;
     extern crate alloc as alloc_crate;
 }
@@ -2026,7 +2287,7 @@ macro_rules! __export_stream_impl_impl {
     };
     ($ty:ident with_types_in $($path_to_types_root:tt)*) => {
         $($path_to_types_root)*::
-        exports::symmetric::runtime::symmetric_stream::__export_symmetric_runtime_symmetric_stream_0_3_1_cabi!($ty
+        exports::symmetric::runtime::symmetric_stream::__export_symmetric_runtime_symmetric_stream_0_4_0_cabi!($ty
         with_types_in $($path_to_types_root)*::
         exports::symmetric::runtime::symmetric_stream);
     };
@@ -2034,14 +2295,16 @@ macro_rules! __export_stream_impl_impl {
 #[doc(inline)]
 pub(crate) use __export_stream_impl_impl as export;
 #[rustfmt::skip]
-#[cfg(target_arch = "wasm32")]
-#[unsafe(
-    link_section = "component-type:wit-bindgen:0.63.0:symmetric:runtime@0.3.1:stream-impl:encoded world"
+#[cfg_attr(
+    target_family = "wasm",
+    unsafe(
+        link_section = "component-type:wit-bindgen:0.63.0:symmetric:runtime@0.4.0:stream-impl:encoded world"
+    )
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 1853] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\xbb\x0d\x01A\x02\x01\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2066] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x90\x0f\x01A\x02\x01\
 A\x05\x01B)\x01m\x02\x07pending\x05ready\x04\0\x0ecallback-state\x03\0\0\x04\0\x11\
 callback-function\x03\x01\x04\0\x0dcallback-data\x03\x01\x04\0\x12event-subscrip\
 tion\x03\x01\x04\0\x0fevent-generator\x03\x01\x04\0\x15callback-registration\x03\
@@ -2057,28 +2320,44 @@ self\x11\0\x0b\x04\0![method]event-generator.subscribe\x01\x12\x01@\x01\x04self\
 \x04\0\x03run\x01\x17\x01i\x02\x01@\x03\x07trigger\x0b\x08callback\x18\x04data\x15\
 \0\x14\x04\0\x08register\x01\x19\x01k\x14\x01@\x03\x07trigger\x0b\x08callback\x18\
 \x04data\x15\0\x1a\x04\0\x0fregister-unique\x01\x1b\x01@\x01\x07trigger\x0b\x01\0\
-\x04\0\x08block-on\x01\x1c\x03\0*symmetric:runtime/symmetric-executor@0.3.1\x05\0\
-\x02\x03\0\0\x12event-subscription\x01B+\x02\x03\x02\x01\x01\x04\0\x12event-subs\
+\x04\0\x08block-on\x01\x1c\x03\0*symmetric:runtime/symmetric-executor@0.4.0\x05\0\
+\x02\x03\0\0\x12event-subscription\x01B1\x02\x03\x02\x01\x01\x04\0\x12event-subs\
 cription\x03\0\0\x04\0\x07address\x03\x01\x04\0\x06buffer\x03\x01\x01m\x02\x03eo\
 f\x07pending\x04\0\x0cstream-state\x03\0\x04\x04\0\x0astream-obj\x03\x01\x01i\x02\
-\x01i\x03\x01@\x02\x04addr\x07\x08capacityw\0\x08\x04\0\x13[constructor]buffer\x01\
-\x09\x01h\x03\x01@\x01\x04self\x0a\0\x07\x04\0\x1a[method]buffer.get-address\x01\
-\x0b\x01@\x01\x04self\x0a\0w\x04\0\x17[method]buffer.get-size\x01\x0c\x01@\x02\x04\
-self\x0a\x04sizew\x01\0\x04\0\x17[method]buffer.set-size\x01\x0d\x04\0\x17[metho\
-d]buffer.capacity\x01\x0c\x01i\x06\x01@\0\0\x0e\x04\0\x17[constructor]stream-obj\
-\x01\x0f\x01h\x06\x01@\x02\x04self\x10\x07writing\x7f\0\x0e\x04\0\x18[method]str\
-eam-obj.clone\x01\x11\x01@\x01\x04self\x10\0\x7f\x04\0\"[method]stream-obj.is-wr\
-ite-closed\x01\x12\x01j\0\x01\x08\x01@\x02\x04self\x10\x06buffer\x08\0\x13\x04\0\
-\x20[method]stream-obj.start-reading\x01\x14\x01i\x01\x01@\x01\x04self\x10\0\x15\
-\x04\0'[method]stream-obj.read-ready-subscribe\x01\x16\x01p\x08\x01@\x01\x04self\
-\x10\0\x17\x04\0\x1d[method]stream-obj.close-read\x01\x18\x01j\x01\x08\x01\x05\x01\
-@\x01\x04self\x10\0\x19\x04\0\x1e[method]stream-obj.read-result\x01\x1a\x04\0![m\
-ethod]stream-obj.is-read-closed\x01\x12\x04\0\x20[method]stream-obj.start-writin\
-g\x01\x1a\x04\0([method]stream-obj.write-ready-subscribe\x01\x16\x04\0![method]s\
-tream-obj.finish-writing\x01\x14\x04\0(symmetric:runtime/symmetric-stream@0.3.1\x05\
-\x02\x04\0#symmetric:runtime/stream-impl@0.3.1\x04\0\x0b\x11\x01\0\x0bstream-imp\
-l\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.263.0\x10\
-wit-bindgen-rust\x060.63.0";
+\x01i\x03\x01@\x03\x04addr\x07\x08capacityw\x0celement-sizew\0\x08\x04\0\x13[con\
+structor]buffer\x01\x09\x01h\x03\x01@\x01\x04self\x0a\0\x07\x04\0\x1a[method]buf\
+fer.get-address\x01\x0b\x01@\x01\x04self\x0a\0w\x04\0\x17[method]buffer.get-size\
+\x01\x0c\x01@\x02\x04self\x0a\x04sizew\x01\0\x04\0\x17[method]buffer.set-size\x01\
+\x0d\x04\0\x17[method]buffer.capacity\x01\x0c\x01i\x06\x01@\0\0\x0e\x04\0\x17[co\
+nstructor]stream-obj\x01\x0f\x01h\x06\x01@\x02\x04self\x10\x07writing\x7f\0\x0e\x04\
+\0\x18[method]stream-obj.clone\x01\x11\x01@\x01\x04self\x10\0\x7f\x04\0\"[method\
+]stream-obj.is-write-closed\x01\x12\x01j\0\x01\x08\x01@\x02\x04self\x10\x06buffe\
+r\x08\0\x13\x04\0\x20[method]stream-obj.start-reading\x01\x14\x01i\x01\x01@\x01\x04\
+self\x10\0\x15\x04\0'[method]stream-obj.read-ready-subscribe\x01\x16\x01k\x08\x01\
+@\x01\x04self\x10\0\x17\x04\0\x1e[method]stream-obj.cancel-read\x01\x18\x04\0\x1d\
+[method]stream-obj.close-read\x01\x18\x01j\x01\x08\x01\x05\x01@\x01\x04self\x10\0\
+\x19\x04\0\x1e[method]stream-obj.read-result\x01\x1a\x04\0![method]stream-obj.is\
+-read-closed\x01\x12\x04\0\x20[method]stream-obj.start-writing\x01\x1a\x04\0([me\
+thod]stream-obj.write-ready-subscribe\x01\x16\x04\0![method]stream-obj.finish-wr\
+iting\x01\x14\x04\0\x1e[method]stream-obj.offer-write\x01\x14\x01@\x02\x04self\x10\
+\x06buffer\x08\x01\0\x04\0![method]stream-obj.write-detached\x01\x1b\x04\0\x1f[m\
+ethod]stream-obj.cancel-write\x01\x18\x04\0\x1f[method]stream-obj.write-result\x01\
+\x1a\x04\0(symmetric:runtime/symmetric-stream@0.4.0\x05\x02\x04\0#symmetric:runt\
+ime/stream-impl@0.4.0\x04\0\x0b\x11\x01\0\x0bstream-impl\x03\0\0\0G\x09producers\
+\x01\x0cprocessed-by\x02\x0dwit-component\x070.263.0\x10wit-bindgen-rust\x060.63\
+.0";
+#[cfg(not(target_family = "wasm"))]
+const _: () = {
+    #[unsafe(export_name = "__wit_bindgen_world_symmetricX3AruntimeX400X2E4X2E0X2Fstream_impl")]
+    unsafe extern "C" fn __wit_bindgen_world(len: *mut usize) -> *const u8 {
+        if !len.is_null() {
+            unsafe {
+                *len = __WIT_BINDGEN_COMPONENT_TYPE.len();
+            }
+        }
+        __WIT_BINDGEN_COMPONENT_TYPE.as_ptr()
+    }
+};
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

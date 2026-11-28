@@ -1,76 +1,34 @@
 # Symmetric stream detailed design
 
-## Elements
-synchronization
-- `read_ready_event_send` R: activate, W: subscribe, one call might indicate multiple events
-- `write_ready_event_send` R: subscribe, W: activate
+The protocol (version 0.4.0 of `symmetric:runtime`) is specified at the top of
+`../wit/stream.wit`, the state machine of the implementation is documented at
+the top of `src/lib.rs`. This file only summarizes the pieces.
 
-reader to writer communication
-- `read_addr` R: replace with new (second), W: replace with null (second)
-- `read_size` synchronization point R: check zero (first), replace zero with size (third), W: check non-zero (first), replace with zero (third)
-- `read_closed` R: set once, W: information
+## Elements (per stream, all under one mutex)
+- `read_offer`: an empty buffer offered by the reader, waiting for a writer
+- `write_offer`: a filled buffer offered by the writer, waiting for a reader
+- `read_lent`: the reader's offer while a writer fills it directly
+  (`start-writing` .. `finish-writing`, a short section; `cancel-read` and
+  closing the reader wait for it, using a condition variable)
+- `read_done`, `write_done`: completed operations (the buffer with the number
+  of elements transferred), collected by `read-result` / `write-result`
+- `readers`, `writers`: number of open handles, 0 means closed
+- `read_event` (reader subscribes, activated on completion/EOF),
+  `write_event` (writer subscribes, activated on completion, when a reader
+  offers a buffer, and on close of the reader)
 
-writer to reader communication
-- `ready_addr` R: 
-- `ready_size` synchronization point R: check non-zero (first), replace with zero (third), W: replace with size (second)
-- `ready_capacity`
-- `write_closed` R: information, W: set once
+## Rendezvous
+Whoever arrives second performs the transfer inside its call (`start-reading`
+or `offer-write`), `min(capacity, size)` elements are copied, both operations
+complete with that count. Writers of the same process may also borrow the
+reader's offer (`start-writing`/`finish-writing`) to fill it without an
+intermediate copy.
 
-## Interaction sequence
-This sequence is compatible with many concurrent readers and writers, 
-for a one sided channel setting to -1 isn't necessary to ensure 
-a consistent set of size+addr+capacity communicated. 
-This is because in the single case the size won't change after testing.
-
-### writing side
-1. acquire or reset signal
-2. compare size to zero and (optionally) replace with -1 (busy)
-3. **fail**: check for closed
-   - **non closed**: *wait* for signal, then back to #1
-   - **closed**: *stop* writing, return
-4. **ok**: slot is locked for this writer, write addr (and capacity), then size (relase), signal reading side
-
-**any time**: Set closed, signal reader
-
-### reading side
-1. acquire or reset signal
-2. compare size to non-(zero or -1), this step avoids temporarily setting slots to -1 by readers when there is no information available
-3. **zero or -1**: check for closed
-   - **closed**: *stop* reading, return
-   - **not closed**: *wait* for signal, then back to #1
-4. **valid**: slot is ready, (optional, otherwise proceed with ok) compare with previous value and replace with -1 (busy)
-   - **fail**: *wait* for signal, then back to #1
-   - **ok**: Slot acquired, read addr (and capacity), replace size with zero (release), <br>
-     (??? signal writer ??? likely done by the other direction channel)
-
-**any time**: Set closed, signal writer
-
-## Writing sequence
-- `write-ready-subscribe`
-
-on event
-- `start-writing`
-- `finish-writing`
-
-### Signalling
-- `read-ready-activate`
-
-### Out of band information
-- `is-read-closed`
-
-## Reading sequence
-- `start-reading`
-- `read-ready-subscribe`
-
-on event
-- `read-result`
-
-### Signalling
-- `write-ready-activate`
-- `close-read`
-
-### Out of band information
-- `is-write-closed`
+## Cancellation / close
+`cancel-read`/`cancel-write` withdraw an offer or return the already completed
+buffer (with its count), after that the runtime does not reference the memory.
+The last handle of a direction going away withdraws the offers of that side and
+wakes the other side (EOF).
 
 ## Potential extensions
 - extend towards queueing multiple buffers in flight

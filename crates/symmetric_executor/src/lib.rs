@@ -395,6 +395,16 @@ impl Executor {
     }
 }
 
+/// Make a thread blocked in the executor loop collect the tasks which were
+/// registered meanwhile (by another thread). Nothing to do if the loop has
+/// never run (it will see the tasks when it starts).
+fn wake_executor() {
+    let fd = CHANGE_EVENT.load(Ordering::Acquire);
+    if fd != INVALID_FD {
+        event_fd::activate(fd);
+    }
+}
+
 static EXECUTOR: Mutex<Executor> = Mutex::new(Executor {
     active_tasks: Vec::new(),
     change_event: None,
@@ -466,6 +476,9 @@ impl symmetric_executor::Guest for Guest {
                     // actually this is unlikely, but give it a try
                     EXECUTOR.lock().unwrap().active_tasks.push(subscr);
                 }
+                // The thread running the executor might just have decided to
+                // wait for events (without this task), so wake it up.
+                wake_executor();
             }
         }
         symmetric_executor::CallbackRegistration::new(CallbackRegistrationInternal(id))

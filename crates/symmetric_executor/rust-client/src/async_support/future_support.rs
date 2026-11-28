@@ -154,17 +154,11 @@ impl<T: Unpin + Send> Future for FutureWrite<T> {
                     let subscription = writer.handle.write_ready_subscribe();
                     subscription.reset();
                     match writer.handle.write_result() {
-                        Ok(buffer) => {
-                            if buffer.get_size() >= 1 {
-                                me.state = WriteState::Done;
-                                writer.completed = true;
-                                return Poll::Ready(Ok(()));
-                            }
-                            // completed without transferring the value, offer it again
-                            writer
-                                .handle
-                                .offer_write(lowered.buffer(vtable.layout, 1))
-                                .unwrap_or_else(|_| unreachable!("write already in flight"));
+                        Ok(_) => {
+                            // the single element was taken
+                            me.state = WriteState::Done;
+                            writer.completed = true;
+                            return Poll::Ready(Ok(()));
                         }
                         Err(StreamState::Eof) => {
                             let value = unsafe { (vtable.lift)(lowered.ptr) };

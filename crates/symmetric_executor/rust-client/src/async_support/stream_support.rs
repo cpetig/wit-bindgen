@@ -59,9 +59,8 @@ unsafe impl Send for Lowered {}
 
 impl Lowered {
     fn new(layout: Layout, count: usize) -> Self {
-        let (ptr, cleanup) = Cleanup::new(
-            Layout::from_size_align(layout.size() * count, layout.align()).unwrap(),
-        );
+        let (ptr, cleanup) =
+            Cleanup::new(Layout::from_size_align(layout.size() * count, layout.align()).unwrap());
         Self {
             ptr,
             count,
@@ -126,7 +125,10 @@ impl<T: Unpin + Send + 'static> StreamWrite<'_, T> {
     pub fn cancel(self: Pin<&mut Self>) -> (StreamResult, RustBuffer<T>) {
         let me = self.get_mut();
         let result = me.writer.cancel_op(&mut me.op, &mut me.values);
-        (result, mem::replace(&mut me.values, RustBuffer::new(Vec::new())))
+        (
+            result,
+            mem::replace(&mut me.values, RustBuffer::new(Vec::new())),
+        )
     }
 }
 
@@ -137,7 +139,12 @@ impl<T: Unpin + Send + 'static> Future for StreamWrite<'_, T> {
         let me = self.get_mut();
         me.writer
             .poll_write(cx, &mut me.values, &mut me.op)
-            .map(|result| (result, mem::replace(&mut me.values, RustBuffer::new(Vec::new()))))
+            .map(|result| {
+                (
+                    result,
+                    mem::replace(&mut me.values, RustBuffer::new(Vec::new())),
+                )
+            })
     }
 }
 
@@ -151,7 +158,8 @@ impl<T> Drop for StreamWrite<'_, T> {
                     lift_all(
                         self.writer._vtable,
                         op.0.count - consumed,
-                        op.0.ptr.byte_add(consumed * self.writer._vtable.layout.size()),
+                        op.0.ptr
+                            .byte_add(consumed * self.writer._vtable.layout.size()),
                     )
                 });
             } else {
@@ -275,25 +283,23 @@ impl<T> StreamWriter<T> {
             subscription.reset();
             match self.handle.write_result() {
                 Ok(buffer) => {
+                    // The write is over: the reader took everything, or (when
+                    // `is-read-closed`) it took `consumed` elements before it
+                    // went away. The runtime keeps the write pending (and
+                    // offers the rest to later reads) until then, so there is
+                    // nothing to offer again. We keep the elements it did
+                    // not take.
                     let consumed = buffer.get_size() as usize;
-                    if consumed == 0 {
-                        // completed without transferring, offer again
-                        self.handle
-                            .offer_write(lowered.buffer(vtable.layout, lowered.count))
-                            .unwrap_or_else(|_| unreachable!("write already in flight"));
-                    } else {
-                        // the reader took `consumed` elements, we keep the rest
-                        let rest = unsafe {
-                            lift_all(
-                                vtable,
-                                lowered.count - consumed,
-                                lowered.ptr.byte_add(consumed * vtable.layout.size()),
-                            )
-                        };
-                        *values = RustBuffer::new(rest);
-                        *op = None;
-                        return Poll::Ready(StreamResult::Complete(consumed));
-                    }
+                    let rest = unsafe {
+                        lift_all(
+                            vtable,
+                            lowered.count - consumed,
+                            lowered.ptr.byte_add(consumed * vtable.layout.size()),
+                        )
+                    };
+                    *values = RustBuffer::new(rest);
+                    *op = None;
+                    return Poll::Ready(StreamResult::Complete(consumed));
                 }
                 Err(StreamState::Eof) => {
                     // all readers closed, hand back the values

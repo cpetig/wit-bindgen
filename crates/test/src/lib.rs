@@ -1434,7 +1434,7 @@ impl<'a> StepResult<'a> {
 /// completes with the first elements, a write stays pending until everything
 /// was consumed, the reader dropped or it was cancelled); what remains are
 /// limits of the clients (std::future, blocking C++17 writes, the buffer of
-/// the C++17 reader).
+/// the C++17 reader), see "C++17 async API" in crates/cpp/DESIGN.md.
 const SYMMETRIC_EXPECTED_FAILURES: &[(&str, &[&str])] = &[
     // "dropped future": the reader of a std::future can't tell that it has
     // been dropped, so the value is read (and discarded) and the writer

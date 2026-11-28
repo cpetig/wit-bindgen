@@ -162,3 +162,89 @@ Asynchronous functions in WIT are mapped to idiomatic C++20 coroutines:
 - WIT `future<T>` is mapped to `wit::FutureReader<T>`.
 - WIT `stream<T>` is mapped to `wit::StreamReader<T>`.
 - WIT `error-context` is mapped to `wit::ErrorContext`.
+
+## C++17 async API (`--async-api future`, symmetric only)
+
+MISRA C++:2023 is based on C++17, which has no coroutines. For the symmetric
+ABI (native code, threads are available) the generator can therefore map
+async functions, futures and streams to `std::future` and threads instead of
+coroutines:
+
+| WIT | C++17 (`--async-api future`) | C++20 (default, `coroutine`) |
+|---|---|---|
+| `async func(...) -> T` (import) | returns `std::future<T>` | returns `wit::Task<T>` |
+| `async func(...) -> T` (export) | implemented by returning `std::future<T>` | coroutine returning `wit::Task<T>` |
+| `future<T>` | `std::future<T>` | `wit::FutureReader<T>` |
+| `stream<T>` | `wit::stream<T>` (callback reader, `stream_writer<T>`) | `wit::StreamReader<T>` |
+| `list<T>` view | `wit::span<T>` | `std::span<T>` |
+
+With `--autosar --symmetric` this mode is implied, and `std::future` /
+`std::promise` become `ara::core::Future` / `ara::core::Promise`
+(`future_compat.h`, `WIT_ARA_FUTURE`). The option is rejected for the
+canonical (wasm) ABI, as it needs threads.
+
+The runtime part lives in `crates/symmetric_executor/cpp-client`
+(`async_support.h`, `stream_support.h`).
+
+### How it works
+
+The executor is not thread safe in the sense of polling a task from two
+threads, so everything blocking is moved to a helper thread which reports back
+through an executor event:
+
+- **Async import:** if the callee did not finish synchronously, a helper thread
+  blocks on the returned event (which also runs the executor) and then lifts
+  the results into the `std::future`. The result area (`RetArea`) is owned by
+  that thread, so dropping the `std::future` early is memory safe.
+- **Async export:** the user returns a `std::future`. If it is not ready yet, a
+  helper thread waits for it, writes the results and activates the completion
+  event of the caller.
+- **`future<T>` written by C++17:** a ready value is copied into the stream at
+  once (`write-detached`). Otherwise a helper thread waits for the
+  `std::future` and writes it afterwards.
+- **`future<T>` read by C++17:** the `std::promise` is fulfilled from an
+  executor callback. If the writer goes away without a value, `get()` throws
+  `std::future_error(broken_promise)`; with ara::core the error is
+  `future_errc::broken_promise` in the `Result`.
+- **`stream<T>`:** the reader registers a callback (`set_reader` /
+  `set_reader_until`) which is called with the elements as they arrive.
+  `stream_writer<T>::write` blocks until the reader took all elements or went
+  away; `write_nb` only hands over what a waiting reader takes right now.
+
+### Limitations
+
+These differ from the canonical ABI and from the C++20 mode. The test
+harness lists the combinations they break in `SYMMETRIC_EXPECTED_FAILURES`
+(`crates/test/src/lib.rs`).
+
+- **No cancellation.** Dropping a `std::future` does not cancel the async
+  import or tell the writer of a `future<T>` that the reader is gone. The
+  helper thread runs the call to completion and the value is discarded.
+  Writers which check whether their value was received see it as delivered.
+  An async export implemented in C++17 cannot be cancelled by its caller: a
+  cancelling caller waits until the `std::future` is ready.
+- **Asynchronous even when ready-ish.** An export returns synchronously
+  only if its `std::future` is already ready when the function returns.
+  Otherwise completion is reported later through the helper thread, even if
+  the value becomes available a moment later. The same holds for a
+  `future<T>` passed to a callee: if the `std::future` is not ready yet, its
+  value arrives after the call returned. Peers which expect a synchronous
+  result (as a canonical writer which wrote before the call would deliver it)
+  see a pending operation instead.
+- **Blocking writes.** `stream_writer<T>::write` blocks the calling thread
+  until the reader took everything. A peer that expects the write to be in
+  flight (pending) before it starts reading can deadlock or observe a
+  different order of events. Use `write_nb` from code running on the
+  executor.
+- **Small read buffer.** The stream reader offers a buffer of
+  `buffering(n)` elements, 1 by default. As in the canonical ABI, a larger
+  write is then consumed in several steps. A writer which expects one write
+  to transfer everything at once sees a partial transfer.
+- **One thread per pending operation.** Every pending import, export or
+  `future<T>` write occupies a thread until it completes. Threads which have
+  finished are joined by an executor callback; the remaining ones are joined
+  when the library is unloaded. This is not suited for many concurrent
+  operations or for systems which forbid dynamic thread creation.
+- **ara::core.** `ara::core::Future` has no exceptions, so `wit::future_get`
+  aborts on an error result. There is no `std::async`, so plain
+  `std::thread`s are used.

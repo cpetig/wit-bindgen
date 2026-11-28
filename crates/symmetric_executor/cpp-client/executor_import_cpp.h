@@ -81,6 +81,14 @@ public:
   EventSubscription Subscribe() const;
   /// Trigger all subscribers
   void Activate() const;
+  /// Callee side: `cancel` gets activated when a caller cancels the task whose
+  /// completion this generator signals (see cancel-task).
+  void LinkCancel(
+      std::reference_wrapper<const symmetric_executor::EventGenerator> cancel)
+      const;
+  /// Callee side: the task ended because of a cancellation, its results are
+  /// not written. Activates the generator like `activate`.
+  void ActivateCancelled() const;
   EventGenerator(wit::ResourceImportBase &&);
   EventGenerator(EventGenerator &&) = default;
   EventGenerator &operator=(EventGenerator &&) = default;
@@ -122,6 +130,15 @@ std::optional<CallbackRegistration> RegisterUnique(EventSubscription &&trigger,
                                                    CallbackData &&data);
 /// Wait for a specific event
 void BlockOn(EventSubscription &&trigger);
+/// Caller side: cancel the task behind `task` (the subscription returned by an
+/// async call). If it already completed, returns false right away. Otherwise
+/// the linked cancel generator (if any) is activated and the executor runs
+/// (like block-on) until the callee completes. Returns true if the callee ended
+/// with activate-cancelled (results not written), false if it completed
+/// normally (results written). Afterwards the callee no longer accesses
+/// arguments or results. A callee without link-cancel simply runs to
+/// completion.
+bool CancelTask(EventSubscription &&task);
 } // namespace symmetric_executor
 } // namespace runtime
 } // namespace symmetric

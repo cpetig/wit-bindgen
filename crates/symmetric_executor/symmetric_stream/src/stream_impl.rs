@@ -80,7 +80,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -88,12 +88,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-function"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_function(
                             arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_function(
                             _handle as *mut u8,
                         )
                     };
@@ -126,7 +126,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -134,12 +134,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-data"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_data(
                             arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_data(
                             _handle as *mut u8,
                         )
                     };
@@ -171,7 +171,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -179,12 +179,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]event-subscription"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_subscription(
                             arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_subscription(
                             _handle as *mut u8,
                         )
                     };
@@ -216,7 +216,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -224,12 +224,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]event-generator"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_generator(
                             arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_generator(
                             _handle as *mut u8,
                         )
                     };
@@ -261,7 +261,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -269,12 +269,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-registration"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_registration(
                             arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_registration(
                             _handle as *mut u8,
                         )
                     };
@@ -325,7 +325,7 @@ pub mod symmetric {
                 pub fn ready(&self) -> bool {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -333,11 +333,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.ready"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
                                 arg0: *mut u8,
                             ) -> i32;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
                             (self).handle() as *mut u8,
                         );
                         _rt::bool_lift(ret as u8)
@@ -351,7 +351,7 @@ pub mod symmetric {
                 pub fn from_timeout(nanoseconds: u64) -> EventSubscription {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -359,11 +359,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[static]event-subscription.from-timeout"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
                                 arg0: i64,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
                             _rt::as_i64(&nanoseconds),
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -377,7 +377,7 @@ pub mod symmetric {
                 pub fn dup(&self) -> EventSubscription {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -385,11 +385,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.dup"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
                                 arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
                             (self).handle() as *mut u8,
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -403,7 +403,7 @@ pub mod symmetric {
                 pub fn reset(&self) -> () {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -411,11 +411,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.reset"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
                                 arg0: *mut u8,
                             );
                         }
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
                             (self).handle() as *mut u8,
                         );
                     }
@@ -427,7 +427,7 @@ pub mod symmetric {
                 pub fn new() -> Self {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -435,9 +435,9 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[constructor]event-generator"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator() -> *mut u8;
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BconstructorX5Devent_generator() -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator();
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BconstructorX5Devent_generator();
                         EventGenerator::from_handle(ret as usize)
                     }
                 }
@@ -450,7 +450,7 @@ pub mod symmetric {
                 pub fn subscribe(&self) -> EventSubscription {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -458,11 +458,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-generator.subscribe"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
                                 arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
                             (self).handle() as *mut u8,
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -476,7 +476,7 @@ pub mod symmetric {
                 pub fn activate(&self) -> () {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -484,11 +484,65 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-generator.activate"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
                                 arg0: *mut u8,
                             );
                         }
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+                            (self).handle() as *mut u8,
+                        );
+                    }
+                }
+            }
+            impl EventGenerator {
+                #[allow(unused_unsafe, clippy::all)]
+                /// Callee side: `cancel` gets activated when a caller cancels the task whose
+                /// completion this generator signals (see cancel-task).
+                #[allow(async_fn_in_trait)]
+                pub fn link_cancel(&self, cancel: &EventGenerator) -> () {
+                    unsafe {
+                        #[link(
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
+                        )]
+                        unsafe extern "C" {
+                            #[allow(non_snake_case)]
+                            #[cfg_attr(
+                                target_arch = "wasm32",
+                                link_name = "[method]event-generator.link-cancel"
+                            )]
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel(
+                                arg0: *mut u8,
+                                arg1: *mut u8,
+                            );
+                        }
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel(
+                            (self).handle() as *mut u8,
+                            (cancel).handle() as *mut u8,
+                        );
+                    }
+                }
+            }
+            impl EventGenerator {
+                #[allow(unused_unsafe, clippy::all)]
+                /// Callee side: the task ended because of a cancellation, its results are
+                /// not written. Activates the generator like `activate`.
+                #[allow(async_fn_in_trait)]
+                pub fn activate_cancelled(&self) -> () {
+                    unsafe {
+                        #[link(
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
+                        )]
+                        unsafe extern "C" {
+                            #[allow(non_snake_case)]
+                            #[cfg_attr(
+                                target_arch = "wasm32",
+                                link_name = "[method]event-generator.activate-cancelled"
+                            )]
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled(
+                                arg0: *mut u8,
+                            );
+                        }
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled(
                             (self).handle() as *mut u8,
                         );
                     }
@@ -501,7 +555,7 @@ pub mod symmetric {
                 pub fn cancel(obj: CallbackRegistration) -> CallbackData {
                     unsafe {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -509,11 +563,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[static]callback-registration.cancel"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
                                 arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
                             (&obj).take_handle() as *mut u8,
                         );
                         CallbackData::from_handle(ret as usize)
@@ -526,14 +580,14 @@ pub mod symmetric {
             pub fn run() -> () {
                 unsafe {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "run")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00run();
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00run();
                 }
             }
             #[allow(unused_unsafe, clippy::all)]
@@ -546,18 +600,18 @@ pub mod symmetric {
             ) -> CallbackRegistration {
                 unsafe {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "register")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register(
                             arg0: *mut u8,
                             arg1: *mut u8,
                             arg2: *mut u8,
                         ) -> *mut u8;
                     }
-                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
+                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register(
                         (&trigger).take_handle() as *mut u8,
                         (&callback).take_handle() as *mut u8,
                         (&data).take_handle() as *mut u8,
@@ -587,7 +641,7 @@ pub mod symmetric {
                     );
                     let ptr0 = ret_area.0.as_mut_ptr().cast::<u8>();
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -595,14 +649,14 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "register-unique"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register_unique(
                             arg0: *mut u8,
                             arg1: *mut u8,
                             arg2: *mut u8,
                             arg3: *mut u8,
                         );
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register_unique(
                         (&trigger).take_handle() as *mut u8,
                         (&callback).take_handle() as *mut u8,
                         (&data).take_handle() as *mut u8,
@@ -630,18 +684,45 @@ pub mod symmetric {
             pub fn block_on(trigger: EventSubscription) -> () {
                 unsafe {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "block-on")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00block_on(
                             arg0: *mut u8,
                         );
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00block_on(
                         (&trigger).take_handle() as *mut u8,
                     );
+                }
+            }
+            #[allow(unused_unsafe, clippy::all)]
+            /// Caller side: cancel the task behind `task` (the subscription returned by an
+            /// async call). If it already completed, returns false right away. Otherwise the
+            /// linked cancel generator (if any) is activated and the executor runs (like
+            /// block-on) until the callee completes. Returns true if the callee ended with
+            /// activate-cancelled (results not written), false if it completed normally
+            /// (results written). Afterwards the callee no longer accesses arguments or
+            /// results. A callee without link-cancel simply runs to completion.
+            #[allow(async_fn_in_trait)]
+            pub fn cancel_task(task: EventSubscription) -> bool {
+                unsafe {
+                    #[link(
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.5.0"
+                    )]
+                    unsafe extern "C" {
+                        #[allow(non_snake_case)]
+                        #[cfg_attr(target_arch = "wasm32", link_name = "cancel-task")]
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00cancel_task(
+                            arg0: *mut u8,
+                        ) -> i32;
+                    }
+                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00cancel_task(
+                        (&task).take_handle() as *mut u8,
+                    );
+                    _rt::bool_lift(ret as u8)
                 }
             }
         }
@@ -859,7 +940,7 @@ pub mod exports {
                     #[inline]
                     unsafe fn drop(_handle: usize) {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -867,12 +948,12 @@ pub mod exports {
                                 target_arch = "wasm32",
                                 link_name = "[resource-drop]address"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(
+                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Daddress(
                                 arg0: *mut u8,
                             );
                         }
                         unsafe {
-                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(
+                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Daddress(
                                 _handle as *mut u8,
                             )
                         };
@@ -997,7 +1078,7 @@ pub mod exports {
                     #[inline]
                     unsafe fn drop(_handle: usize) {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -1005,12 +1086,12 @@ pub mod exports {
                                 target_arch = "wasm32",
                                 link_name = "[resource-drop]buffer"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(
+                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Dbuffer(
                                 arg0: *mut u8,
                             );
                         }
                         unsafe {
-                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(
+                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Dbuffer(
                                 _handle as *mut u8,
                             )
                         };
@@ -1188,7 +1269,7 @@ pub mod exports {
                     #[inline]
                     unsafe fn drop(_handle: usize) {
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.4.0"
+                            wasm_import_module = "symmetric:runtime/symmetric-stream@0.5.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -1196,12 +1277,12 @@ pub mod exports {
                                 target_arch = "wasm32",
                                 link_name = "[resource-drop]stream-obj"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(
+                            fn symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Dstream_obj(
                                 arg0: *mut u8,
                             );
                         }
                         unsafe {
-                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(
+                            symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Dstream_obj(
                                 _handle as *mut u8,
                             )
                         };
@@ -1961,13 +2042,13 @@ pub mod exports {
                     ) -> ::core::result::Result<Buffer, StreamState>;
                 }
                 #[doc(hidden)]
-                macro_rules! __export_symmetric_runtime_symmetric_stream_0_4_0_cabi {
+                macro_rules! __export_symmetric_runtime_symmetric_stream_0_5_0_cabi {
                     ($ty:ident with_types_in $($path_to_types:tt)*) => {
                         const _ : () = { #[cfg_attr(target_arch = "wasm32", unsafe
                         (export_name = "[constructor]buffer"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dbuffer(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BconstructorX5Dbuffer(arg0
                         : * mut u8, arg1 : i64, arg2 : i64,) -> * mut u8 { unsafe {
                         $($path_to_types)*:: _export_constructor_buffer_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0, arg1, arg2) } }
@@ -1975,7 +2056,7 @@ pub mod exports {
                         "[method]buffer.get-address"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_address(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5DbufferX2Eget_address(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_buffer_get_address_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
@@ -1983,7 +2064,7 @@ pub mod exports {
                         "[method]buffer.get-size"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_size(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5DbufferX2Eget_size(arg0
                         : * mut u8,) -> i64 { unsafe { $($path_to_types)*::
                         _export_method_buffer_get_size_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
@@ -1991,7 +2072,7 @@ pub mod exports {
                         "[method]buffer.set-size"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eset_size(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5DbufferX2Eset_size(arg0
                         : * mut u8, arg1 : i64,) { unsafe { $($path_to_types)*::
                         _export_method_buffer_set_size_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0, arg1) } }
@@ -1999,7 +2080,7 @@ pub mod exports {
                         "[method]buffer.capacity"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Ecapacity(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5DbufferX2Ecapacity(arg0
                         : * mut u8,) -> i64 { unsafe { $($path_to_types)*::
                         _export_method_buffer_capacity_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::Buffer > (arg0) } }
@@ -2007,7 +2088,7 @@ pub mod exports {
                         "[constructor]stream-obj"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dstream_obj()
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BconstructorX5Dstream_obj()
                         -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_constructor_stream_obj_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > () } }
@@ -2015,7 +2096,7 @@ pub mod exports {
                         "[method]stream-obj.clone"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclone(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eclone(arg0
                         : * mut u8, arg1 : i32,) -> * mut u8 { unsafe {
                         $($path_to_types)*:: _export_method_stream_obj_clone_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2023,7 +2104,7 @@ pub mod exports {
                         "[method]stream-obj.is-write-closed"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed(arg0
                         : * mut u8,) -> i32 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_is_write_closed_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -2031,7 +2112,7 @@ pub mod exports {
                         "[method]stream-obj.start-reading"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_reading(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Estart_reading(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_start_reading_cabi::<<$ty as
@@ -2040,7 +2121,7 @@ pub mod exports {
                         "[method]stream-obj.read-ready-subscribe"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_read_ready_subscribe_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -2048,7 +2129,7 @@ pub mod exports {
                         "[method]stream-obj.cancel-read"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_read(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Ecancel_read(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_cancel_read_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2056,7 +2137,7 @@ pub mod exports {
                         "[method]stream-obj.close-read"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclose_read(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eclose_read(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_close_read_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2064,7 +2145,7 @@ pub mod exports {
                         "[method]stream-obj.read-result"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_result(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eread_result(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_read_result_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2072,7 +2153,7 @@ pub mod exports {
                         "[method]stream-obj.is-read-closed"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed(arg0
                         : * mut u8,) -> i32 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_is_read_closed_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -2080,7 +2161,7 @@ pub mod exports {
                         "[method]stream-obj.start-writing"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_writing(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Estart_writing(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_start_writing_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2088,7 +2169,7 @@ pub mod exports {
                         "[method]stream-obj.write-ready-subscribe"))]
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(arg0
                         : * mut u8,) -> * mut u8 { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_write_ready_subscribe_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0) } }
@@ -2096,7 +2177,7 @@ pub mod exports {
                         "[method]stream-obj.finish-writing"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_finish_writing_cabi::<<$ty as
@@ -2105,7 +2186,7 @@ pub mod exports {
                         "[method]stream-obj.offer-write"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eoffer_write(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Eoffer_write(arg0
                         : * mut u8, arg1 : * mut u8, arg2 : * mut u8,) { unsafe {
                         $($path_to_types)*::
                         _export_method_stream_obj_offer_write_cabi::<<$ty as
@@ -2114,7 +2195,7 @@ pub mod exports {
                         "[method]stream-obj.write-detached"))] #[cfg_attr(not(target_arch
                         = "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_write_detached_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2122,7 +2203,7 @@ pub mod exports {
                         "[method]stream-obj.cancel-write"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_write(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Ecancel_write(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_cancel_write_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
@@ -2130,30 +2211,30 @@ pub mod exports {
                         "[method]stream-obj.write-result"))] #[cfg_attr(not(target_arch =
                         "wasm32"), unsafe (no_mangle))] #[allow(non_snake_case)] unsafe
                         extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_result(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5BmethodX5Dstream_objX2Ewrite_result(arg0
                         : * mut u8, arg1 : * mut u8,) { unsafe { $($path_to_types)*::
                         _export_method_stream_obj_write_result_cabi::<<$ty as
                         $($path_to_types)*:: Guest >::StreamObj > (arg0, arg1) } }
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Daddress(arg0
                         : usize) { $($path_to_types)*:: _export_drop_address_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::Address > (arg0) }
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Dbuffer(arg0
                         : usize) { $($path_to_types)*:: _export_drop_buffer_cabi::<<$ty
                         as $($path_to_types)*:: Guest >::Buffer > (arg0) }
                         #[cfg_attr(not(target_arch = "wasm32"), unsafe (no_mangle))]
                         #[allow(non_snake_case)] unsafe extern "C" fn
-                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(arg0
+                        symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00X5Bresource_dropX5Dstream_obj(arg0
                         : usize) { $($path_to_types)*::
                         _export_drop_stream_obj_cabi::<<$ty as $($path_to_types)*:: Guest
                         >::StreamObj > (arg0) } };
                     };
                 }
                 #[doc(hidden)]
-                pub(crate) use __export_symmetric_runtime_symmetric_stream_0_4_0_cabi;
+                pub(crate) use __export_symmetric_runtime_symmetric_stream_0_5_0_cabi;
             }
         }
     }
@@ -2307,7 +2388,7 @@ macro_rules! __export_stream_impl_impl {
     };
     ($ty:ident with_types_in $($path_to_types_root:tt)*) => {
         $($path_to_types_root)*::
-        exports::symmetric::runtime::symmetric_stream::__export_symmetric_runtime_symmetric_stream_0_4_0_cabi!($ty
+        exports::symmetric::runtime::symmetric_stream::__export_symmetric_runtime_symmetric_stream_0_5_0_cabi!($ty
         with_types_in $($path_to_types_root)*::
         exports::symmetric::runtime::symmetric_stream);
     };
@@ -2318,14 +2399,14 @@ pub(crate) use __export_stream_impl_impl as export;
 #[cfg_attr(
     target_family = "wasm",
     unsafe(
-        link_section = "component-type:wit-bindgen:0.63.0:symmetric:runtime@0.4.0:stream-impl:encoded world"
+        link_section = "component-type:wit-bindgen:0.63.0:symmetric:runtime@0.5.0:stream-impl:encoded world"
     )
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
-pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2066] = *b"\
-\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x90\x0f\x01A\x02\x01\
-A\x05\x01B)\x01m\x02\x07pending\x05ready\x04\0\x0ecallback-state\x03\0\0\x04\0\x11\
+pub static __WIT_BINDGEN_COMPONENT_TYPE: [u8; 2199] = *b"\
+\0asm\x0d\0\x01\0\0\x19\x16wit-component-encoding\x04\0\x07\x95\x10\x01A\x02\x01\
+A\x05\x01B.\x01m\x02\x07pending\x05ready\x04\0\x0ecallback-state\x03\0\0\x04\0\x11\
 callback-function\x03\x01\x04\0\x0dcallback-data\x03\x01\x04\0\x12event-subscrip\
 tion\x03\x01\x04\0\x0fevent-generator\x03\x01\x04\0\x15callback-registration\x03\
 \x01\x01m\x02\x07started\x0bnot-started\x04\0\x0bcall-status\x03\0\x07\x01h\x04\x01\
@@ -2335,40 +2416,42 @@ tion\x03\x01\x04\0\x0fevent-generator\x03\x01\x04\0\x15callback-registration\x03
 @\x01\x04self\x09\x01\0\x04\0\x20[method]event-subscription.reset\x01\x0e\x01i\x05\
 \x01@\0\0\x0f\x04\0\x1c[constructor]event-generator\x01\x10\x01h\x05\x01@\x01\x04\
 self\x11\0\x0b\x04\0![method]event-generator.subscribe\x01\x12\x01@\x01\x04self\x11\
-\x01\0\x04\0\x20[method]event-generator.activate\x01\x13\x01i\x06\x01i\x03\x01@\x01\
-\x03obj\x14\0\x15\x04\0$[static]callback-registration.cancel\x01\x16\x01@\0\x01\0\
-\x04\0\x03run\x01\x17\x01i\x02\x01@\x03\x07trigger\x0b\x08callback\x18\x04data\x15\
-\0\x14\x04\0\x08register\x01\x19\x01k\x14\x01@\x03\x07trigger\x0b\x08callback\x18\
-\x04data\x15\0\x1a\x04\0\x0fregister-unique\x01\x1b\x01@\x01\x07trigger\x0b\x01\0\
-\x04\0\x08block-on\x01\x1c\x03\0*symmetric:runtime/symmetric-executor@0.4.0\x05\0\
-\x02\x03\0\0\x12event-subscription\x01B1\x02\x03\x02\x01\x01\x04\0\x12event-subs\
-cription\x03\0\0\x04\0\x07address\x03\x01\x04\0\x06buffer\x03\x01\x01m\x02\x03eo\
-f\x07pending\x04\0\x0cstream-state\x03\0\x04\x04\0\x0astream-obj\x03\x01\x01i\x02\
-\x01i\x03\x01@\x03\x04addr\x07\x08capacityw\x0celement-sizew\0\x08\x04\0\x13[con\
-structor]buffer\x01\x09\x01h\x03\x01@\x01\x04self\x0a\0\x07\x04\0\x1a[method]buf\
-fer.get-address\x01\x0b\x01@\x01\x04self\x0a\0w\x04\0\x17[method]buffer.get-size\
-\x01\x0c\x01@\x02\x04self\x0a\x04sizew\x01\0\x04\0\x17[method]buffer.set-size\x01\
-\x0d\x04\0\x17[method]buffer.capacity\x01\x0c\x01i\x06\x01@\0\0\x0e\x04\0\x17[co\
-nstructor]stream-obj\x01\x0f\x01h\x06\x01@\x02\x04self\x10\x07writing\x7f\0\x0e\x04\
-\0\x18[method]stream-obj.clone\x01\x11\x01@\x01\x04self\x10\0\x7f\x04\0\"[method\
-]stream-obj.is-write-closed\x01\x12\x01j\0\x01\x08\x01@\x02\x04self\x10\x06buffe\
-r\x08\0\x13\x04\0\x20[method]stream-obj.start-reading\x01\x14\x01i\x01\x01@\x01\x04\
-self\x10\0\x15\x04\0'[method]stream-obj.read-ready-subscribe\x01\x16\x01k\x08\x01\
-@\x01\x04self\x10\0\x17\x04\0\x1e[method]stream-obj.cancel-read\x01\x18\x04\0\x1d\
-[method]stream-obj.close-read\x01\x18\x01j\x01\x08\x01\x05\x01@\x01\x04self\x10\0\
-\x19\x04\0\x1e[method]stream-obj.read-result\x01\x1a\x04\0![method]stream-obj.is\
--read-closed\x01\x12\x04\0\x20[method]stream-obj.start-writing\x01\x1a\x04\0([me\
-thod]stream-obj.write-ready-subscribe\x01\x16\x04\0![method]stream-obj.finish-wr\
-iting\x01\x14\x04\0\x1e[method]stream-obj.offer-write\x01\x14\x01@\x02\x04self\x10\
-\x06buffer\x08\x01\0\x04\0![method]stream-obj.write-detached\x01\x1b\x04\0\x1f[m\
-ethod]stream-obj.cancel-write\x01\x18\x04\0\x1f[method]stream-obj.write-result\x01\
-\x1a\x04\0(symmetric:runtime/symmetric-stream@0.4.0\x05\x02\x04\0#symmetric:runt\
-ime/stream-impl@0.4.0\x04\0\x0b\x11\x01\0\x0bstream-impl\x03\0\0\0G\x09producers\
-\x01\x0cprocessed-by\x02\x0dwit-component\x070.263.0\x10wit-bindgen-rust\x060.63\
-.0";
+\x01\0\x04\0\x20[method]event-generator.activate\x01\x13\x01@\x02\x04self\x11\x06\
+cancel\x11\x01\0\x04\0#[method]event-generator.link-cancel\x01\x14\x04\0*[method\
+]event-generator.activate-cancelled\x01\x13\x01i\x06\x01i\x03\x01@\x01\x03obj\x15\
+\0\x16\x04\0$[static]callback-registration.cancel\x01\x17\x01@\0\x01\0\x04\0\x03\
+run\x01\x18\x01i\x02\x01@\x03\x07trigger\x0b\x08callback\x19\x04data\x16\0\x15\x04\
+\0\x08register\x01\x1a\x01k\x15\x01@\x03\x07trigger\x0b\x08callback\x19\x04data\x16\
+\0\x1b\x04\0\x0fregister-unique\x01\x1c\x01@\x01\x07trigger\x0b\x01\0\x04\0\x08b\
+lock-on\x01\x1d\x01@\x01\x04task\x0b\0\x7f\x04\0\x0bcancel-task\x01\x1e\x03\0*sy\
+mmetric:runtime/symmetric-executor@0.5.0\x05\0\x02\x03\0\0\x12event-subscription\
+\x01B1\x02\x03\x02\x01\x01\x04\0\x12event-subscription\x03\0\0\x04\0\x07address\x03\
+\x01\x04\0\x06buffer\x03\x01\x01m\x02\x03eof\x07pending\x04\0\x0cstream-state\x03\
+\0\x04\x04\0\x0astream-obj\x03\x01\x01i\x02\x01i\x03\x01@\x03\x04addr\x07\x08cap\
+acityw\x0celement-sizew\0\x08\x04\0\x13[constructor]buffer\x01\x09\x01h\x03\x01@\
+\x01\x04self\x0a\0\x07\x04\0\x1a[method]buffer.get-address\x01\x0b\x01@\x01\x04s\
+elf\x0a\0w\x04\0\x17[method]buffer.get-size\x01\x0c\x01@\x02\x04self\x0a\x04size\
+w\x01\0\x04\0\x17[method]buffer.set-size\x01\x0d\x04\0\x17[method]buffer.capacit\
+y\x01\x0c\x01i\x06\x01@\0\0\x0e\x04\0\x17[constructor]stream-obj\x01\x0f\x01h\x06\
+\x01@\x02\x04self\x10\x07writing\x7f\0\x0e\x04\0\x18[method]stream-obj.clone\x01\
+\x11\x01@\x01\x04self\x10\0\x7f\x04\0\"[method]stream-obj.is-write-closed\x01\x12\
+\x01j\0\x01\x08\x01@\x02\x04self\x10\x06buffer\x08\0\x13\x04\0\x20[method]stream\
+-obj.start-reading\x01\x14\x01i\x01\x01@\x01\x04self\x10\0\x15\x04\0'[method]str\
+eam-obj.read-ready-subscribe\x01\x16\x01k\x08\x01@\x01\x04self\x10\0\x17\x04\0\x1e\
+[method]stream-obj.cancel-read\x01\x18\x04\0\x1d[method]stream-obj.close-read\x01\
+\x18\x01j\x01\x08\x01\x05\x01@\x01\x04self\x10\0\x19\x04\0\x1e[method]stream-obj\
+.read-result\x01\x1a\x04\0![method]stream-obj.is-read-closed\x01\x12\x04\0\x20[m\
+ethod]stream-obj.start-writing\x01\x1a\x04\0([method]stream-obj.write-ready-subs\
+cribe\x01\x16\x04\0![method]stream-obj.finish-writing\x01\x14\x04\0\x1e[method]s\
+tream-obj.offer-write\x01\x14\x01@\x02\x04self\x10\x06buffer\x08\x01\0\x04\0![me\
+thod]stream-obj.write-detached\x01\x1b\x04\0\x1f[method]stream-obj.cancel-write\x01\
+\x18\x04\0\x1f[method]stream-obj.write-result\x01\x1a\x04\0(symmetric:runtime/sy\
+mmetric-stream@0.5.0\x05\x02\x04\0#symmetric:runtime/stream-impl@0.5.0\x04\0\x0b\
+\x11\x01\0\x0bstream-impl\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit\
+-component\x070.263.0\x10wit-bindgen-rust\x060.63.0";
 #[cfg(not(target_family = "wasm"))]
 const _: () = {
-    #[unsafe(export_name = "__wit_bindgen_world_symmetricX3AruntimeX400X2E4X2E0X2Fstream_impl")]
+    #[unsafe(export_name = "__wit_bindgen_world_symmetricX3AruntimeX400X2E5X2E0X2Fstream_impl")]
     unsafe extern "C" fn __wit_bindgen_world(len: *mut usize) -> *const u8 {
         if !len.is_null() {
             unsafe {

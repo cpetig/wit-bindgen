@@ -41,6 +41,12 @@ interface symmetric-executor {
         subscribe: func() -> event-subscription;
         /// Trigger all subscribers
         activate: func();
+        /// Callee side: `cancel` gets activated when a caller cancels the task whose
+        /// completion this generator signals (see cancel-task).
+        link-cancel: func(cancel: borrow<event-generator>);
+        /// Callee side: the task ended because of a cancellation, its results are
+        /// not written. Activates the generator like `activate`.
+        activate-cancelled: func();
     }
 
     /// Handle to cancel a callback registration
@@ -66,4 +72,12 @@ interface symmetric-executor {
     register-unique: func(trigger: event-subscription, callback: callback-function, data: callback-data) -> option<callback-registration>;
     /// Wait for a specific event
     block-on: func(trigger: event-subscription);
+    /// Caller side: cancel the task behind `task` (the subscription returned by an
+    /// async call). If it already completed, returns false right away. Otherwise the
+    /// linked cancel generator (if any) is activated and the executor runs (like
+    /// block-on) until the callee completes. Returns true if the callee ended with
+    /// activate-cancelled (results not written), false if it completed normally
+    /// (results written). Afterwards the callee no longer accesses arguments or
+    /// results. A callee without link-cancel simply runs to completion.
+    cancel-task: func(task: event-subscription) -> bool;
 }

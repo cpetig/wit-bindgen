@@ -1,7 +1,8 @@
 use std::{
+    collections::VecDeque,
     mem::transmute,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::{Duration, SystemTime},
@@ -237,6 +238,8 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
         Self(Arc::new(Mutex::new(EventInner {
             counter: 0,
             waiting: Default::default(),
+            cancel: None,
+            cancelled: false,
         })))
     }
 
@@ -257,22 +260,49 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
     }
 
     fn activate(&self) {
-        if let Ok(mut event) = self.0.lock() {
-            event.counter += 1;
-            if DEBUGGING {
-                println!(
-                    "{} activate({:x}) counter={}",
-                    gettid(),
-                    Arc::as_ptr(&self.0) as usize,
-                    event.counter
-                );
-            }
-            event.waiting.iter().for_each(|fd| {
-                event_fd::activate(*fd);
-            });
-        } else if DEBUGGING {
-            println!("{} activate failure", gettid());
+        activate_event(&self.0, false);
+    }
+
+    fn link_cancel(&self, cancel: symmetric_executor::EventGeneratorBorrow<'_>) {
+        let cancel = Arc::clone(&cancel.get::<EventGenerator>().0);
+        if DEBUGGING {
+            println!(
+                "{} link_cancel({:x}, {:x})",
+                gettid(),
+                Arc::as_ptr(&self.0) as usize,
+                Arc::as_ptr(&cancel) as usize
+            );
         }
+        self.0.lock().unwrap().cancel = Some(cancel);
+    }
+
+    fn activate_cancelled(&self) {
+        activate_event(&self.0, true);
+    }
+}
+
+/// Trigger all subscribers of the event, `cancelled` marks the end of a task
+/// because of a cancellation (see `cancel_task`).
+fn activate_event(event: &Arc<Mutex<EventInner>>, cancelled: bool) {
+    if let Ok(mut event_inner) = event.lock() {
+        event_inner.counter += 1;
+        if cancelled {
+            event_inner.cancelled = true;
+        }
+        if DEBUGGING {
+            println!(
+                "{} activate({:x}) counter={}{}",
+                gettid(),
+                Arc::as_ptr(event) as usize,
+                event_inner.counter,
+                if cancelled { " cancelled" } else { "" }
+            );
+        }
+        event_inner.waiting.iter().for_each(|fd| {
+            event_fd::activate(*fd);
+        });
+    } else if DEBUGGING {
+        println!("{} activate failure", gettid());
     }
 }
 
@@ -282,8 +312,9 @@ impl GuestCallbackRegistration for CallbackRegistrationInternal {
     }
 }
 
+/// The right to run the executor loop, held while running the tasks (the tasks
+/// themselves are kept in `TASKS`).
 struct Executor {
-    active_tasks: Vec<QueuedEvent>,
     change_event: Option<EventFd>,
 }
 
@@ -295,6 +326,35 @@ thread_local! {
 // copy of Executor::change_event, readable while the executor is locked (by a callback
 // calling block_on)
 static CHANGE_EVENT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(INVALID_FD);
+
+/// The registered callbacks, except the ones which are running right now and the
+/// ones registered while the executor runs callbacks (`NEW_TASKS`).
+///
+/// This lock is never held while running a callback, so a callback can register new
+/// ones and run a nested loop (`block_on`, `cancel_task`) which processes the other
+/// tasks, including the ones the outer loop has not reached yet.
+static TASKS: Mutex<VecDeque<QueuedEvent>> = Mutex::new(VecDeque::new());
+// while executing tasks from the loop new ones are collected here, they are added
+// to TASKS by the next iteration of the loop (or a nested loop)
+static EXECUTOR_BUSY: AtomicBool = AtomicBool::new(false);
+static NEW_TASKS: Mutex<Vec<QueuedEvent>> = Mutex::new(Vec::new());
+
+/// Add the tasks registered meanwhile to TASKS, returns whether there were any
+fn collect_new_tasks() -> bool {
+    let new_tasks = std::mem::take(&mut *NEW_TASKS.lock().unwrap());
+    if new_tasks.is_empty() {
+        false
+    } else {
+        if DEBUGGING {
+            println!("{} Adding {} new tasks", gettid(), new_tasks.len());
+        }
+        TASKS.lock().unwrap().extend(new_tasks);
+        true
+    }
+}
+
+// every pass over the tasks gets its own number, to visit each task once
+static PASS_ID: AtomicU64 = AtomicU64::new(1);
 
 impl Executor {
     fn change_event(&mut self) -> EventFd {
@@ -309,24 +369,33 @@ impl Executor {
     }
 
     /// run the executor until it would block, returns number of handled events
-    fn tick(ex: &mut std::sync::MutexGuard<'_, Self>, ws: &mut WaitSet) -> (usize, usize) {
+    fn tick(_ex: &mut std::sync::MutexGuard<'_, Self>, ws: &mut WaitSet) -> (usize, usize) {
         let old_busy = EXECUTOR_BUSY.swap(true, Ordering::Acquire);
         assert!(!old_busy);
-        let was_in_tick = IN_TICK.replace(true);
-        let result = Self::tick_tasks(&mut ex.active_tasks, ws);
-        IN_TICK.set(was_in_tick);
+        let result = Self::tick_tasks(ws);
         let old_busy = EXECUTOR_BUSY.swap(false, Ordering::Release);
         assert!(old_busy);
         result
     }
 
-    /// run the given tasks until they would block, returns number of handled events
-    fn tick_tasks(tasks: &mut Vec<QueuedEvent>, ws: &mut WaitSet) -> (usize, usize) {
+    /// Visit each task in TASKS once, running the callbacks of the ready ones. Returns the number of handled events and of
+    /// waiting tasks.
+    fn tick_tasks(ws: &mut WaitSet) -> (usize, usize) {
+        let was_in_tick = IN_TICK.replace(true);
+        let pass = PASS_ID.fetch_add(1, Ordering::Relaxed);
         let mut count_events = 0;
         let mut count_waiting = 0;
         let now = SystemTime::now();
-        tasks.iter_mut().for_each(|task| {
-            if task.inner.ready() {
+        loop {
+            let mut task = {
+                let mut tasks = TASKS.lock().unwrap();
+                match tasks.iter().position(|task| task.pass != pass) {
+                    Some(pos) => tasks.remove(pos).unwrap(),
+                    None => break,
+                }
+            };
+            task.pass = pass;
+            let run = if task.inner.ready() {
                 if DEBUGGING {
                     println!(
                         "{} task ready {:x} {:x}",
@@ -336,25 +405,7 @@ impl Executor {
                     );
                 }
                 count_events += 1;
-                let key = EventKey::of(&task.inner);
-                let registered = &mut task.registered;
-                task.callback.take_if(|entry| {
-                    // the running callback re-registers its events, so this one doesn't count
-                    // as pending for register_unique
-                    if std::mem::take(registered) {
-                        forget_registration(&key, entry);
-                    }
-                    let result = (entry.0)(entry.1);
-                    if DEBUGGING {
-                        println!("{} callback returned {:?}", gettid(), result,);
-                    }
-                    let ready = matches!(result, CallbackState::Ready);
-                    if !ready {
-                        remember_registration(key.clone(), CallbackEntry(entry.0, entry.1));
-                        *registered = true;
-                    }
-                    ready
-                });
+                true
             } else {
                 count_waiting += 1;
                 match &task.inner {
@@ -363,34 +414,29 @@ impl Executor {
                         event: _,
                     } => {
                         ws.register(task.event_fd);
+                        false
                     }
                     EventType::SystemTime(system_time) => {
                         if *system_time > now {
                             let diff = system_time.duration_since(now).unwrap_or_default();
                             ws.timeout(diff);
+                            false
                         } else {
-                            let key = EventKey::of(&task.inner);
-                            let registered = &mut task.registered;
-                            task.callback.take_if(|entry| {
-                                if std::mem::take(registered) {
-                                    forget_registration(&key, entry);
-                                }
-                                let ready = matches!((entry.0)(entry.1), CallbackState::Ready);
-                                if !ready {
-                                    remember_registration(
-                                        key.clone(),
-                                        CallbackEntry(entry.0, entry.1),
-                                    );
-                                    *registered = true;
-                                }
-                                ready
-                            });
+                            true
                         }
                     }
                 }
+            };
+            if run {
+                // no lock is held while the callback runs
+                task.run_callback();
             }
-        });
-        tasks.retain(|task| task.callback.is_some());
+            if task.callback.is_some() {
+                TASKS.lock().unwrap().push_back(task);
+            }
+            // otherwise the task is dropped here, without holding the lock of TASKS
+        }
+        IN_TICK.set(was_in_tick);
         (count_events, count_waiting)
     }
 }
@@ -405,13 +451,7 @@ fn wake_executor() {
     }
 }
 
-static EXECUTOR: Mutex<Executor> = Mutex::new(Executor {
-    active_tasks: Vec::new(),
-    change_event: None,
-});
-// while executing tasks from the loop we can't directly queue new ones
-static EXECUTOR_BUSY: AtomicBool = AtomicBool::new(false);
-static NEW_TASKS: Mutex<Vec<QueuedEvent>> = Mutex::new(Vec::new());
+static EXECUTOR: Mutex<Executor> = Mutex::new(Executor { change_event: None });
 
 impl symmetric_executor::Guest for Guest {
     type CallbackFunction = Ignore;
@@ -457,7 +497,7 @@ impl symmetric_executor::Guest for Guest {
         let id = subscr.id;
         match EXECUTOR.try_lock() {
             Ok(mut lock) => {
-                lock.active_tasks.push(subscr);
+                TASKS.lock().unwrap().push_back(subscr);
                 let mut ws = WaitSet::new(None);
                 // process as long as there is immediate progress
                 loop {
@@ -473,8 +513,7 @@ impl symmetric_executor::Guest for Guest {
                 if EXECUTOR_BUSY.load(Ordering::Acquire) {
                     NEW_TASKS.lock().unwrap().push(subscr);
                 } else {
-                    // actually this is unlikely, but give it a try
-                    EXECUTOR.lock().unwrap().active_tasks.push(subscr);
+                    TASKS.lock().unwrap().push_back(subscr);
                 }
                 // The thread running the executor might just have decided to
                 // wait for events (without this task), so wake it up.
@@ -524,44 +563,88 @@ impl symmetric_executor::Guest for Guest {
                 }
             }
         }
-        // part of this function is never used
-        let queue = QueuedEvent::new(
-            trigger,
-            CallbackEntry(|_| CallbackState::Ready, std::ptr::null_mut()),
-        );
-        if queue.inner.ready() {
-            if DEBUGGING {
-                println!("{} block_on already ready", gettid());
+        wait_for(trigger);
+    }
+
+    fn cancel_task(task: symmetric_executor::EventSubscription) -> bool {
+        let task: EventSubscriptionInternal = task.into_inner();
+        let (event, last_counter) = match &task.inner {
+            EventType::Triggered {
+                last_counter,
+                event,
+            } => (Arc::clone(event), last_counter.load(Ordering::Acquire)),
+            // a timeout is no task, nothing to wait for
+            EventType::SystemTime(_) => return false,
+        };
+        let cancel = {
+            let inner = event.lock().unwrap();
+            if inner.counter != last_counter {
+                // completed already (or cancelled on its own)
+                if DEBUGGING {
+                    println!(
+                        "{} cancel_task({:x}) completed already",
+                        gettid(),
+                        Arc::as_ptr(&event) as usize
+                    );
+                }
+                return inner.cancelled;
             }
-            // this can happen if the subscription is a bit older
-            return;
-        }
-        run_until(Some(queue));
+            inner.cancel.clone()
+        };
         if DEBUGGING {
-            println!("{} block_on ENDED", gettid());
+            println!(
+                "{} cancel_task({:x}) cancel={:x?}",
+                gettid(),
+                Arc::as_ptr(&event) as usize,
+                cancel.as_ref().map(|c| Arc::as_ptr(c) as usize)
+            );
         }
+        // no lock held here
+        if let Some(cancel) = cancel {
+            activate_event(&cancel, false);
+        }
+        wait_for(task);
+        let cancelled = event.lock().unwrap().cancelled;
+        cancelled
     }
 }
 
-// TODO: Make this more efficient by polling the event?
+/// `block_on` for a subscription
+fn wait_for(trigger: EventSubscriptionInternal) {
+    // part of this function is never used
+    let queue = QueuedEvent::new(
+        trigger,
+        CallbackEntry(|_| CallbackState::Ready, std::ptr::null_mut()),
+    );
+    if queue.inner.ready() {
+        if DEBUGGING {
+            println!("{} block_on already ready", gettid());
+        }
+        // this can happen if the subscription is a bit older
+        return;
+    }
+    run_until(Some(queue));
+    if DEBUGGING {
+        println!("{} block_on ENDED", gettid());
+    }
+}
+
 /// `block_on` called from a callback, i.e. while this thread is already running the
-/// executor (and holds its lock). Tasks which are being processed by the outer loop are
-/// not available, only the tasks registered meanwhile (like the one `block_on` waits for)
-/// run here.
+/// executor (and holds its lock). All tasks except the running callbacks are
+/// available here (they are in `TASKS`).
 fn run_until_nested(event: Option<QueuedEvent>) {
     let change_event = CHANGE_EVENT.load(Ordering::Acquire);
-    let mut local: Vec<QueuedEvent> = Vec::new();
     loop {
-        local.append(&mut NEW_TASKS.lock().unwrap());
         let mut ws = WaitSet::new((change_event != INVALID_FD).then_some(change_event));
         if let Some(event) = event.as_ref() {
             ws.register(event.event_fd);
         }
-        let (count_events, _count_waiting) = Executor::tick_tasks(&mut local, &mut ws);
-        if !NEW_TASKS.lock().unwrap().is_empty() {
+        collect_new_tasks();
+        let (count_events, _count_waiting) = Executor::tick_tasks(&mut ws);
+        if collect_new_tasks() {
             continue;
         }
-        if local.is_empty() {
+        if TASKS.lock().unwrap().is_empty() {
             break;
         }
         if count_events != 0 {
@@ -581,8 +664,6 @@ fn run_until_nested(event: Option<QueuedEvent>) {
             break;
         }
     }
-    // let the outer loop take care of the remaining tasks
-    NEW_TASKS.lock().unwrap().append(&mut local);
 }
 
 fn run_until(event: Option<QueuedEvent>) {
@@ -597,34 +678,27 @@ fn run_until(event: Option<QueuedEvent>) {
         }
         let (count_events, count_waiting) = {
             let mut ex = EXECUTOR.lock().unwrap();
-            let (count_events, count_waiting) = Executor::tick(&mut ex, &mut ws);
-            {
-                let mut new_tasks = NEW_TASKS.lock().unwrap();
-                if !new_tasks.is_empty() {
-                    if DEBUGGING {
-                        println!("{} Adding {} new tasks", gettid(), new_tasks.len());
-                    }
-                    ex.active_tasks.append(&mut new_tasks);
-                    // collect callbacks and timeouts again
-                    continue;
-                }
+            let result = Executor::tick(&mut ex, &mut ws);
+            if collect_new_tasks() {
+                // collect callbacks and timeouts again
+                continue;
             }
-            if ex.active_tasks.is_empty() {
-                if DEBUGGING {
-                    println!("{} No work left, exiting run_until()", gettid(),);
-                }
-                break;
-            }
-            (count_events, count_waiting)
+            result
         };
+        if TASKS.lock().unwrap().is_empty() {
+            if DEBUGGING {
+                println!("{} No work left, exiting run_until()", gettid(),);
+            }
+            break;
+        }
         if count_events != 0 {
             // we processed events, perhaps more became ready
             if DEBUGGING {
                 println!(
-                        "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
-                        gettid(),
-                        EXECUTOR.lock().unwrap().active_tasks.len()
-                    );
+                    "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
+                    gettid(),
+                    TASKS.lock().unwrap().len()
+                );
             }
             continue;
         }
@@ -659,6 +733,10 @@ type Count = u32;
 struct EventInner {
     counter: Count,
     waiting: Vec<EventFd>,
+    // callee side: activated when the task signalled by this event is cancelled
+    cancel: Option<Arc<Mutex<EventInner>>>,
+    // the task ended because of a cancellation (activate_cancelled)
+    cancelled: bool,
 }
 
 struct EventGenerator(Arc<Mutex<EventInner>>);
@@ -682,6 +760,8 @@ struct QueuedEvent {
     callback: Option<CallbackEntry>,
     // whether callback is listed in REGISTRATIONS
     registered: bool,
+    // the last pass of the executor which visited this task
+    pass: u64,
 }
 
 /// Identity of the event a registration waits for
@@ -776,7 +856,32 @@ impl QueuedEvent {
             callback: Some(callback),
             event_fd,
             registered: true,
+            pass: 0,
         }
+    }
+
+    /// Run the callback (the event is ready), it stays registered if it returns
+    /// pending.
+    fn run_callback(&mut self) {
+        let key = EventKey::of(&self.inner);
+        let registered = &mut self.registered;
+        self.callback.take_if(|entry| {
+            // the running callback re-registers its events, so this one doesn't count
+            // as pending for register_unique
+            if std::mem::take(registered) {
+                forget_registration(&key, entry);
+            }
+            let result = (entry.0)(entry.1);
+            if DEBUGGING {
+                println!("{} callback returned {:?}", gettid(), result,);
+            }
+            let ready = matches!(result, CallbackState::Ready);
+            if !ready {
+                remember_registration(key.clone(), CallbackEntry(entry.0, entry.1));
+                *registered = true;
+            }
+            ready
+        });
     }
 }
 

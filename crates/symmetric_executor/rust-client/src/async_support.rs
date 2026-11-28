@@ -11,13 +11,13 @@ use std::{
     pin::Pin,
     sync::{
         atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
-        Arc, Mutex, RwLock,
+        Arc, Mutex, MutexGuard, RwLock,
     },
     task::{Context, Poll, RawWaker, RawWakerVTable},
 };
 
 use crate::executor_import::symmetric::runtime::symmetric_executor::{
-    self, CallbackState, EventGenerator, EventSubscription,
+    self, CallbackRegistration, CallbackState, EventGenerator, EventSubscription,
 };
 
 pub use future_support::{future_new, FutureReader, FutureVtable, FutureWriteCancel, FutureWriter};
@@ -45,8 +45,12 @@ struct FutureState<F: FusedFuture<Output = ()>> {
     // the event(s) this future should wake on (collected in `wake`),
     // and the means to wake the future by its `Waker`
     wake: Arc<WakeInner>,
-    // number of times this future is registered for events
+    // number of times this future is registered for events, plus the callbacks
+    // which work with the state while it is unlocked (see `settle`)
     instances: u32,
+    // the registrations of this task which can still be pending, they are
+    // cancelled once the task ended
+    registrations: Vec<CallbackRegistration>,
 }
 
 /// The generator linked to the completion event of a task (`link_cancel`), it is
@@ -81,7 +85,7 @@ impl CancelEvent {
 struct TaskState<F: FusedFuture<Output = ()>> {
     // callbacks which found `state` locked, i.e. which ran while the task was
     // polled or dropped (by a nested executor loop of `block_on` or `cancel_task`),
-    // the one holding the lock accounts for them
+    // the next one holding the lock accounts for them
     deferred: AtomicU32,
     state: Mutex<FutureState<F>>,
 }
@@ -252,25 +256,12 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
             if let Some(waker) = state_inner.completion_event.take() {
                 waker.activate();
             }
-            // Let the pending registrations on the cancel event fire, so that
-            // their callbacks don't refer to this state forever.
-            if let Some(cancel) = state_inner.cancel.take() {
-                cancel.generator.activate();
-            }
-            // free obj if last instance finished
-            // registrations on the wake event are left, let them fire
-            // so the state gets freed
-            if state_inner.instances > 0 {
-                state_inner.wake.generator.activate();
-            }
-            if state_inner.instances == 0 {
-                drop(state_inner);
-                #[cfg(feature = "trace")]
-                println!(" state {:x?} dropped", obj);
-                let _ = unsafe { Box::from_raw(obj.cast::<StateContainer<F>>()) };
-            }
+            // nobody can cancel any more, the registration is dropped by settle
+            state_inner.cancel = None;
             #[cfg(feature = "trace")]
             println!(" ready");
+            // drop the registrations, free the state
+            settle(obj, task, state_inner);
             core::ptr::null_mut()
         }
         Poll::Pending => {
@@ -308,19 +299,26 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                     events_to_register_to.push(cancel.generator.subscribe());
                 }
             }
-            // we want to register without holding the lock to enable direct recursion on ready
-            state_inner.instances += events_to_register_to.len() as u32;
-            // keep it alive in case the task finishes while registering
+            // registrations which fired meanwhile are gone
+            state_inner.registrations.retain(|r| r.is_pending());
+            // We want to register without holding the lock to enable direct recursion
+            // on ready. This callback keeps an instance while doing so, the state stays
+            // even if the task finishes meanwhile (on a direct callback).
+            state_inner.instances += events_to_register_to.len() as u32 + 1;
             let wake = Arc::clone(&state_inner.wake);
             wake.internal_refs.fetch_add(1, Ordering::AcqRel);
             drop(state_inner);
             // now the mutex is unlocked
+            let mut registrations = Vec::with_capacity(events_to_register_to.len());
+            let mut duplicates = 0;
             for waiting_for in events_to_register_to.drain(..) {
-                if super::register_unique(waiting_for, symmetric_callback::<F>, obj).is_none() {
-                    #[cfg(feature = "trace")]
-                    println!("already registered");
-                    let mut state_inner = task.state.lock().unwrap();
-                    state_inner.instances -= 1;
+                match super::register_unique(waiting_for, symmetric_callback::<F>, obj) {
+                    Some(registration) => registrations.push(registration),
+                    None => {
+                        #[cfg(feature = "trace")]
+                        println!("already registered");
+                        duplicates += 1;
+                    }
                 }
             }
             // wake after registering, to not call back directly (which would recurse
@@ -329,10 +327,61 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                 wake.generator.activate();
             }
             wake.internal_refs.fetch_sub(1, Ordering::AcqRel);
+            drop(wake);
+            let mut state_inner = task.state.lock().unwrap();
+            state_inner.instances -= duplicates + 1;
+            state_inner.registrations.extend(registrations);
+            // the task can have finished meanwhile
+            settle(obj, task, state_inner);
             #[cfg(feature = "trace")]
             println!(" chain {:x?}", wait_chain);
             wait_chain
         }
+    }
+}
+
+/// Account for the callbacks which ran while the state was locked (`deferred`). Once
+/// the task ended its registrations are cancelled (instead of waiting for their
+/// events) and the state is freed when nothing refers to it any more.
+///
+/// `callback-registration.cancel` returns the data (`obj`) if the callback won't be
+/// called, its instance is released here. Otherwise the callback ran (or runs on
+/// this thread right now, further up the stack) and accounted for its instance on
+/// entry, or deferred it (the cancel of a callback which runs on another thread
+/// returns after it returned). The registrations are cancelled while the state is
+/// unlocked: a callback running on another thread could wait for the lock.
+fn settle<'a, F: FusedFuture<Output = ()>>(
+    obj: *mut (),
+    task: &'a TaskState<F>,
+    mut state_inner: MutexGuard<'a, FutureState<F>>,
+) {
+    loop {
+        state_inner.instances -= task.deferred.swap(0, Ordering::AcqRel);
+        if state_inner.future.is_some() {
+            return;
+        }
+        if state_inner.registrations.is_empty() {
+            if state_inner.instances == 0 {
+                drop(state_inner);
+                #[cfg(feature = "trace")]
+                println!(" state {:x?} dropped", obj);
+                let _ = unsafe { Box::from_raw(obj.cast::<StateContainer<F>>()) };
+            }
+            // otherwise a callback further up the stack (registering) settles
+            return;
+        }
+        let registrations = std::mem::take(&mut state_inner.registrations);
+        // keep the state while unlocked
+        state_inner.instances += 1;
+        drop(state_inner);
+        let mut released = 0;
+        for registration in registrations {
+            if super::unregister::<()>(registration).is_some() {
+                released += 1;
+            }
+        }
+        state_inner = task.state.lock().unwrap();
+        state_inner.instances -= released + 1;
     }
 }
 
@@ -367,6 +416,7 @@ fn new_task<F: FusedFuture<Output = ()>>(
             cancellable,
             wake: WakeInner::new(),
             instances: 1,
+            registrations: Vec::new(),
         }),
     }));
     // the future needs to be pinned, but we need a mutex around it for later,
@@ -396,6 +446,19 @@ struct QueuedTask {
     start: Box<dyn FnOnce(EventGenerator, EventGenerator)>,
     completion: EventGenerator,
     cancel: EventGenerator,
+    // the registration of `cancel_queued_task`, set right after registering
+    registration: Option<CallbackRegistration>,
+}
+
+/// The data of the `cancel_queued_task` registration
+type QueuedData = Box<Arc<QueuedSlot>>;
+
+/// The task started (or was cancelled by its registration further up the stack),
+/// the registration for its cancellation before the start is not needed any more.
+fn drop_queued_registration(registration: Option<CallbackRegistration>) {
+    if let Some(data) = registration.and_then(super::unregister::<Arc<QueuedSlot>>) {
+        drop(unsafe { QueuedData::from_raw(data) });
+    }
 }
 
 // empty once the task started or was cancelled
@@ -431,13 +494,22 @@ pub fn start_task(future: impl Future<Output = ()> + 'static) -> *mut u8 {
         }),
         completion,
         cancel,
+        registration: None,
     })));
     starting.push(StartingTask(Arc::clone(&slot)));
     drop(starting);
-    // Also activated by the task once it ended (after it started), so that this
-    // registration doesn't stay around.
-    let data = Box::into_raw(Box::new(slot));
-    super::register(cancel_subscription, cancel_queued_task, data);
+    // cancelled once the task starts
+    let data = Box::into_raw(Box::new(Arc::clone(&slot)));
+    let registration = super::register(cancel_subscription, cancel_queued_task, data);
+    let mut queued = slot.lock().unwrap();
+    match queued.as_mut() {
+        Some(task) => task.registration = Some(registration),
+        // started already (by a callback which ran while registering)
+        None => {
+            drop(queued);
+            drop_queued_registration(Some(registration));
+        }
+    }
     subscription.take_handle() as *mut u8
 }
 
@@ -450,6 +522,8 @@ extern "C" fn cancel_queued_task(data: *mut Arc<QueuedSlot>) -> CallbackState {
         start,
         completion,
         cancel,
+        // this registration, it ends with this callback
+        registration: _,
     }) = queued
     {
         STARTING
@@ -492,8 +566,10 @@ pub fn backpressure_dec() {
             start,
             completion,
             cancel,
+            registration,
         }) = queued
         {
+            drop_queued_registration(registration);
             start(completion, cancel);
         }
     }

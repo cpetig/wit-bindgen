@@ -3,7 +3,7 @@ use executor_import::symmetric::runtime::symmetric_executor::{
     self, CallbackData, CallbackFunction,
 };
 pub use executor_import::symmetric::runtime::symmetric_executor::{
-    cancel_task, run, CallbackState, EventGenerator, EventSubscription,
+    cancel_task, run, CallbackRegistration, CallbackState, EventGenerator, EventSubscription,
 };
 use std::alloc::{self, Layout};
 pub use stream_import::symmetric::runtime::symmetric_stream;
@@ -19,6 +19,15 @@ pub use bitflags;
 
 pub struct EventSubscription2;
 pub struct EventGenerator2;
+
+/// Cancel a registration made by [`register`] or [`register_unique`], see
+/// `callback-registration.cancel`: returns the data pointer if the callback will
+/// not be called (the caller owns the data again), `None` if it ran to completion
+/// (returned ready) or runs on this thread right now.
+pub fn unregister<T>(registration: CallbackRegistration) -> Option<*mut T> {
+    // the handle is the data pointer, it is not owned by the executor
+    CallbackRegistration::cancel(registration).map(|data| data.take_handle() as *mut T)
+}
 
 pub fn register<T>(
     event: EventSubscription,

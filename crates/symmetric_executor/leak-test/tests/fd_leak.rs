@@ -44,8 +44,9 @@ async fn receive_until_shutdown(
     let receive = receive(reader, fds);
     futures::pin_mut!(shutdown_wait, receive);
     futures::future::select(shutdown_wait, receive).await;
-    // let the executor release the registration for the shutdown, to end run()
-    shutdown.activate();
+    // The shutdown never happens: the task drops its registration for it when it
+    // ends (callback-registration.cancel), so run() returns.
+    drop(shutdown);
 }
 
 #[test]

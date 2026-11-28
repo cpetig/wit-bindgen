@@ -1045,8 +1045,8 @@ impl WorldGenerator for Cpp {
         );
 
         if self.opts.format {
-            Self::clang_format(&mut c_str.src.as_mut_string());
-            Self::clang_format(&mut h_str.src.as_mut_string());
+            Self::clang_format(c_str.src.as_mut_string());
+            Self::clang_format(h_str.src.as_mut_string());
         }
 
         files.push(&format!("{snake}.cpp"), c_str.src.as_bytes());
@@ -1333,7 +1333,7 @@ impl CppInterfaceGenerator<'_> {
             FunctionKind::StaticSetter(i) => Some(i),
             FunctionKind::Constructor(i) => Some(i),
             FunctionKind::AsyncFreestanding => None,
-            FunctionKind::AsyncMethod(i) => Some(i),
+            FunctionKind::AsyncMethod(id) => Some(id),
             FunctionKind::AsyncStatic(i) => Some(i),
         }
         .map(|i| {
@@ -1887,7 +1887,7 @@ impl CppInterfaceGenerator<'_> {
                         uwriteln!(
                             self.r#gen.c_src.src,
                             "{wasm_sig}({});",
-                            func.params.get(0).unwrap().name
+                            func.params.first().unwrap().name
                         );
                     }
                     LiftLower::LowerArgsLiftResults => {
@@ -1914,7 +1914,7 @@ impl CppInterfaceGenerator<'_> {
                             uwriteln!(
                                 self.r#gen.c_src.src,
                                 "{classname}*){});",
-                                func.params.get(0).unwrap().name
+                                func.params.first().unwrap().name
                             );
                         } else {
                             let name = self.declare_import(
@@ -3674,12 +3674,18 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     }
 
     fn store(&mut self, ty: &str, offset: ArchitectureSize, operands: &[String]) {
+        // the explicit conversion avoids -Wconstant-conversion (e.g. variant
+        // discriminants > 127 stored as int8_t), pointers are converted implicitly
+        let value = if ty.contains('*') {
+            operands[0].clone()
+        } else {
+            format!("static_cast<{ty}>({})", operands[0])
+        };
         uwriteln!(
             self.src,
-            "*reinterpret_cast<{ty}*>({} + {}) = {};",
+            "*reinterpret_cast<{ty}*>({} + {}) = {value};",
             operands[1],
             offset.format(POINTER_SIZE_EXPRESSION),
-            operands[0]
         );
     }
 
@@ -3747,7 +3753,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
     fn lower_lift_stream(&mut self, payload: Option<&Type>) {
         match payload {
             Some(tp) => {
-                if !self.r#gen.lift_lower_defined.insert(tp.clone()) {
+                if !self.r#gen.lift_lower_defined.insert(*tp) {
                     return;
                 }
             }

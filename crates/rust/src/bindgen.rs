@@ -94,8 +94,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             };
         if let Some(library) = &self.r#gen.r#gen.opts.link_name {
             self.src.push_str(&format!(
-                "\n#[cfg_attr(not(target_arch = \"wasm32\"), link(name = \"{}\"))]",
-                library
+                "\n#[cfg_attr(not(target_arch = \"wasm32\"), link(name = \"{library}\"))]"
             ));
         }
         self.src.push_str(&crate::declare_import(
@@ -467,12 +466,16 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         }
                     )
                 } else if self.r#gen.is_exported_resource(*resource) {
-                    let name = resolve.types[*resource]
-                        .name
-                        .as_deref()
-                        .unwrap()
-                        .to_upper_camel_case();
-                    format!("{name}Borrow::lift(core::ptr::with_exposed_provenance({op} as usize))")
+                    // the symmetric ABI passes the pointer itself (usize), the
+                    // canonical ABI an i32 which is zero extended
+                    format!(
+                        "{name}Borrow::lift(core::ptr::with_exposed_provenance({op}{cast} as usize))",
+                        cast = if self.r#gen.r#gen.opts.symmetric {
+                            ""
+                        } else {
+                            " as u32"
+                        }
+                    )
                 } else {
                     let tmp = format!("handle{}", self.tmp());
                     self.handle_decls.push(format!("let {tmp};"));
@@ -788,8 +791,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let vec = self.r#gen.path_to_vec();
                 let result = if !self.r#gen.r#gen.opts.symmetric || self.r#gen.in_import {
                     format!(
-                        "<_ as From<{vec}<_>>>::from({vec}::from_raw_parts({ptr}.cast(), {0}, {0}))",
-                        len
+                        "<_ as From<{vec}<_>>>::from({vec}::from_raw_parts({ptr}.cast(), {len}, {len}))"
                     )
                 } else {
                     format!("unsafe {{ std::slice::from_raw_parts({ptr}.cast(), {len}) }}.to_vec()")

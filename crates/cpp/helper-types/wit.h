@@ -1673,9 +1673,12 @@ template <typename T> inline void sym_discard_stream(uint8_t *element) {
   }
 }
 
-/// Offer the elements not yet taken and wait until a reader took some of
-/// them (`done` is increased). If a reader is waiting already this completes
-/// without suspending. Returns false if the readers are gone.
+/// Offer the elements not yet taken and wait until a reader took all of
+/// them (`done` is increased; the runtime keeps the offset when the reader
+/// takes only some, the write stays pending). If a reader is waiting already
+/// and takes everything this completes without suspending. When the readers
+/// go away `done` is the number of elements they took before and the result is
+/// false (the elements not taken are the writer's).
 inline Task<bool> sym_write(uint8_t *stream, SymLowered &data) {
   for (;;) {
     if (!data.offered) {
@@ -1699,11 +1702,8 @@ inline Task<bool> sym_write(uint8_t *stream, SymLowered &data) {
       size_t n = sym_buffer_size(r.buffer);
       sym_buffer_drop(r.buffer);
       data.done += n;
-      if (n == 0 && data.done < data.count) {
-        // completed without a transfer, offer again
-        continue;
-      }
-      co_return true;
+      // fewer than offered means that the readers are gone
+      co_return data.done == data.count;
     }
     if (r.state == SymState::Eof) {
       // the offer is withdrawn
@@ -2376,12 +2376,9 @@ public:
     for (size_t i = 0; i < count; ++i) {
       vt->lower(std::move(values[i]), data.mem + i * vt->size);
     }
-    // a reader may take less than offered, offer the rest again
-    while (data.done < count) {
-      if (!co_await detail::sym_write(handle, data)) {
-        peer_dropped = true;
-        break;
-      }
+    // the write completes when all values were taken or the reader is gone
+    if (count > 0 && !co_await detail::sym_write(handle, data)) {
+      peer_dropped = true;
     }
     size_t done = data.done;
     StreamState s = done > 0               ? StreamState::Complete
@@ -2462,11 +2459,8 @@ public:
       co_return StreamStatus{StreamState::Dropped, 0};
     }
     detail::SymLowered data(handle, count, 0, nullptr);
-    while (data.done < count) {
-      if (!co_await detail::sym_write(handle, data)) {
-        peer_dropped = true;
-        break;
-      }
+    if (count > 0 && !co_await detail::sym_write(handle, data)) {
+      peer_dropped = true;
     }
     size_t done = data.done;
     StreamState s = done > 0               ? StreamState::Complete

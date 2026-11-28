@@ -151,6 +151,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Call the run function
     if let Ok(run) = run {
         run();
+    } else if let Ok(main) = unsafe { lib.get::<extern "C" fn() -> i32>(b"main") } {
+        // a runner without the `run` export, but a C `main`
+        let result = main();
+        if result != 0 {
+            std::process::exit(result);
+        }
     } else {
         // try async run
         let run_async: libloading::Symbol<extern "C" fn() -> *mut wit_bindgen_symmetric_rt::EventSubscription2> = unsafe { lib.get(b"runA") }?;

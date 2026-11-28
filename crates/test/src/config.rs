@@ -64,6 +64,13 @@ pub struct RuntimeTestConfig<T = HashMap<String, toml::Value>> {
     #[serde(default)]
     pub args: StringList,
 
+    /// Only use this file with `--symmetric`, it is ignored otherwise.
+    ///
+    /// For variants of tests which can't work in a component, e.g. because
+    /// they need threads.
+    #[serde(default)]
+    pub symmetric_only: bool,
+
     /// Extra command line arguments to to pass to Wasmtime, such as enabling
     /// extra wasm features.
     #[serde(default)]

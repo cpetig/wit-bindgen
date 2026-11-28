@@ -22,6 +22,10 @@ struct LangConfig {
     /// Space-separated list or array of compiler flags to pass.
     #[serde(default)]
     cflags: StringList,
+
+    /// The C++ standard to compile the bindings and the component with,
+    /// `c++20` by default (e.g. `c++17` for `--async-api future`).
+    std: Option<String>,
 }
 
 fn clangpp(runner: &Runner) -> PathBuf {
@@ -128,6 +132,12 @@ impl LanguageMethods for Cpp {
     fn compile(&self, runner: &Runner, compile: &crate::Compile) -> anyhow::Result<()> {
         let compiler = clangpp(runner);
         let config = compile.component.deserialize_lang_config::<LangConfig>()?;
+        let std_flag = format!("-std={}", config.std.as_deref().unwrap_or("c++20"));
+        // The `expected` test header (tl::expected, C++17 has no std::expected)
+        // can't coexist with libstdc++'s deprecated std::unexpected() handler,
+        // which is only declared up to C++20 (and in C++20 mode only with
+        // _GLIBCXX_USE_DEPRECATED).
+        let no_deprecated = config.std.as_deref() == Some("c++17");
 
         let cwd = std::env::current_dir()?;
         let mut helper_dir = cwd.clone();
@@ -169,11 +179,14 @@ impl LanguageMethods for Cpp {
             .arg("-Wextra")
             .arg("-Werror")
             .arg("-Wno-unused-parameter")
-            .arg("-std=c++20")
+            .arg(&std_flag)
             .arg("-c")
             .arg("-g")
             .arg("-o")
             .arg(&bindings_object);
+        if no_deprecated {
+            cmd.arg("-D_GLIBCXX_USE_DEPRECATED=0");
+        }
         runner.run_command(&mut cmd)?;
 
         // Now compile the runner's source code to with the above object and the
@@ -207,10 +220,13 @@ impl LanguageMethods for Cpp {
             .arg("-Werror")
             .arg("-Wc++-compat")
             .arg("-Wno-unused-parameter")
-            .arg("-std=c++20")
+            .arg(&std_flag)
             .arg("-g")
             .arg("-o")
             .arg(&output);
+        if no_deprecated {
+            cmd.arg("-D_GLIBCXX_USE_DEPRECATED=0");
+        }
         for flag in Vec::from(config.cflags) {
             cmd.arg(flag);
         }
@@ -218,13 +234,23 @@ impl LanguageMethods for Cpp {
             cmd.arg("-mexec-model=reactor");
             cmd.arg("-Wl,--skip-wit-component");
         } else {
+            let mut version_script = compile
+                .bindings_dir
+                .join(format!("{}.verscr", compile.component.bindgen.world));
+            if compile.component.contents.contains("int main(") {
+                // A runner with a `main` instead of the `run` export is started
+                // by calling `main`, so export it as well.
+                let exported = std::fs::read_to_string(&version_script)?.replacen(
+                    "global:",
+                    "global:\n    main;",
+                    1,
+                );
+                version_script = version_script.with_extension("main.verscr");
+                std::fs::write(&version_script, exported)?;
+            }
             cmd.arg("-fPIC").arg(format!(
                 "-Wl,--version-script={}",
-                compile
-                    .bindings_dir
-                    .join(format!("{}.verscr", compile.component.bindgen.world))
-                    .to_str()
-                    .unwrap() // .to_string(),
+                version_script.to_str().unwrap()
             ));
             for i in runner.cpp_state.as_ref().unwrap().native_deps.iter() {
                 cmd.arg(format!("-L{}", i.as_os_str().to_str().unwrap()));
@@ -328,10 +354,6 @@ impl LanguageMethods for Cpp {
         runner.is_symmetric()
             && ((matches!(component.kind, crate::Kind::Test) && name == "param-ownership")
                 // cancellation is not supported by the symmetric ABI
-                || name == "cancel-import"
-                // Generated with `--async-api future` (`std::future`), these
-                // still don't work (callbacks and threads of the old API).
-                || name == "future-string"
-                || name == "stream-string")
+                || name == "cancel-import")
     }
 }

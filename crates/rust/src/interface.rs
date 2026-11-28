@@ -1486,12 +1486,29 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
 ",
         );
         let params = self.print_export_sig(func, async_);
+        // The symbol of an async function (suffix `A`) returns the event of its
+        // completion, `null` if it has completed. A sync lowered async function
+        // completes before it returns.
+        let returns_event = symmetric
+            && !async_
+            && !symbol_extensions(func).is_empty()
+            && self
+                .resolve
+                .wasm_signature_symmetric(AbiVariant::GuestExport, func, true)
+                .results
+                .is_empty();
+        if returns_event {
+            self.push_str(" -> *mut u8");
+        }
         self.push_str(" {\n");
         uwriteln!(
             self.src,
             "unsafe {{ {path_to_self}::_export_{name_snake}_cabi::<{ty}>({}) }}",
             params.join(", ")
         );
+        if returns_event {
+            self.push_str("core::ptr::null_mut()\n");
+        }
         self.push_str("}\n");
 
         if async_ && !symmetric {

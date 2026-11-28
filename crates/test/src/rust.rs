@@ -534,9 +534,7 @@ mod core {}
         runner.is_symmetric()
             && ((test.name == "resource_floats" && component.name != "leaf")
                 || test.name == "map"
-                || test.name == /*rust*/"with-types"
-                // no `backpressure_inc`/`backpressure_dec` in the symmetric Rust runtime
-                || (matches!(component.kind, crate::Kind::Test) && test.name == "cancel-import"))
+                || test.name == /*rust*/"with-types")
     }
 
     fn should_fail_runtime2(
@@ -556,8 +554,12 @@ mod core {}
                 // A write is completed by a read of a smaller buffer, the symmetric
                 // stream returns the partial count.
                 || (name == "simple-stream-payload" && matches!(component.kind, crate::Kind::Runner))
-                // These rely on cancelling a task or a stream write, which the symmetric
-                // runtime doesn't have.
+                // The caller of an async function has no way to tell the callee
+                // task (which is only reachable through the event it returns)
+                // that the call was cancelled, so its handles are not dropped.
+                || name == "cancel-import"
+                // These rely on cancelling a task, which the symmetric runtime
+                // doesn't have.
                 || name == "nested-future-stream"
                 || name == "stream-write-cancel"
                 // `intermediate` imports `toplevel-import`, which the wasm

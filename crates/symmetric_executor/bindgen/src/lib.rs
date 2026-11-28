@@ -24,7 +24,7 @@ pub use original::{generate, resource, rt};
 
 #[cfg(all(feature = "async", feature = "symmetric"))]
 pub use rt::async_support::{
-    block_on, spawn, spawn_local, yield_async, yield_blocking, FutureReader, FutureWriteCancel,
+    backpressure_dec, backpressure_inc, block_on, spawn, spawn_local, yield_async, yield_blocking, FutureReader, FutureWriteCancel,
     FutureWriter, JoinHandle, StreamReader, StreamResult, StreamWriter,
 };
 

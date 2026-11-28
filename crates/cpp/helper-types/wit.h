@@ -1,4 +1,6 @@
 #pragma once
+#ifndef WIT_BINDGEN_WIT_H_DEFINED
+#define WIT_BINDGEN_WIT_H_DEFINED
 
 #include <assert.h>
 #include <map>
@@ -1888,3 +1890,4 @@ public:
   }
 };
 } // namespace wit
+#endif // WIT_BINDGEN_WIT_H_DEFINED

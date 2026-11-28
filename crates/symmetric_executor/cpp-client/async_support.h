@@ -256,7 +256,7 @@ private:
     }
   };
 
-  // offer the elements not yet taken, completed at once if a reader is waiting
+  // offer the elements, completed at once if a reader is waiting and takes all
   bool offer(lowered &data) {
     symmetric::runtime::symmetric_stream::Buffer buffer(
         symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase(
@@ -302,30 +302,28 @@ public:
     return mem.rest();
   }
 
-  // blocks until all data is written or the reader is gone
+  // blocks until all data is written or the reader is gone (the elements the
+  // reader took before it went away are not dropped)
   void write(std::vector<T> &&data) {
     if (data.empty()) {
       return;
     }
     lowered mem(data);
-    while (mem.done < mem.count) {
-      if (!offer(mem)) {
-        abort();
+    if (!offer(mem)) {
+      abort();
+    }
+    // The runtime keeps the write pending until the readers have taken all
+    // elements (it remembers the offset), or they are gone.
+    for (;;) {
+      auto subsc = handle.WriteReadySubscribe();
+      subsc.Reset();
+      progress state = collect(mem);
+      if (state != progress::pending) {
+        // the elements not taken (reader gone) are dropped
+        mem.rest();
+        return;
       }
-      for (;;) {
-        auto subsc = handle.WriteReadySubscribe();
-        subsc.Reset();
-        progress state = collect(mem);
-        if (state == progress::taken) {
-          break;
-        }
-        if (state == progress::eof) {
-          // the remaining elements are dropped
-          mem.rest();
-          return;
-        }
-        symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));
-      }
+      symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));
     }
   }
   // bool IsReadyToWrite() const {

@@ -3,7 +3,7 @@ use executor_import::symmetric::runtime::symmetric_executor::{
     self, CallbackData, CallbackFunction,
 };
 pub use executor_import::symmetric::runtime::symmetric_executor::{
-    run, CallbackState, EventGenerator, EventSubscription,
+    cancel_task, run, CallbackState, EventGenerator, EventSubscription,
 };
 use std::alloc::{self, Layout};
 pub use stream_import::symmetric::runtime::symmetric_stream;

@@ -10,7 +10,7 @@ use std::{
     ops::DerefMut,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
     },
     task::{Context, Poll, RawWaker, RawWakerVTable},
@@ -33,9 +33,15 @@ pub mod stream_support;
 mod subtask;
 
 struct FutureState<F: FusedFuture<Output = ()>> {
-    future: F,
+    // `None` once the task completed or was cancelled
+    future: Option<F>,
     // signal to activate once the current async future has finished
     completion_event: Option<EventGenerator>,
+    // tasks of async exports: the caller cancels them through this (see
+    // `cancel_task`), until the task ended
+    cancel: Option<CancelEvent>,
+    // whether `cancel` is set up when the task goes pending for the first time
+    cancellable: bool,
     // the event(s) this future should wake on (collected in `wake`),
     // and the means to wake the future by its `Waker`
     wake: Arc<WakeInner>,
@@ -43,7 +49,44 @@ struct FutureState<F: FusedFuture<Output = ()>> {
     instances: u32,
 }
 
-type StateContainer<F> = Mutex<FutureState<F>>;
+/// The generator linked to the completion event of a task (`link_cancel`), it is
+/// activated by a caller which cancels the task.
+struct CancelEvent {
+    generator: EventGenerator,
+    // not registered anywhere, tells whether the generator was activated
+    check: EventSubscription,
+    // whether the task is registered on the generator
+    registered: bool,
+}
+
+impl CancelEvent {
+    fn new(completion: &EventGenerator) -> Self {
+        let generator = EventGenerator::new();
+        completion.link_cancel(&generator);
+        Self::from_generator(generator)
+    }
+
+    fn from_generator(generator: EventGenerator) -> Self {
+        // the subscription sees activations from before its creation as well
+        let check = generator.subscribe();
+        Self {
+            generator,
+            check,
+            registered: false,
+        }
+    }
+}
+
+/// The state of a task, the executor calls `symmetric_callback` with a pointer to it.
+struct TaskState<F: FusedFuture<Output = ()>> {
+    // callbacks which found `state` locked, i.e. which ran while the task was
+    // polled or dropped (by a nested executor loop of `block_on` or `cancel_task`),
+    // the one holding the lock accounts for them
+    deferred: AtomicU32,
+    state: Mutex<FutureState<F>>,
+}
+
+type StateContainer<F> = TaskState<F>;
 
 /// State shared between a task and the `Waker`s handed out to its futures.
 struct WakeInner {
@@ -99,19 +142,21 @@ fn new_waker(wake: &Arc<WakeInner>) -> Waker {
 
 unsafe fn poll<F: FusedFuture<Output = ()>>(state: Pin<&mut FutureState<F>>) -> Poll<()> {
     let state_ref = unsafe { Pin::into_inner_unchecked(state) };
-    if state_ref.future.is_terminated() {
-        Poll::Ready(())
-    } else {
-        // pin projection
-        let mut pinned = unsafe { Pin::new_unchecked(&mut state_ref.future) };
-        // wakes from before this poll are served by it
-        state_ref.wake.woken.store(false, Ordering::Release);
-        let waker = new_waker(&state_ref.wake);
-        let mut context = Context::from_waker(&waker);
-        #[cfg(feature = "trace")]
-        println!(" Poll wait cx {:x?}", &context as *const _ as usize,);
-        pinned.as_mut().poll(&mut context)
+    let Some(future) = state_ref.future.as_mut() else {
+        return Poll::Ready(());
+    };
+    if future.is_terminated() {
+        return Poll::Ready(());
     }
+    // pin projection
+    let mut pinned = unsafe { Pin::new_unchecked(future) };
+    // wakes from before this poll are served by it
+    state_ref.wake.woken.store(false, Ordering::Release);
+    let waker = new_waker(&state_ref.wake);
+    let mut context = Context::from_waker(&waker);
+    #[cfg(feature = "trace")]
+    println!(" Poll wait cx {:x?}", &context as *const _ as usize,);
+    pinned.as_mut().poll(&mut context)
 }
 
 pub fn context_set_wait(cx: &Context, wait_for: EventSubscription) {
@@ -163,14 +208,55 @@ pub async fn wait_on(wait_for: EventSubscription) {
 fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () {
     #[cfg(feature = "trace")]
     println!("# Callback on {:?}", obj);
-    let state = obj.cast::<StateContainer<F>>();
-    let mut state_inner = unsafe { &mut *state }.lock().unwrap();
+    let task = unsafe { &*obj.cast::<StateContainer<F>>() };
+    let Ok(mut state_inner) = task.state.try_lock() else {
+        // This task is being polled (or dropped) right now further up the stack,
+        // which ran the executor (`block_on`, `cancel_task`). It takes care of
+        // this event once it is done.
+        #[cfg(feature = "trace")]
+        println!(" deferred");
+        task.deferred.fetch_add(1, Ordering::AcqRel);
+        return core::ptr::null_mut();
+    };
     state_inner.instances -= 1;
-    let state_mut = state_inner.deref_mut();
-    let pinned_state = unsafe { Pin::new_unchecked(state_mut) };
 
-    match unsafe { poll(pinned_state) } {
+    // Has the caller cancelled this task (see `cancel_task`)?
+    let cancel_requested = state_inner.future.is_some()
+        && state_inner
+            .cancel
+            .as_ref()
+            .is_some_and(|cancel| cancel.check.ready());
+    let result = if cancel_requested {
+        #[cfg(feature = "trace")]
+        println!(" cancelled");
+        // Dropping the future drops the arguments and everything else it owns,
+        // callbacks of this task which run meanwhile are deferred (locked).
+        state_inner.future = None;
+        if let Some(completion) = state_inner.completion_event.take() {
+            completion.activate_cancelled();
+        }
+        Poll::Ready(())
+    } else {
+        let state_mut = state_inner.deref_mut();
+        let pinned_state = unsafe { Pin::new_unchecked(state_mut) };
+        unsafe { poll(pinned_state) }
+    };
+    // callbacks which ran during the poll
+    let deferred = task.deferred.swap(0, Ordering::AcqRel);
+    state_inner.instances -= deferred;
+
+    match result {
         Poll::Ready(_) => {
+            state_inner.future = None;
+            // The results are written, the caller can continue.
+            if let Some(waker) = state_inner.completion_event.take() {
+                waker.activate();
+            }
+            // Let the pending registrations on the cancel event fire, so that
+            // their callbacks don't refer to this state forever.
+            if let Some(cancel) = state_inner.cancel.take() {
+                cancel.generator.activate();
+            }
             // free obj if last instance finished
             // registrations on the wake event are left, let them fire
             // so the state gets freed
@@ -178,13 +264,10 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                 state_inner.wake.generator.activate();
             }
             if state_inner.instances == 0 {
-                if let Some(waker) = &state_inner.completion_event {
-                    waker.activate();
-                }
                 drop(state_inner);
                 #[cfg(feature = "trace")]
-                println!(" state {:x?} dropped", state);
-                let _ = unsafe { Box::from_raw(state) };
+                println!(" state {:x?} dropped", obj);
+                let _ = unsafe { Box::from_raw(obj.cast::<StateContainer<F>>()) };
             }
             #[cfg(feature = "trace")]
             println!(" ready");
@@ -193,8 +276,9 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
         Poll::Pending => {
             let mut events_to_register_to =
                 std::mem::take(&mut *state_inner.wake.waiting_for.lock().unwrap());
-            // someone holding a `Waker` can wake us at any time (or already did)
-            let woken = state_inner.wake.woken.load(Ordering::Acquire);
+            // someone holding a `Waker` can wake us at any time (or already did),
+            // events which were deferred during the poll need another poll
+            let woken = state_inner.wake.woken.load(Ordering::Acquire) || deferred > 0;
             // (the state owns one reference)
             let held_elsewhere = Arc::strong_count(&state_inner.wake)
                 > 1 + state_inner.wake.internal_refs.load(Ordering::Acquire);
@@ -204,21 +288,26 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                 subscription.reset();
                 events_to_register_to.push(subscription);
             }
-            let wait_chain = if state_inner.completion_event.is_none() {
-                state_inner
-                    .completion_event
-                    .insert(EventGenerator::new())
-                    .subscribe()
-                    .take_handle() as *mut ()
-            } else {
-                state_inner
-                    .completion_event
-                    .as_ref()
-                    .unwrap()
-                    .subscribe()
-                    .take_handle() as *mut ()
-                // core::ptr::null_mut()
-            };
+            if state_inner.completion_event.is_none() {
+                let completion = EventGenerator::new();
+                if state_inner.cancellable && state_inner.cancel.is_none() {
+                    state_inner.cancel = Some(CancelEvent::new(&completion));
+                }
+                state_inner.completion_event = Some(completion);
+            }
+            let wait_chain = state_inner
+                .completion_event
+                .as_ref()
+                .unwrap()
+                .subscribe()
+                .take_handle() as *mut ();
+            // be polled when the caller cancels this task
+            if let Some(cancel) = state_inner.cancel.as_mut() {
+                if !cancel.registered {
+                    cancel.registered = true;
+                    events_to_register_to.push(cancel.generator.subscribe());
+                }
+            }
             // we want to register without holding the lock to enable direct recursion on ready
             state_inner.instances += events_to_register_to.len() as u32;
             // keep it alive in case the task finishes while registering
@@ -230,7 +319,7 @@ fn symmetric_callback_sub<F: FusedFuture<Output = ()>>(obj: *mut ()) -> *mut () 
                 if super::register_unique(waiting_for, symmetric_callback::<F>, obj).is_none() {
                     #[cfg(feature = "trace")]
                     println!("already registered");
-                    let mut state_inner = unsafe { &mut *state }.lock().unwrap();
+                    let mut state_inner = task.state.lock().unwrap();
                     state_inner.instances -= 1;
                 }
             }
@@ -258,17 +347,35 @@ extern "C" fn symmetric_callback<F: FusedFuture<Output = ()>>(obj: *mut ()) -> C
     CallbackState::Ready
 }
 
-pub fn first_poll_sub<F: FusedFuture<Output = ()>>(future: F) -> *mut () {
+/// Create the state of a task and poll it for the first time. `completion` and
+/// `cancel` are the generators the caller already knows (tasks started after
+/// backpressure), `cancellable` tasks (of async exports) can be cancelled by the
+/// caller.
+fn new_task<F: FusedFuture<Output = ()>>(
+    future: F,
+    completion: Option<EventGenerator>,
+    cancel: Option<EventGenerator>,
+    cancellable: bool,
+) -> *mut () {
     // Pin on the Box is assumed here
-    let state = Box::into_raw(Box::new(Mutex::new(FutureState {
-        future,
-        completion_event: None,
-        wake: WakeInner::new(),
-        instances: 1,
-    })));
+    let state = Box::into_raw(Box::new(TaskState {
+        deferred: AtomicU32::new(0),
+        state: Mutex::new(FutureState {
+            future: Some(future),
+            completion_event: completion,
+            cancel: cancel.map(CancelEvent::from_generator),
+            cancellable,
+            wake: WakeInner::new(),
+            instances: 1,
+        }),
+    }));
     // the future needs to be pinned, but we need a mutex around it for later,
     // so we trade the mutex overhead for pin consistency
     symmetric_callback_sub::<F>(state.cast())
+}
+
+pub fn first_poll_sub<F: FusedFuture<Output = ()>>(future: F) -> *mut () {
+    new_task(future, None, None, false)
 }
 
 /// Poll the future generated by a call to an async-lifted export once, calling
@@ -279,13 +386,22 @@ pub fn first_poll_sub<F: FusedFuture<Output = ()>>(future: F) -> *mut () {
 /// completed immediately; otherwise it returns null.
 #[doc(hidden)]
 pub fn first_poll(future: impl Future<Output = ()> + 'static) -> *mut () {
-    first_poll_sub(future.fuse())
+    new_task(future.fuse(), None, None, true)
 }
 
-// Tasks created while backpressure is active, they start (are polled
-// for the first time) once it is released. The caller already got the
-// subscription of their completion.
-struct StartingTask(Box<dyn FnOnce()>);
+/// A task created while backpressure is active, it starts (is polled for the
+/// first time) once it is released. The caller already got the subscription of
+/// its completion and can cancel it before it starts.
+struct QueuedTask {
+    start: Box<dyn FnOnce(EventGenerator, EventGenerator)>,
+    completion: EventGenerator,
+    cancel: EventGenerator,
+}
+
+// empty once the task started or was cancelled
+type QueuedSlot = Mutex<Option<QueuedTask>>;
+
+struct StartingTask(Arc<QueuedSlot>);
 
 // tasks are only ever started by the thread which releases the backpressure,
 // the same as everything else polling a task
@@ -302,17 +418,50 @@ pub fn start_task(future: impl Future<Output = ()> + 'static) -> *mut u8 {
         return first_poll(future).cast();
     }
     let completion = EventGenerator::new();
+    let cancel = EventGenerator::new();
+    completion.link_cancel(&cancel);
     let subscription = completion.subscribe();
-    starting.push(StartingTask(Box::new(move || {
-        let wait_for = first_poll(async move {
-            future.await;
-            completion.activate();
-        });
-        if !wait_for.is_null() {
-            drop(unsafe { EventSubscription::from_handle(wait_for as usize) });
-        }
+    let cancel_subscription = cancel.subscribe();
+    let slot = Arc::new(Mutex::new(Some(QueuedTask {
+        start: Box::new(move |completion, cancel| {
+            let wait_for = new_task(future.fuse(), Some(completion), Some(cancel), true);
+            if !wait_for.is_null() {
+                drop(unsafe { EventSubscription::from_handle(wait_for as usize) });
+            }
+        }),
+        completion,
+        cancel,
     })));
+    starting.push(StartingTask(Arc::clone(&slot)));
+    drop(starting);
+    // Also activated by the task once it ended (after it started), so that this
+    // registration doesn't stay around.
+    let data = Box::into_raw(Box::new(slot));
+    super::register(cancel_subscription, cancel_queued_task, data);
     subscription.take_handle() as *mut u8
+}
+
+/// The caller cancelled a task which is waiting for backpressure to be released
+/// (or the task has started meanwhile, then there is nothing to do here).
+extern "C" fn cancel_queued_task(data: *mut Arc<QueuedSlot>) -> CallbackState {
+    let slot = unsafe { Box::from_raw(data) };
+    let queued = slot.lock().unwrap().take();
+    if let Some(QueuedTask {
+        start,
+        completion,
+        cancel,
+    }) = queued
+    {
+        STARTING
+            .lock()
+            .unwrap()
+            .retain(|task| !Arc::ptr_eq(&task.0, &slot));
+        // this drops the future, and with it the arguments
+        drop(start);
+        completion.activate_cancelled();
+        drop(cancel);
+    }
+    CallbackState::Ready
 }
 
 /// Delay the start of new tasks of exported async functions until
@@ -336,8 +485,17 @@ pub fn backpressure_dec() {
             Vec::new()
         }
     };
-    for StartingTask(start) in tasks {
-        start();
+    for StartingTask(slot) in tasks {
+        // a cancelled task is gone already
+        let queued = slot.lock().unwrap().take();
+        if let Some(QueuedTask {
+            start,
+            completion,
+            cancel,
+        }) = queued
+        {
+            start(completion, cancel);
+        }
     }
 }
 
@@ -345,20 +503,57 @@ pub fn backpressure_dec() {
 ///
 /// The import is called right away, the returned future does not hold on to
 /// `function` (which captures raw pointers) to stay `Send`.
+///
+/// Dropping the returned future while the call is still in progress cancels the
+/// call (`cancel_task`, which returns once the callee no longer accesses the
+/// arguments and the results), like the canonical ABI does.
 #[doc(hidden)]
 pub unsafe fn await_result(function: impl Fn() -> *mut u8) -> impl Future<Output = ()> + Send {
     let wait_for = function();
-    let wait_for =
+    let task =
         (!wait_for.is_null()).then(|| unsafe { EventSubscription::from_handle(wait_for as usize) });
-    async move {
-        if let Some(wait_for) = wait_for {
-            wait_on(wait_for).await;
+    AwaitResult { task }
+}
+
+/// The call of an async import, see [`await_result`].
+struct AwaitResult {
+    // the completion of the callee, `None` once it completed
+    task: Option<EventSubscription>,
+}
+
+impl Future for AwaitResult {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        match &self.task {
+            None => Poll::Ready(()),
+            Some(task) => {
+                if task.ready() {
+                    self.task = None;
+                    Poll::Ready(())
+                } else {
+                    #[cfg(feature = "trace")]
+                    println!("await_result sub {:x?} pending", task.handle());
+                    context_set_wait(cx, task.dup());
+                    Poll::Pending
+                }
+            }
+        }
+    }
+}
+
+impl Drop for AwaitResult {
+    fn drop(&mut self) {
+        if let Some(task) = self.task.take() {
+            // returns right away if the call has completed meanwhile
+            let _cancelled = symmetric_executor::cancel_task(task);
         }
     }
 }
 
 pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
-    let wait_for = first_poll(future);
+    // nobody can cancel it
+    let wait_for = first_poll_sub(future.fuse());
     if !wait_for.is_null() {
         let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
         drop(wait_for);
@@ -455,7 +650,7 @@ pub fn block_on<T>(future: impl Future<Output = T>) -> T {
     let future2: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(future2);
     let future2: Pin<Box<dyn Future<Output = ()> + 'static>> =
         unsafe { std::mem::transmute(future2) };
-    let wait_for = first_poll(future2);
+    let wait_for = first_poll_sub(future2.fuse());
     if !wait_for.is_null() {
         let wait_for = unsafe { EventSubscription::from_handle(wait_for as usize) };
         symmetric_executor::block_on(wait_for);
@@ -463,11 +658,17 @@ pub fn block_on<T>(future: impl Future<Output = T>) -> T {
     return unsafe { result.to_owned().write().unwrap().assume_init_read() };
 }
 
+/// Counterpart of the guard of the canonical ABI runtime, which calls
+/// `task.cancel` when the future of an async export is dropped before it returned.
+///
+/// The symmetric ABI has no `task.return`: the generated code writes the results
+/// right before the future ends, and never calls [`TaskCancelOnDrop::forget`].
+/// Cancellation is handled by the task itself instead (see `start_task`): it drops
+/// the future and reports the end with `activate_cancelled`. So this does nothing.
 pub struct TaskCancelOnDrop;
 
 impl TaskCancelOnDrop {
     pub fn new() -> Self {
-        // todo!();
         Self
     }
     pub fn forget(self) {}

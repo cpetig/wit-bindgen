@@ -2,7 +2,9 @@
 #ifndef WIT_BINDGEN_WIT_H_DEFINED
 #define WIT_BINDGEN_WIT_H_DEFINED
 
+#ifndef WIT_ARA_SPAN // AUTOSAR (C++17) uses ara::core::Result
 #include <expected> // needs to precede optional
+#endif
 #include <assert.h>
 #include <map>
 #include <optional>

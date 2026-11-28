@@ -1,31 +1,27 @@
 #include "module_cpp.h"
 #include "stream_support.h"
+#include "future_compat.h" // std::future or ara::core::Future
 #include <chrono>
-#include <expected> // needs to precede optional
-#include "result_compat.h"
-#include <future>
 #include <memory>
-#include <mutex>
-#include <thread>
 #include <type_traits>
 #include <vector>
 
 // internal calback used by lift_event
 static inline symmetric::runtime::symmetric_executor::CallbackState
 fulfil_promise_void(void *data) {
-  std::unique_ptr<std::promise<void>> ptr((std::promise<void> *)data);
+  std::unique_ptr<wit::promise<void>> ptr((wit::promise<void> *)data);
   ptr->set_value();
   return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
 
-static inline std::future<void> lift_event(void *event) {
-  std::promise<void> result;
-  std::future<void> result1 = result.get_future();
+static inline wit::future<void> lift_event(void *event) {
+  wit::promise<void> result;
+  wit::future<void> result1 = result.get_future();
   if (!event) {
     result.set_value();
   } else {
-    std::unique_ptr<std::promise<void>> ptr =
-        std::make_unique<std::promise<void>>(std::move(result));
+    std::unique_ptr<wit::promise<void>> ptr =
+        std::make_unique<wit::promise<void>>(std::move(result));
     symmetric::runtime::symmetric_executor::EventSubscription ev =
         symmetric::runtime::symmetric_executor::EventSubscription(
             wit::ResourceImportBase((uint8_t *)event));
@@ -41,7 +37,7 @@ static inline std::future<void> lift_event(void *event) {
   return result1;
 }
 
-// Background threads (std::async) which report to the executor, they are
+// Background threads (wit::spawn) which report to the executor, they are
 // joined by an executor callback when finished. As nobody might call it before
 // the library is unloaded (which would pull the code from under the thread)
 // the remaining ones are joined then.
@@ -49,18 +45,17 @@ namespace wit {
 namespace detail {
 class BackgroundTasks {
   std::mutex lock_;
-  std::vector<std::unique_ptr<std::future<void>>> tasks_;
+  std::vector<std::unique_ptr<wit::task>> tasks_;
 
 public:
-  std::future<void> *add(std::future<void> &&task) {
-    auto owned = std::make_unique<std::future<void>>(std::move(task));
-    std::future<void> *result = owned.get();
+  wit::task *add(std::unique_ptr<wit::task> &&owned) {
+    wit::task *result = owned.get();
     std::lock_guard<std::mutex> guard(lock_);
     tasks_.push_back(std::move(owned));
     return result;
   }
-  void join_and_remove(std::future<void> *task) {
-    std::unique_ptr<std::future<void>> owned;
+  void join_and_remove(wit::task *task) {
+    std::unique_ptr<wit::task> owned;
     {
       std::lock_guard<std::mutex> guard(lock_);
       for (auto it = tasks_.begin(); it != tasks_.end(); ++it) {
@@ -72,16 +67,16 @@ public:
       }
     }
     if (owned)
-      owned->get();
+      owned->join();
   }
   ~BackgroundTasks() {
-    std::vector<std::unique_ptr<std::future<void>>> remaining;
+    std::vector<std::unique_ptr<wit::task>> remaining;
     {
       std::lock_guard<std::mutex> guard(lock_);
       remaining.swap(tasks_);
     }
     for (auto &task : remaining)
-      task->get();
+      task->join();
   }
 };
 inline BackgroundTasks background_tasks;
@@ -90,32 +85,30 @@ inline BackgroundTasks background_tasks;
 
 // internal callback for lower_async and the other background threads
 static inline symmetric::runtime::symmetric_executor::CallbackState
-wait_on_future(std::future<void> *fut) {
+wait_on_future(wit::task *fut) {
   wit::detail::background_tasks.join_and_remove(fut);
   return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
 
 template <class T>
-void *lower_async(std::future<T> &&result1,
+void *lower_async(wit::future<T> &&result1,
                   std::function<void(T &&)> &&lower_result) {
-  if (result1.wait_for(std::chrono::seconds::zero()) ==
-      std::future_status::ready) {
-    lower_result(result1.get());
+  if (wit::future_ready(result1)) {
+    lower_result(wit::future_get(result1));
     return nullptr;
   } else {
     // move to run_in_background
     symmetric::runtime::symmetric_executor::EventGenerator gen;
     auto waiting = gen.Subscribe();
-    auto task = std::async(
-        std::launch::async,
+    auto task = wit::spawn(
         [lower_result](
-            std::future<wit::string> &&result1,
+            wit::future<wit::string> &&result1,
             symmetric::runtime::symmetric_executor::EventGenerator &&gen) {
-          lower_result(result1.get());
+          lower_result(wit::future_get(result1));
           gen.Activate();
         },
         std::move(result1), std::move(gen));
-    std::future<void> *fut = wit::detail::background_tasks.add(std::move(task));
+    wit::task *fut = wit::detail::background_tasks.add(std::move(task));
     symmetric::runtime::symmetric_executor::Register(
         waiting.Dup(),
         symmetric::runtime::symmetric_executor::CallbackFunction(
@@ -129,7 +122,7 @@ void *lower_async(std::future<T> &&result1,
 // internal data structure used by lift_future
 template <class T, class LIFT> struct fulfil_promise_data {
   symmetric::runtime::symmetric_stream::StreamObj stream;
-  std::promise<T> promise;
+  wit::promise<T> promise;
   uint8_t value[LIFT::SIZE];
 };
 
@@ -149,9 +142,9 @@ fulfil_promise(void *data) {
   return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
 
-template <class T, class LIFT> std::future<T> lift_future(uint8_t *stream) {
-  std::promise<T> promise;
-  std::future<T> result = promise.get_future();
+template <class T, class LIFT> wit::future<T> lift_future(uint8_t *stream) {
+  wit::promise<T> promise;
+  wit::future<T> result = promise.get_future();
   auto stream2 = symmetric::runtime::symmetric_stream::StreamObj(
       wit::ResourceImportBase(stream));
   auto event = stream2.ReadReadySubscribe();
@@ -273,12 +266,12 @@ struct no_payload {};
 template <class T>
 using future_value_t = std::conditional_t<std::is_void_v<T>, no_payload, T>;
 
-template <class T> future_value_t<T> take_future_value(std::future<T> &fut) {
+template <class T> future_value_t<T> take_future_value(wit::future<T> &fut) {
   if constexpr (std::is_void_v<T>) {
-    fut.get();
+    wit::future_get(fut);
     return no_payload{};
   } else {
-    return fut.get();
+    return wit::future_get(fut);
   }
 }
 
@@ -294,7 +287,7 @@ void lower_future_value(future_value_t<T> &&value, uint8_t *dest) {
 // internal struct used by lower_future
 template <class T> struct write_to_future_data {
   future_writer<T> wr;
-  std::future<T> fut;
+  wit::future<T> fut;
 };
 
 // internal function used by lower_future
@@ -303,8 +296,7 @@ static symmetric::runtime::symmetric_executor::CallbackState
 write_to_future(void *data) {
   std::unique_ptr<write_to_future_data<T>> ptr((write_to_future_data<T> *)data);
   // is future ready?
-  if (ptr->fut.wait_for(std::chrono::seconds::zero()) ==
-      std::future_status::ready) {
+  if (wit::future_ready(ptr->fut)) {
     auto result = take_future_value(ptr->fut);
     auto written = ptr->wr.handle.StartWriting();
     if (wit::result_ok(written)) {
@@ -330,8 +322,7 @@ write_to_future(void *data) {
     // move to run_in_background
     symmetric::runtime::symmetric_executor::EventGenerator gen;
     auto waiting = gen.Subscribe();
-    auto task = std::async(
-        std::launch::async,
+    auto task = wit::spawn(
         [](std::unique_ptr<write_to_future_data<T>> &&ptr,
            symmetric::runtime::symmetric_executor::EventGenerator &&gen) {
           auto result = take_future_value(ptr->fut);
@@ -358,7 +349,7 @@ write_to_future(void *data) {
           gen.Activate();
         },
         std::move(ptr), std::move(gen));
-    std::future<void> *fut = wit::detail::background_tasks.add(std::move(task));
+    wit::task *fut = wit::detail::background_tasks.add(std::move(task));
     symmetric::runtime::symmetric_executor::Register(
         waiting.Dup(),
         symmetric::runtime::symmetric_executor::CallbackFunction(
@@ -369,7 +360,7 @@ write_to_future(void *data) {
   return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
 
-template <class T, class LOWER> uint8_t *lower_future(std::future<T> &&f) {
+template <class T, class LOWER> uint8_t *lower_future(wit::future<T> &&f) {
   auto handles = create_wasi_future<T>();
   auto wait_on = handles.first.handle.WriteReadySubscribe();
   auto fut = std::make_unique<write_to_future_data<T>>(
@@ -389,16 +380,16 @@ template <class T> uint8_t *lower_stream(wit::stream<T> &&f) {
 
 // Async functions without coroutines (`--async-api future`, C++17).
 //
-// An imported async function returns a std::future, an exported async
-// function is implemented by returning a std::future. Pending calls are
+// An imported async function returns a future, an exported async
+// function is implemented by returning a future. Pending calls are
 // bridged to the executor by threads:
 // * import: the call returned an event, a thread blocks on it (which also
 //   runs the executor) and then lifts the results, so the future can be
 //   waited for by any thread.
 // * export: a thread waits for the user's future, writes the results and
 //   activates an event for the caller.
-// Only the std::future/std::promise/std::async names (and the thread
-// functions) have to be exchanged to use a different future implementation.
+// The future, promise and thread names come from future_compat.h, which maps
+// them to ara::core::Future/Promise for `--autosar` (WIT_ARA_FUTURE).
 namespace wit {
 namespace detail {
 
@@ -426,10 +417,10 @@ inline void wait_for_event(uint8_t *event) {
 /// else the future becomes ready once the event is active. `lift` reads the
 /// results from the return area and is called after completion.
 template <class R, class LIFT>
-std::future<R> import_future(uint8_t *event, LIFT &&lift) {
+wit::future<R> import_future(uint8_t *event, LIFT &&lift) {
   if (!event) {
-    std::promise<R> promise;
-    std::future<R> result = promise.get_future();
+    wit::promise<R> promise;
+    wit::future<R> result = promise.get_future();
     if constexpr (std::is_void_v<R>) {
       lift();
       promise.set_value();
@@ -438,20 +429,20 @@ std::future<R> import_future(uint8_t *event, LIFT &&lift) {
     }
     return result;
   }
-  return std::async(std::launch::async,
-                    [event, lift = std::forward<LIFT>(lift)]() mutable -> R {
-                      wait_for_event(event);
-                      return lift();
-                    });
+  return wit::async_call<R>(
+      [event, lift = std::forward<LIFT>(lift)]() mutable -> R {
+        wait_for_event(event);
+        return lift();
+      });
 }
 
 template <class R, class LOWER>
-void call_lower(std::future<R> &fut, LOWER &lower) {
+void call_lower(wit::future<R> &fut, LOWER &lower) {
   if constexpr (std::is_void_v<R>) {
-    fut.get();
+    wit::future_get(fut);
     lower();
   } else {
-    lower(fut.get());
+    lower(wit::future_get(fut));
   }
 }
 
@@ -459,24 +450,23 @@ void call_lower(std::future<R> &fut, LOWER &lower) {
 /// (by `lower`) and null is returned, else a thread waits for it, writes the
 /// results and activates the returned event.
 template <class R, class LOWER>
-uint8_t *export_future(std::future<R> &&fut, LOWER &&lower) {
-  if (fut.wait_for(std::chrono::seconds::zero()) == std::future_status::ready) {
+uint8_t *export_future(wit::future<R> &&fut, LOWER &&lower) {
+  if (wit::future_ready(fut)) {
     call_lower(fut, lower);
     return nullptr;
   }
   symmetric::runtime::symmetric_executor::EventGenerator gen;
   auto waiting = gen.Subscribe();
-  auto task = std::async(
-      std::launch::async,
+  auto task = wit::spawn(
       [lower = std::forward<LOWER>(lower)](
-          std::future<R> &&fut,
+          wit::future<R> &&fut,
           symmetric::runtime::symmetric_executor::EventGenerator &&gen) mutable {
         call_lower(fut, lower);
         gen.Activate();
       },
       std::move(fut), std::move(gen));
   // the executor joins the thread once the results are written
-  std::future<void> *joiner = wit::detail::background_tasks.add(std::move(task));
+  wit::task *joiner = wit::detail::background_tasks.add(std::move(task));
   symmetric::runtime::symmetric_executor::Register(
       waiting.Dup(),
       symmetric::runtime::symmetric_executor::CallbackFunction(

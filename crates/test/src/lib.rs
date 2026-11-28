@@ -1429,12 +1429,12 @@ impl<'a> StepResult<'a> {
 /// `should_fail_runtime2` of the languages can only judge one component at a
 /// time, but these fail only in this combination.
 ///
-/// The reason of each entry is documented at the entry. The runtime completes
-/// the operation of the side which arrives first when the second one has
-/// transferred `min(capacity, size)` elements, so writer first and reader
-/// first both complete as in the canonical ABI; what remains are limits of the
-/// clients (std::future, blocking C++17 writes) and the partial transfers of
-/// a write (completed with the count instead of staying pending).
+/// The reason of each entry is documented at the entry. The runtime follows the
+/// canonical ABI for both orders of arrival and for partial transfers (a read
+/// completes with the first elements, a write stays pending until everything
+/// was consumed, the reader dropped or it was cancelled); what remains are
+/// limits of the clients (std::future, blocking C++17 writes, the buffer of
+/// the C++17 reader).
 const SYMMETRIC_EXPECTED_FAILURES: &[(&str, &[&str])] = &[
     // "dropped future": the reader of a std::future can't tell that it has
     // been dropped, so the value is read (and discarded) and the writer
@@ -1456,24 +1456,12 @@ const SYMMETRIC_EXPECTED_FAILURES: &[(&str, &[&str])] = &[
     // in flight, but test.c asserts that its first read completes synchronously.
     ("simple-stream", &["runner_cpp17.cpp", "test.c"]),
     ("simple-stream-payload", &["runner_cpp17.cpp", "test.c"]),
-    // "partial transfer, synchronous second read": a read smaller than the
-    // pending write completes the write operation of the runtime (with the
-    // count), the writer offers the rest when it runs again (a C writer
-    // keeps the write pending and does that when it is polled). test.c reads
-    // the remainder of a half consumed write and asserts that this completes
-    // synchronously, which can't be as the remainder is not offered.
-    ("simple-stream-payload", &["runner.cpp", "test.c"]),
-    ("simple-stream-payload", &["runner.c", "test.c"]),
-    // "dropped reader seen late": runner.c asserts that the event of its last
-    // write reports DROPPED (the canonical reader drops the stream in the
-    // same task right after its last read), the reader in another language
-    // does that after the writer has been woken up, so it reports COMPLETED.
-    ("simple-stream-payload", &["runner.c", "test.rs"]),
-    ("simple-stream-payload", &["runner.c", "test.cpp"]),
     // "small buffer": the reader of the C++17 stream offers a buffer for a
-    // single element (the default of `wit::stream`) and a C writer asserts that
-    // the write of two elements completes.
+    // single element (the default of `wit::stream`) and the writer asserts
+    // that the write of two elements completes (as the canonical ABI, the
+    // symmetric runtime completes the write only partly then).
     ("simple-stream-payload", &["runner.c", "test_cpp17.cpp"]),
+    ("simple-stream-payload", &["runner.rs", "test_cpp17.cpp"]),
 ];
 
 fn should_fail_combination(runner: &Runner, name: &str, files: &[&str]) -> bool {

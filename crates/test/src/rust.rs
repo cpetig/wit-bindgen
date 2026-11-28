@@ -541,7 +541,7 @@ mod core {}
         &self,
         runner: &Runner,
         name: &str,
-        component: &crate::Component,
+        _component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
             && (name == "skip"
@@ -551,9 +551,6 @@ mod core {}
                 || name == "block-on-spawn"
                 // Dropping an import future does not cancel the task (no `EVENT_CANCEL`).
                 || name == "rust-cancel-wake"
-                // A write is completed by a read of a smaller buffer, the symmetric
-                // stream returns the partial count.
-                || (name == "simple-stream-payload" && matches!(component.kind, crate::Kind::Runner))
                 // The caller of an async function has no way to tell the callee
                 // task (which is only reachable through the event it returns)
                 // that the call was cancelled, so its handles are not dropped.

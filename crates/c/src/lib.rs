@@ -945,7 +945,7 @@ void {snake}_waitable_set_poll({snake}_waitable_set_t set, {snake}_event_t *even
 }}
 
 void {snake}_task_cancel(void) {{
-    wit_unsupported("task.cancel");
+    wit_task_cancel();
 }}
 
 void {snake}_backpressure_inc(void) {{

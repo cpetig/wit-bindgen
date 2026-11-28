@@ -503,6 +503,10 @@ inline void wit_async_context_set(void *val) { wit_async_tls_slot() = val; }
 extern "C" uint8_t *WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
 extern "C" uint8_t *WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(uint8_t *);
+extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Elink_cancel)(uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate_cancelled)(uint8_t *);
+extern "C" uint8_t *WIT_SYM_EXE(X5BmethodX5Devent_subscriptionX2Edup)(uint8_t *);
+extern "C" int32_t WIT_SYM_EXE(cancel_task)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5Bresource_dropX5Devent_subscription)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5Bresource_dropX5Dcallback_registration)(uint8_t *);
@@ -576,6 +580,35 @@ struct EventAwaiter {
       }
     }
     return 1; // CallbackState::ready
+  }
+};
+
+/// Wait for the completion of a call of an async import. Destroying the
+/// awaiting coroutine (e.g. the `wit::Task` of the import) while the call is
+/// still in progress cancels the call (`cancel-task`), which returns once the
+/// callee no longer accesses the arguments and the results.
+struct ImportAwaiter : EventAwaiter {
+  // a copy of the subscription to cancel the call with
+  uint8_t *task = nullptr;
+
+  explicit ImportAwaiter(void *e) : EventAwaiter(e) {
+    if (event) {
+      task = WIT_SYM_EXE(X5BmethodX5Devent_subscriptionX2Edup)(event);
+    }
+  }
+  ~ImportAwaiter() {
+    if (!task) {
+      return;
+    }
+    if (state) {
+      // still waiting: the callback must not resume us (it might run during
+      // the cancellation)
+      state->dead = true;
+      state = nullptr;
+      WIT_SYM_EXE(cancel_task)(task);
+    } else {
+      WIT_SYM_EXE(X5Bresource_dropX5Devent_subscription)(task);
+    }
   }
 };
 
@@ -1242,15 +1275,29 @@ inline void spawn(F &&func) {
 namespace detail {
 
 #ifdef WIT_SYMMETRIC
+struct ExportTask;
+
+/// The registration on the cancel event of an `ExportTask`, it can outlive the
+/// task (the cancel event is activated when the task is gone, to free this).
+struct ExportTaskCancel {
+  ExportTask *task;
+};
+
 /// State of a call of an async export using the symmetric ABI
 struct ExportTask {
   Task<void> task;
   uint8_t *generator = nullptr;
+  // activated by the caller to cancel the task (`link-cancel`)
+  uint8_t *cancel_generator = nullptr;
+  ExportTaskCancel *cancel = nullptr;
   // still in the initial call (the caller doesn't need to wait if we are done)
   bool initial_call = true;
+  // the results have been written or the task was cancelled
+  bool finished = false;
 
   /// The results have been written to the caller's buffer
   void complete() {
+    finished = true;
     if (!initial_call) {
       WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(generator);
     }
@@ -1258,9 +1305,33 @@ struct ExportTask {
 
   static uint8_t cleanup(void *data) {
     auto *self = static_cast<ExportTask *>(data);
-    // the coroutine is suspended at its end by now
+    // the coroutine is suspended at its end by now (or was destroyed)
+    if (self->cancel) {
+      // let the cancel registration go
+      self->cancel->task = nullptr;
+      WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(self->cancel_generator);
+    }
+    WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(self->cancel_generator);
     WIT_SYM_EXE(X5Bresource_dropX5Devent_generator)(self->generator);
     delete self;
+    return 1; // CallbackState::ready
+  }
+
+  /// The caller cancelled the task (or the task is gone)
+  static uint8_t on_cancel(void *data) {
+    auto *link = static_cast<ExportTaskCancel *>(data);
+    ExportTask *self = link->task;
+    delete link;
+    if (self) {
+      self->cancel = nullptr;
+      if (!self->finished) {
+        self->finished = true;
+        // destroying the coroutine frame destroys the arguments (and cancels
+        // the calls it waits for)
+        self->task = Task<void>();
+        WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate_cancelled)(self->generator);
+      }
+    }
     return 1; // CallbackState::ready
   }
 };
@@ -1278,9 +1349,18 @@ template <typename F> inline uint8_t *start_task_symmetric(F &&make_task) {
   }
   state->initial_call = false;
   state->generator = WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
+  state->cancel_generator = WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
+  WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Elink_cancel)(state->generator,
+                                                         state->cancel_generator);
   uint8_t *result = WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(state->generator);
-  // free the state after the completion has been signalled
   uint8_t *cleanup_event = WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(state->generator);
+  // the caller can cancel the task
+  state->cancel = new ExportTaskCancel{state};
+  uint8_t *cancel_event =
+      WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(state->cancel_generator);
+  sym_register(cancel_event, &ExportTask::on_cancel, state->cancel);
+  // free the state after the completion has been signalled, registering runs
+  // the executor, so the coroutine can complete (and the state be gone) here
   sym_register(cleanup_event, &ExportTask::cleanup, state);
   return result;
 }

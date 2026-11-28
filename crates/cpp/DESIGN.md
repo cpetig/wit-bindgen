@@ -163,6 +163,13 @@ Asynchronous functions in WIT are mapped to idiomatic C++20 coroutines:
 - WIT `stream<T>` is mapped to `wit::StreamReader<T>`.
 - WIT `error-context` is mapped to `wit::ErrorContext`.
 
+With the symmetric ABI, destroying the `wit::Task` of an async import while the
+call is still in progress cancels the call (`cancel-task` of the executor, it
+returns once the callee no longer uses the arguments and the result area). An
+async export implemented as a coroutine supports this: when its caller
+cancels it, the coroutine frame is destroyed (dropping the arguments) and the
+caller is told that no results were written (`activate-cancelled`).
+
 ## C++17 async API (`--async-api future`, symmetric only)
 
 MISRA C++:2023 is based on C++17, which has no coroutines. For the symmetric

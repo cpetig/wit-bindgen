@@ -4906,8 +4906,9 @@ impl<'a, 'b> Bindgen for FunctionBindgen<'a, 'b> {
                 } else if self.variant == AbiVariant::GuestImportAsync
                     && self.r#gen.r#gen.opts.symmetric
                 {
-                    // the event is null if the call has completed already
-                    uwriteln!(self.src, "co_await wit::detail::EventAwaiter{{ret}};");
+                    // the event is null if the call has completed already,
+                    // destroying the coroutine while it waits cancels the call
+                    uwriteln!(self.src, "co_await wit::detail::ImportAwaiter{{ret}};");
                 } else if self.variant == AbiVariant::GuestImportAsync {
                     uwriteln!(
                             self.src,

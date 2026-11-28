@@ -36,6 +36,17 @@ static void gen_activate(handle_t gen) {
 static void gen_drop(handle_t gen) {
   EXE(event_generator_drop_own)((EXE(own_event_generator_t)){gen});
 }
+static void gen_link_cancel(handle_t gen, handle_t cancel) {
+  EXE(method_event_generator_link_cancel)((EXE(borrow_event_generator_t)){gen},
+                                          (EXE(borrow_event_generator_t)){cancel});
+}
+static void gen_activate_cancelled(handle_t gen) {
+  EXE(method_event_generator_activate_cancelled)((EXE(borrow_event_generator_t)){gen});
+}
+// consumes `task`, see `cancel-task`
+static bool ex_cancel_task(handle_t task) {
+  return EXE(cancel_task)((EXE(own_event_subscription_t)){task});
+}
 // callbacks return 1 (ready: don't call again) or 0 (call again on next event)
 typedef uint32_t (*callback_t)(void *);
 static void ex_register(handle_t trigger, callback_t callback, void *data) {
@@ -150,8 +161,9 @@ enum {
   EVENT_STREAM_WRITE = 3,
   EVENT_FUTURE_READ = 4,
   EVENT_FUTURE_WRITE = 5,
+  EVENT_CANCEL = 6,
 };
-enum { SUBTASK_STARTED = 1, SUBTASK_RETURNED = 2 };
+enum { SUBTASK_STARTED = 1, SUBTASK_RETURNED = 2, SUBTASK_RETURNED_CANCELLED = 4 };
 enum { WAITABLE_COMPLETED = 0, WAITABLE_DROPPED = 1, WAITABLE_CANCELLED = 2 };
 #define WAITABLE_BLOCKED ((uint32_t)-1)
 #define WAITABLE_STATUS(state, count) ((uint32_t)(state) | ((uint32_t)(count) << 4))
@@ -170,6 +182,10 @@ struct wit_task {
   uint32_t (*callback)(uint32_t, uintptr_t, uint32_t);
   handle_t trigger_gen;  // activated to run the callback
   uint32_t wait_set;     // set waited for, or 0
+  // activated by the caller to cancel the task (`link-cancel`)
+  handle_t cancel_gen;
+  bool cancel_requested;  // EVENT_CANCEL is to be delivered
+  bool cancel_delivered;
   struct wit_task *next, *prev;
 };
 
@@ -430,6 +446,9 @@ static uint32_t subtask_poll(uint32_t id, uint32_t *code) {
   return EVENT_NONE;
 }
 
+// There is no "starting" state (the symmetric ABI calls the callee right
+// away), so this either reports that the call returned (the results are
+// written) or that it was cancelled.
 uint32_t wit_subtask_cancel(uint32_t id) {
   if (id > 0 && id <= S.subtasks_len && S.subtasks[id - 1].used) {
     struct wit_subtask *t = &S.subtasks[id - 1];
@@ -438,9 +457,13 @@ uint32_t wit_subtask_cancel(uint32_t id) {
       t->delivered = true;
       return SUBTASK_RETURNED;
     }
+    // runs the executor until the callee is done
+    bool cancelled = ex_cancel_task(ev_dup(t->event));
+    t->returned = true;
+    t->delivered = true;
+    return cancelled ? SUBTASK_RETURNED_CANCELLED : SUBTASK_RETURNED;
   }
-  // the callee can't be asked to stop
-  wit_unsupported("subtask.cancel of a running subtask");
+  wit_unsupported("subtask.cancel of an unknown subtask");
   return 0;
 }
 
@@ -466,6 +489,11 @@ static struct wit_task *task_live(void *data) {
 // `trigger_gen` is leaked on purpose, pending wake up callbacks can still
 // refer to it (they ignore tasks which are gone).
 static void task_free(struct wit_task *t) {
+  if (t->cancel_gen) {
+    // lets the registration for a cancellation go (it ignores tasks which are gone)
+    gen_activate(t->cancel_gen);
+    gen_drop(t->cancel_gen);
+  }
   gen_drop(t->return_gen);
   free(t);
 }
@@ -478,6 +506,20 @@ struct wit_task *wit_task_enter(uint8_t *retptr) {
   t->caller = S.current;
   S.current = t;
   return t;
+}
+
+// `task.cancel`: the current task ends without results, after it got
+// EVENT_CANCEL
+void wit_task_cancel(void) {
+  struct wit_task *t = S.current;
+  if (!t || !t->cancel_delivered) {
+    fprintf(stderr, "`task.cancel` called without a cancellation of the task\n");
+    abort();
+  }
+  if (!t->returned) {
+    t->returned = true;
+    gen_activate_cancelled(t->return_gen);
+  }
 }
 
 void wit_task_return(void) {
@@ -525,12 +567,27 @@ static void task_wait_for_set(struct wit_task *t) {
   }
 }
 
+// The caller cancelled the task (or the task is gone)
+static uint32_t task_cancel_requested(void *data) {
+  struct wit_task *t = task_live(data);
+  if (t && !t->returned) {
+    t->cancel_requested = true;
+    gen_activate(t->trigger_gen);
+  }
+  return 1;
+}
+
 // invoked by the executor
 static uint32_t task_run(void *data) {
   struct wit_task *t = data;
   uint32_t event = EVENT_NONE, code = 0;
   uintptr_t waitable = 0;
-  if (t->wait_set) {
+  if (t->cancel_requested && !t->cancel_delivered && !t->returned) {
+    // reported once, instead of the events of the set
+    t->cancel_delivered = true;
+    event = EVENT_CANCEL;
+    t->wait_set = 0;
+  } else if (t->wait_set) {
     event = set_poll(t->wait_set, &waitable, &code);
     if (event == EVENT_NONE) {
       // woken up in vain
@@ -600,6 +657,12 @@ uint8_t *wit_task_exit(struct wit_task *t, uint32_t code,
   handle_t trigger = gen_subscribe(t->trigger_gen);
   ev_reset(trigger);
   ex_register(trigger, task_run, t);
+  if (result_event) {
+    // the caller can cancel the task while it waits for the result
+    t->cancel_gen = gen_new();
+    gen_link_cancel(t->return_gen, t->cancel_gen);
+    ex_register(gen_subscribe(t->cancel_gen), task_cancel_requested, t);
+  }
   if (t->wait_set) {
     task_wait_for_set(t);
   }

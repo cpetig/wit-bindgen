@@ -45,6 +45,8 @@ uint8_t *wit_task_exit(struct wit_task *task, uint32_t code,
 uint8_t *wit_task_retptr(void);
 // Report the result of the current task to its caller (`task.return`)
 void wit_task_return(void);
+// End the current task without a result after it got EVENT_CANCEL (`task.cancel`)
+void wit_task_cancel(void);
 
 // Context slots of the current task (`context.get/set`)
 void *wit_task_context_get(uint32_t slot);
@@ -57,6 +59,9 @@ void wit_task_context_set(uint32_t slot, void *value);
 // Convert the event subscription returned by an async import (NULL if the
 // call has completed) into a subtask status.
 uint32_t wit_subtask_status(uint8_t *event_subscription);
+// Cancels the call (`cancel-task`), returns once the callee is done with it:
+// RETURNED (2) if the results have been written, RETURNED_CANCELLED (4)
+// otherwise.
 uint32_t wit_subtask_cancel(uint32_t subtask);
 void wit_subtask_drop(uint32_t subtask);
 

@@ -23,6 +23,9 @@ pub(super) struct FunctionBindgen<'a, 'b> {
     pub import_return_pointer_area_size: ArchitectureSize,
     pub import_return_pointer_area_align: Alignment,
     pub handle_decls: Vec<String>,
+    /// Symmetric async exports: the code calling `start_task` was generated
+    /// (after lifting the arguments), the caller only has to close it.
+    pub task_started: bool,
     always_owned: bool,
     /// The lowered values are handed over to the receiver (the payload of a
     /// symmetric future or stream), they must neither be freed nor borrowed.
@@ -52,6 +55,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             import_return_pointer_area_size: Default::default(),
             import_return_pointer_area_align: Default::default(),
             handle_decls: Vec::new(),
+            task_started: false,
             always_owned,
             handover: false,
             return_self,
@@ -90,8 +94,7 @@ impl<'a, 'b> FunctionBindgen<'a, 'b> {
             };
         if let Some(library) = &self.r#gen.r#gen.opts.link_name {
             self.src.push_str(&format!(
-                "\n#[cfg_attr(not(target_arch = \"wasm32\"), link(name = \"{}\"))]",
-                library
+                "\n#[cfg_attr(not(target_arch = \"wasm32\"), link(name = \"{library}\"))]"
             ));
         }
         self.src.push_str(&crate::declare_import(
@@ -463,12 +466,16 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                         }
                     )
                 } else if self.r#gen.is_exported_resource(*resource) {
-                    let name = resolve.types[*resource]
-                        .name
-                        .as_deref()
-                        .unwrap()
-                        .to_upper_camel_case();
-                    format!("{name}Borrow::lift(core::ptr::with_exposed_provenance({op} as usize))")
+                    // the symmetric ABI passes the pointer itself (usize), the
+                    // canonical ABI an i32 which is zero extended
+                    format!(
+                        "{name}Borrow::lift(core::ptr::with_exposed_provenance({op}{cast} as usize))",
+                        cast = if self.r#gen.r#gen.opts.symmetric {
+                            ""
+                        } else {
+                            " as u32"
+                        }
+                    )
                 } else {
                     let tmp = format!("handle{}", self.tmp());
                     self.handle_decls.push(format!("let {tmp};"));
@@ -784,8 +791,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                 let vec = self.r#gen.path_to_vec();
                 let result = if !self.r#gen.r#gen.opts.symmetric || self.r#gen.in_import {
                     format!(
-                        "<_ as From<{vec}<_>>>::from({vec}::from_raw_parts({ptr}.cast(), {0}, {0}))",
-                        len
+                        "<_ as From<{vec}<_>>>::from({vec}::from_raw_parts({ptr}.cast(), {len}, {len}))"
                     )
                 } else {
                     format!("unsafe {{ std::slice::from_raw_parts({ptr}.cast(), {len}) }}.to_vec()")
@@ -1142,7 +1148,30 @@ impl Bindgen for FunctionBindgen<'_, '_> {
             }
 
             Instruction::CallInterface { func, async_ } => {
-                let prev_src = mem::replace(self.src.as_mut_string(), String::new());
+                let mut prev_src = mem::replace(self.src.as_mut_string(), String::new());
+
+                // Symmetric async exports: the arguments are lifted before the
+                // task is created (by `start_task`), so the task owns them even
+                // before it starts (it can be queued by backpressure), and
+                // dropping it when it is cancelled drops them. Not done for
+                // borrowed handles of imported resources (`handle_decls`), those
+                // stay inside of the task.
+                let mut call_operands = operands.clone();
+                if self.r#gen.r#gen.opts.symmetric && *async_ && self.handle_decls.is_empty() {
+                    self.push_str(&mem::take(&mut prev_src));
+                    for operand in call_operands.iter_mut() {
+                        let param = format!("param{}", self.tmp());
+                        uwriteln!(self.src, "let {param} = {operand};");
+                        *operand = param;
+                    }
+                    let async_support = self.r#gen.r#gen.async_support_path();
+                    uwriteln!(self.src, "{async_support}::start_task(async move {{");
+                    uwriteln!(
+                        self.src,
+                        "let _task_cancel = {async_support}::TaskCancelOnDrop::new();"
+                    );
+                    self.task_started = true;
+                }
 
                 self.let_results(usize::from(func.result.is_some()), results);
                 // If this function has a result and it's async, then after
@@ -1214,7 +1243,7 @@ impl Bindgen for FunctionBindgen<'_, '_> {
                     }
                 };
                 self.push_str("(");
-                for (i, operand) in operands.iter().enumerate() {
+                for (i, operand) in call_operands.iter().enumerate() {
                     if i > 0 {
                         self.push_str(", ");
                     }

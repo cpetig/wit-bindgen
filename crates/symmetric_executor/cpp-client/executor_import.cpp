@@ -29,56 +29,67 @@ __attribute__((__weak__)) void *cabi_realloc(void *ptr, size_t old_size,
 }
 
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_function(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_data(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_subscription(
     uint8_t *);
 extern "C" int32_t
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
     uint8_t *);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
     int64_t);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_generator(
     uint8_t *);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator();
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BconstructorX5Devent_generator();
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel(
+    uint8_t *, uint8_t *);
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled(
     uint8_t *);
-extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_registration(
     uint8_t *);
-extern "C" void symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+    uint8_t *, uint8_t *);
+extern "C" int32_t
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Dcallback_registrationX2Eis_pending(
+    uint8_t *);
+extern "C" void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00run();
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(uint8_t *,
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register(uint8_t *,
                                                                 uint8_t *,
                                                                 uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register_unique(
     uint8_t *, uint8_t *, uint8_t *, uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(uint8_t *);
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00block_on(uint8_t *);
+extern "C" int32_t
+symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00cancel_task(uint8_t *);
 symmetric::runtime::symmetric_executor::CallbackFunction::~CallbackFunction() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
+    symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_function(
         handle);
   }
 }
@@ -87,7 +98,7 @@ symmetric::runtime::symmetric_executor::CallbackFunction::CallbackFunction(
     : wit::ResourceImportBase(std::move(b)) {}
 symmetric::runtime::symmetric_executor::CallbackData::~CallbackData() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
+    symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_data(
         handle);
   }
 }
@@ -97,13 +108,13 @@ symmetric::runtime::symmetric_executor::CallbackData::CallbackData(
 symmetric::runtime::symmetric_executor::EventSubscription::
     ~EventSubscription() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
+    symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_subscription(
         handle);
   }
 }
 bool symmetric::runtime::symmetric_executor::EventSubscription::Ready() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
+      symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
           (*this).get_handle());
   return static_cast<bool>(ret);
 }
@@ -111,19 +122,19 @@ symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_executor::EventSubscription::FromTimeout(
     uint64_t nanoseconds) {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+      symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
           static_cast<int64_t>(nanoseconds));
   return wit::ResourceImportBase{ret};
 }
 symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_executor::EventSubscription::Dup() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
+      symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
           (*this).get_handle());
   return wit::ResourceImportBase{ret};
 }
 void symmetric::runtime::symmetric_executor::EventSubscription::Reset() const {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
       (*this).get_handle());
 }
 symmetric::runtime::symmetric_executor::EventSubscription::EventSubscription(
@@ -131,24 +142,35 @@ symmetric::runtime::symmetric_executor::EventSubscription::EventSubscription(
     : wit::ResourceImportBase(std::move(b)) {}
 symmetric::runtime::symmetric_executor::EventGenerator::~EventGenerator() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
+    symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_generator(
         handle);
   }
 }
 symmetric::runtime::symmetric_executor::EventGenerator::EventGenerator() {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator();
+      symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BconstructorX5Devent_generator();
   this->handle = wit::ResourceImportBase{ret}.into_handle();
 }
 symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_executor::EventGenerator::Subscribe() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
+      symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
           (*this).get_handle());
   return wit::ResourceImportBase{ret};
 }
 void symmetric::runtime::symmetric_executor::EventGenerator::Activate() const {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+      (*this).get_handle());
+}
+void symmetric::runtime::symmetric_executor::EventGenerator::LinkCancel(
+    std::reference_wrapper<const symmetric_executor::EventGenerator> cancel)
+    const {
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel(
+      (*this).get_handle(), cancel.get().get_handle());
+}
+void symmetric::runtime::symmetric_executor::EventGenerator::ActivateCancelled()
+    const {
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled(
       (*this).get_handle());
 }
 symmetric::runtime::symmetric_executor::EventGenerator::EventGenerator(
@@ -157,29 +179,44 @@ symmetric::runtime::symmetric_executor::EventGenerator::EventGenerator(
 symmetric::runtime::symmetric_executor::CallbackRegistration::
     ~CallbackRegistration() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
+    symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_registration(
         handle);
   }
 }
-symmetric::runtime::symmetric_executor::CallbackData
+::ara::core::Optional<symmetric::runtime::symmetric_executor::CallbackData>
 symmetric::runtime::symmetric_executor::CallbackRegistration::Cancel(
     symmetric_executor::CallbackRegistration &&obj) {
+  uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
+                     sizeof(uintptr_t)];
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+      obj.into_handle(), std::move(ptr0));
+  ::ara::core::Optional<symmetric_executor::CallbackData> option1;
+  if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0))) {
+
+    option1.emplace(wit::ResourceImportBase{
+        *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))});
+  }
+  return (option1);
+}
+bool symmetric::runtime::symmetric_executor::CallbackRegistration::IsPending()
+    const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
-          obj.into_handle());
-  return wit::ResourceImportBase{ret};
+      symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Dcallback_registrationX2Eis_pending(
+          (*this).get_handle());
+  return static_cast<bool>(ret);
 }
 symmetric::runtime::symmetric_executor::CallbackRegistration::
     CallbackRegistration(wit::ResourceImportBase &&b)
     : wit::ResourceImportBase(std::move(b)) {}
 void symmetric::runtime::symmetric_executor::Run() {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00run();
 }
 symmetric::runtime::symmetric_executor::CallbackRegistration
 symmetric::runtime::symmetric_executor::Register(EventSubscription &&trigger,
                                                  CallbackFunction &&callback,
                                                  CallbackData &&data) {
-  auto ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
+  auto ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register(
       trigger.into_handle(), callback.into_handle(), data.into_handle());
   return wit::ResourceImportBase{ret};
 }
@@ -191,7 +228,7 @@ symmetric::runtime::symmetric_executor::RegisterUnique(
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
   uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register_unique(
       trigger.into_handle(), callback.into_handle(), data.into_handle(),
       std::move(ptr0));
   ::ara::core::Optional<CallbackRegistration> option1;
@@ -204,8 +241,14 @@ symmetric::runtime::symmetric_executor::RegisterUnique(
 }
 void symmetric::runtime::symmetric_executor::BlockOn(
     EventSubscription &&trigger) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00block_on(
       trigger.into_handle());
+}
+bool symmetric::runtime::symmetric_executor::CancelTask(
+    EventSubscription &&task) {
+  auto ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00cancel_task(
+      task.into_handle());
+  return static_cast<bool>(ret);
 }
 
 // Component Adapters

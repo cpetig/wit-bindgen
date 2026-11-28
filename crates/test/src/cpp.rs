@@ -382,9 +382,7 @@ impl LanguageMethods for Cpp {
     ) -> bool {
         // dbg!(runner);
         runner.is_symmetric()
-            && ((matches!(component.kind, crate::Kind::Test) && name == "param-ownership")
-                // cancellation is not supported by the symmetric ABI
-                || name == "cancel-import")
+            && (matches!(component.kind, crate::Kind::Test) && name == "param-ownership")
     }
 }
 

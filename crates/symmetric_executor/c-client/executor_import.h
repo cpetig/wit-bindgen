@@ -71,10 +71,15 @@ typedef uint8_t symmetric_runtime_symmetric_executor_call_status_t;
 
 typedef struct {
   bool is_some;
+  symmetric_runtime_symmetric_executor_own_callback_data_t val;
+} symmetric_runtime_symmetric_executor_option_own_callback_data_t;
+
+typedef struct {
+  bool is_some;
   symmetric_runtime_symmetric_executor_own_callback_registration_t val;
 } symmetric_runtime_symmetric_executor_option_own_callback_registration_t;
 
-// Imported Functions from `symmetric:runtime/symmetric-executor@0.4.0`
+// Imported Functions from `symmetric:runtime/symmetric-executor@0.6.0`
 // Whether the event is active (used by poll implementation)
 extern bool symmetric_runtime_symmetric_executor_method_event_subscription_ready(symmetric_runtime_symmetric_executor_borrow_event_subscription_t self);
 // Create a timeout event
@@ -89,8 +94,29 @@ extern symmetric_runtime_symmetric_executor_own_event_generator_t symmetric_runt
 extern symmetric_runtime_symmetric_executor_own_event_subscription_t symmetric_runtime_symmetric_executor_method_event_generator_subscribe(symmetric_runtime_symmetric_executor_borrow_event_generator_t self);
 // Trigger all subscribers
 extern void symmetric_runtime_symmetric_executor_method_event_generator_activate(symmetric_runtime_symmetric_executor_borrow_event_generator_t self);
-// returns the data passed to the registration
-extern symmetric_runtime_symmetric_executor_own_callback_data_t symmetric_runtime_symmetric_executor_static_callback_registration_cancel(symmetric_runtime_symmetric_executor_own_callback_registration_t obj);
+// Callee side: `cancel` gets activated when a caller cancels the task whose
+// completion this generator signals (see cancel-task).
+extern void symmetric_runtime_symmetric_executor_method_event_generator_link_cancel(symmetric_runtime_symmetric_executor_borrow_event_generator_t self, symmetric_runtime_symmetric_executor_borrow_event_generator_t cancel);
+// Callee side: the task ended because of a cancellation, its results are
+// not written. Activates the generator like `activate`.
+extern void symmetric_runtime_symmetric_executor_method_event_generator_activate_cancelled(symmetric_runtime_symmetric_executor_borrow_event_generator_t self);
+// Unregister the callback, it is never called again after this returns
+// (from any thread).
+// 
+// * `some(data)`: the callback was not running, the registration is
+//   removed (its resources are released right away), the caller owns
+//   `data` again. This is also the result if the callback was running
+//   on another thread and returned `pending`: cancel waits for it.
+// * `none`: the callback finished with `ready` (and freed `data`), also
+//   when it is waited for on another thread, or the registration was
+//   completed by `register` itself, or the callback is running on the
+//   calling thread right now (cancel was called from inside the callback
+//   or from a nested executor loop it runs): then it is not called again
+//   after it returned, whatever it returns, and `data` stays with it.
+extern bool symmetric_runtime_symmetric_executor_static_callback_registration_cancel(symmetric_runtime_symmetric_executor_own_callback_registration_t obj, symmetric_runtime_symmetric_executor_own_callback_data_t *ret);
+// Whether the callback can still be called: it is registered and has
+// neither returned `ready` nor been cancelled (true while it runs).
+extern bool symmetric_runtime_symmetric_executor_method_callback_registration_is_pending(symmetric_runtime_symmetric_executor_borrow_callback_registration_t self);
 // Wait until all registered events have completed
 extern void symmetric_runtime_symmetric_executor_run(void);
 // Register a callback for an event
@@ -99,6 +125,14 @@ extern symmetric_runtime_symmetric_executor_own_callback_registration_t symmetri
 extern bool symmetric_runtime_symmetric_executor_register_unique(symmetric_runtime_symmetric_executor_own_event_subscription_t trigger, symmetric_runtime_symmetric_executor_own_callback_function_t callback, symmetric_runtime_symmetric_executor_own_callback_data_t data, symmetric_runtime_symmetric_executor_own_callback_registration_t *ret);
 // Wait for a specific event
 extern void symmetric_runtime_symmetric_executor_block_on(symmetric_runtime_symmetric_executor_own_event_subscription_t trigger);
+// Caller side: cancel the task behind `task` (the subscription returned by an
+// async call). If it already completed, returns false right away. Otherwise the
+// linked cancel generator (if any) is activated and the executor runs (like
+// block-on) until the callee completes. Returns true if the callee ended with
+// activate-cancelled (results not written), false if it completed normally
+// (results written). Afterwards the callee no longer accesses arguments or
+// results. A callee without link-cancel simply runs to completion.
+extern bool symmetric_runtime_symmetric_executor_cancel_task(symmetric_runtime_symmetric_executor_own_event_subscription_t task);
 
 // Helper Functions
 
@@ -131,6 +165,8 @@ extern void symmetric_runtime_symmetric_executor_callback_registration_drop_own(
 extern void symmetric_runtime_symmetric_executor_callback_registration_drop_borrow(symmetric_runtime_symmetric_executor_borrow_callback_registration_t handle);
 
 extern symmetric_runtime_symmetric_executor_borrow_callback_registration_t symmetric_runtime_symmetric_executor_borrow_callback_registration(symmetric_runtime_symmetric_executor_own_callback_registration_t handle);
+
+void symmetric_runtime_symmetric_executor_option_own_callback_data_free(symmetric_runtime_symmetric_executor_option_own_callback_data_t *ptr);
 
 void symmetric_runtime_symmetric_executor_option_own_callback_registration_free(symmetric_runtime_symmetric_executor_option_own_callback_registration_t *ptr);
 

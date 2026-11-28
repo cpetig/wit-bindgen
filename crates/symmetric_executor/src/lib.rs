@@ -1,9 +1,11 @@
 use std::{
+    collections::VecDeque,
     mem::transmute,
     sync::{
-        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering},
-        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
+        Arc, Condvar, Mutex,
     },
+    thread::ThreadId,
     time::{Duration, SystemTime},
 };
 
@@ -186,8 +188,9 @@ impl WaitSet {
     }
 }
 
-#[allow(dead_code)]
-struct CallbackRegistrationInternal(usize);
+/// The handle returned by `register`, `None` if the callback completed during
+/// `register` already
+struct CallbackRegistrationInternal(Option<Arc<Registration>>);
 
 impl symmetric_executor::GuestEventSubscription for EventSubscriptionInternal {
     fn ready(&self) -> bool {
@@ -237,6 +240,8 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
         Self(Arc::new(Mutex::new(EventInner {
             counter: 0,
             waiting: Default::default(),
+            cancel: None,
+            cancelled: false,
         })))
     }
 
@@ -257,33 +262,242 @@ impl symmetric_executor::GuestEventGenerator for EventGenerator {
     }
 
     fn activate(&self) {
-        if let Ok(mut event) = self.0.lock() {
-            event.counter += 1;
-            if DEBUGGING {
-                println!(
-                    "{} activate({:x}) counter={}",
-                    gettid(),
-                    Arc::as_ptr(&self.0) as usize,
-                    event.counter
-                );
-            }
-            event.waiting.iter().for_each(|fd| {
-                event_fd::activate(*fd);
-            });
-        } else if DEBUGGING {
-            println!("{} activate failure", gettid());
+        activate_event(&self.0, false);
+    }
+
+    fn link_cancel(&self, cancel: symmetric_executor::EventGeneratorBorrow<'_>) {
+        let cancel = Arc::clone(&cancel.get::<EventGenerator>().0);
+        if DEBUGGING {
+            println!(
+                "{} link_cancel({:x}, {:x})",
+                gettid(),
+                Arc::as_ptr(&self.0) as usize,
+                Arc::as_ptr(&cancel) as usize
+            );
         }
+        self.0.lock().unwrap().cancel = Some(cancel);
+    }
+
+    fn activate_cancelled(&self) {
+        activate_event(&self.0, true);
+    }
+}
+
+/// Trigger all subscribers of the event, `cancelled` marks the end of a task
+/// because of a cancellation (see `cancel_task`).
+fn activate_event(event: &Arc<Mutex<EventInner>>, cancelled: bool) {
+    if let Ok(mut event_inner) = event.lock() {
+        event_inner.counter += 1;
+        if cancelled {
+            event_inner.cancelled = true;
+        }
+        if DEBUGGING {
+            println!(
+                "{} activate({:x}) counter={}{}",
+                gettid(),
+                Arc::as_ptr(event) as usize,
+                event_inner.counter,
+                if cancelled { " cancelled" } else { "" }
+            );
+        }
+        event_inner.waiting.iter().for_each(|fd| {
+            event_fd::activate(*fd);
+        });
+    } else if DEBUGGING {
+        println!("{} activate failure", gettid());
     }
 }
 
 impl GuestCallbackRegistration for CallbackRegistrationInternal {
-    fn cancel(_obj: symmetric_executor::CallbackRegistration) -> symmetric_executor::CallbackData {
-        todo!()
+    fn cancel(
+        obj: symmetric_executor::CallbackRegistration,
+    ) -> Option<symmetric_executor::CallbackData> {
+        let obj: CallbackRegistrationInternal = obj.into_inner();
+        let reg = obj.0?;
+        let data = reg.cancel()?;
+        // the registration is no longer queued, remove it (with its eventfd) from
+        // the lists, a tick which has it in its hands right now drops it instead
+        // of queueing it again
+        let task = {
+            let mut tasks = TASKS.lock().unwrap();
+            match tasks.iter().position(|task| Arc::ptr_eq(&task.reg, &reg)) {
+                Some(pos) => tasks.remove(pos),
+                None => {
+                    let mut new_tasks = NEW_TASKS.lock().unwrap();
+                    new_tasks
+                        .iter()
+                        .position(|task| Arc::ptr_eq(&task.reg, &reg))
+                        .map(|pos| new_tasks.swap_remove(pos))
+                }
+            }
+        };
+        if DEBUGGING {
+            println!(
+                "{} cancel registration {:x} {:x} found={}",
+                gettid(),
+                reg.callback.0 as usize,
+                data as usize,
+                task.is_some()
+            );
+        }
+        if let Some(task) = task {
+            // dropped without holding a lock
+            drop(task);
+            // a thread waiting for the events of the remaining tasks can see that
+            // there are none left
+            wake_executor();
+        }
+        Some(unsafe { symmetric_executor::CallbackData::from_handle(data as usize) })
+    }
+
+    fn is_pending(&self) -> bool {
+        self.0.as_ref().is_some_and(|reg| reg.is_pending())
     }
 }
 
+/// Where a registered callback is in its life cycle
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Phase {
+    /// Waiting for the event (in TASKS, NEW_TASKS or checked by a tick)
+    Queued,
+    /// The callback runs on this thread
+    Running(ThreadId),
+    /// The callback runs on this thread and was cancelled meanwhile, it is not
+    /// called again
+    RunningCancelled(ThreadId),
+    /// The callback returned ready or was cancelled
+    Done,
+}
+
+struct RegistrationState {
+    phase: Phase,
+    // whether the callback is listed in REGISTRATIONS
+    registered: bool,
+}
+
+/// The state of a registration, shared between its task (`QueuedEvent`) and its
+/// handle (`callback-registration`).
+///
+/// Lock order: the state of a registration, then TASKS, then NEW_TASKS, then
+/// REGISTRATIONS.
+struct Registration {
+    key: EventKey,
+    callback: CallbackEntry,
+    state: Mutex<RegistrationState>,
+    // signalled when a callback stops running
+    stopped: Condvar,
+}
+
+impl Registration {
+    fn new(key: EventKey, callback: CallbackEntry) -> Arc<Self> {
+        remember_registration(key.clone(), CallbackEntry(callback.0, callback.1));
+        Arc::new(Self {
+            key,
+            callback,
+            state: Mutex::new(RegistrationState {
+                phase: Phase::Queued,
+                registered: true,
+            }),
+            stopped: Condvar::new(),
+        })
+    }
+
+    fn forget(&self, state: &mut RegistrationState) {
+        if std::mem::take(&mut state.registered) {
+            forget_registration(&self.key, &self.callback);
+        }
+    }
+
+    /// The task is about to run the callback, false if it was cancelled
+    fn start(&self) -> bool {
+        let mut state = self.state.lock().unwrap();
+        if state.phase != Phase::Queued {
+            return false;
+        }
+        state.phase = Phase::Running(std::thread::current().id());
+        // the running callback re-registers its events, so this one doesn't count
+        // as pending for register_unique
+        self.forget(&mut state);
+        true
+    }
+
+    /// The callback returned, returns whether it is queued again
+    fn stop(&self, ready: bool) -> bool {
+        let mut state = self.state.lock().unwrap();
+        let queued = match state.phase {
+            Phase::Running(_) if !ready => {
+                state.phase = Phase::Queued;
+                remember_registration(
+                    self.key.clone(),
+                    CallbackEntry(self.callback.0, self.callback.1),
+                );
+                state.registered = true;
+                true
+            }
+            _ => {
+                state.phase = Phase::Done;
+                false
+            }
+        };
+        drop(state);
+        self.stopped.notify_all();
+        queued
+    }
+
+    /// Queue the task again (unless it was cancelled meanwhile), the state is
+    /// locked while doing so (see `cancel`)
+    fn requeue(&self, task: QueuedEvent) {
+        let state = self.state.lock().unwrap();
+        if state.phase == Phase::Queued {
+            TASKS.lock().unwrap().push_back(task);
+            drop(state);
+        } else {
+            drop(state);
+            drop(task);
+        }
+    }
+
+    /// See `callback-registration.cancel`, returns the data if the caller owns it
+    /// now, the task still has to be removed from the queue
+    fn cancel(&self) -> Option<*mut OpaqueData> {
+        let me = std::thread::current().id();
+        let mut state = self.state.lock().unwrap();
+        loop {
+            match state.phase {
+                Phase::Queued => {
+                    state.phase = Phase::Done;
+                    self.forget(&mut state);
+                    return Some(self.callback.1);
+                }
+                Phase::Running(thread) | Phase::RunningCancelled(thread) if thread == me => {
+                    // called from inside the callback (or a nested loop it runs),
+                    // waiting would deadlock
+                    state.phase = Phase::RunningCancelled(thread);
+                    return None;
+                }
+                Phase::Running(_) | Phase::RunningCancelled(_) => {
+                    state = self.stopped.wait(state).unwrap();
+                }
+                Phase::Done => return None,
+            }
+        }
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(
+            self.state.lock().unwrap().phase,
+            Phase::Queued | Phase::Running(_)
+        )
+    }
+
+    fn is_done(&self) -> bool {
+        self.state.lock().unwrap().phase == Phase::Done
+    }
+}
+
+/// The right to run the executor loop, held while running the tasks (the tasks
+/// themselves are kept in `TASKS`).
 struct Executor {
-    active_tasks: Vec<QueuedEvent>,
     change_event: Option<EventFd>,
 }
 
@@ -295,6 +509,37 @@ thread_local! {
 // copy of Executor::change_event, readable while the executor is locked (by a callback
 // calling block_on)
 static CHANGE_EVENT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(INVALID_FD);
+
+/// The registered callbacks, except the ones which are running right now and the
+/// ones registered while the executor runs callbacks (`NEW_TASKS`).
+///
+/// This lock is never held while running a callback, so a callback can register new
+/// ones and run a nested loop (`block_on`, `cancel_task`) which processes the other
+/// tasks, including the ones the outer loop has not reached yet.
+static TASKS: Mutex<VecDeque<QueuedEvent>> = Mutex::new(VecDeque::new());
+// while executing tasks from the loop new ones are collected here, they are added
+// to TASKS by the next iteration of the loop (or a nested loop)
+static EXECUTOR_BUSY: AtomicBool = AtomicBool::new(false);
+static NEW_TASKS: Mutex<Vec<QueuedEvent>> = Mutex::new(Vec::new());
+
+/// Add the tasks registered meanwhile to TASKS, returns whether there were any
+fn collect_new_tasks() -> bool {
+    // both locked, so that cancel finds the tasks in one of them
+    let mut tasks = TASKS.lock().unwrap();
+    let new_tasks = std::mem::take(&mut *NEW_TASKS.lock().unwrap());
+    if new_tasks.is_empty() {
+        false
+    } else {
+        if DEBUGGING {
+            println!("{} Adding {} new tasks", gettid(), new_tasks.len());
+        }
+        tasks.extend(new_tasks);
+        true
+    }
+}
+
+// every pass over the tasks gets its own number, to visit each task once
+static PASS_ID: AtomicU64 = AtomicU64::new(1);
 
 impl Executor {
     fn change_event(&mut self) -> EventFd {
@@ -309,52 +554,48 @@ impl Executor {
     }
 
     /// run the executor until it would block, returns number of handled events
-    fn tick(ex: &mut std::sync::MutexGuard<'_, Self>, ws: &mut WaitSet) -> (usize, usize) {
+    fn tick(_ex: &mut std::sync::MutexGuard<'_, Self>, ws: &mut WaitSet) -> (usize, usize) {
         let old_busy = EXECUTOR_BUSY.swap(true, Ordering::Acquire);
         assert!(!old_busy);
-        let was_in_tick = IN_TICK.replace(true);
-        let result = Self::tick_tasks(&mut ex.active_tasks, ws);
-        IN_TICK.set(was_in_tick);
+        let result = Self::tick_tasks(ws);
         let old_busy = EXECUTOR_BUSY.swap(false, Ordering::Release);
         assert!(old_busy);
         result
     }
 
-    /// run the given tasks until they would block, returns number of handled events
-    fn tick_tasks(tasks: &mut Vec<QueuedEvent>, ws: &mut WaitSet) -> (usize, usize) {
+    /// Visit each task in TASKS once, running the callbacks of the ready ones. Returns the number of handled events and of
+    /// waiting tasks.
+    fn tick_tasks(ws: &mut WaitSet) -> (usize, usize) {
+        let was_in_tick = IN_TICK.replace(true);
+        let pass = PASS_ID.fetch_add(1, Ordering::Relaxed);
         let mut count_events = 0;
         let mut count_waiting = 0;
         let now = SystemTime::now();
-        tasks.iter_mut().for_each(|task| {
-            if task.inner.ready() {
+        loop {
+            let mut task = {
+                let mut tasks = TASKS.lock().unwrap();
+                match tasks.iter().position(|task| task.pass != pass) {
+                    Some(pos) => tasks.remove(pos).unwrap(),
+                    None => break,
+                }
+            };
+            task.pass = pass;
+            if task.reg.is_done() {
+                // cancelled while in the hands of a tick
+                drop(task);
+                continue;
+            }
+            let run = if task.inner.ready() {
                 if DEBUGGING {
                     println!(
                         "{} task ready {:x} {:x}",
                         gettid(),
-                        task.callback.as_ref().unwrap().0 as usize,
-                        task.callback.as_ref().unwrap().1 as usize
+                        task.reg.callback.0 as usize,
+                        task.reg.callback.1 as usize
                     );
                 }
                 count_events += 1;
-                let key = EventKey::of(&task.inner);
-                let registered = &mut task.registered;
-                task.callback.take_if(|entry| {
-                    // the running callback re-registers its events, so this one doesn't count
-                    // as pending for register_unique
-                    if std::mem::take(registered) {
-                        forget_registration(&key, entry);
-                    }
-                    let result = (entry.0)(entry.1);
-                    if DEBUGGING {
-                        println!("{} callback returned {:?}", gettid(), result,);
-                    }
-                    let ready = matches!(result, CallbackState::Ready);
-                    if !ready {
-                        remember_registration(key.clone(), CallbackEntry(entry.0, entry.1));
-                        *registered = true;
-                    }
-                    ready
-                });
+                true
             } else {
                 count_waiting += 1;
                 match &task.inner {
@@ -363,34 +604,28 @@ impl Executor {
                         event: _,
                     } => {
                         ws.register(task.event_fd);
+                        false
                     }
                     EventType::SystemTime(system_time) => {
                         if *system_time > now {
                             let diff = system_time.duration_since(now).unwrap_or_default();
                             ws.timeout(diff);
+                            false
                         } else {
-                            let key = EventKey::of(&task.inner);
-                            let registered = &mut task.registered;
-                            task.callback.take_if(|entry| {
-                                if std::mem::take(registered) {
-                                    forget_registration(&key, entry);
-                                }
-                                let ready = matches!((entry.0)(entry.1), CallbackState::Ready);
-                                if !ready {
-                                    remember_registration(
-                                        key.clone(),
-                                        CallbackEntry(entry.0, entry.1),
-                                    );
-                                    *registered = true;
-                                }
-                                ready
-                            });
+                            true
                         }
                     }
                 }
+            };
+            if run && !task.run_callback() {
+                // the task is dropped here, without holding the lock of TASKS
+                drop(task);
+                continue;
             }
-        });
-        tasks.retain(|task| task.callback.is_some());
+            let reg = Arc::clone(&task.reg);
+            reg.requeue(task);
+        }
+        IN_TICK.set(was_in_tick);
         (count_events, count_waiting)
     }
 }
@@ -405,13 +640,7 @@ fn wake_executor() {
     }
 }
 
-static EXECUTOR: Mutex<Executor> = Mutex::new(Executor {
-    active_tasks: Vec::new(),
-    change_event: None,
-});
-// while executing tasks from the loop we can't directly queue new ones
-static EXECUTOR_BUSY: AtomicBool = AtomicBool::new(false);
-static NEW_TASKS: Mutex<Vec<QueuedEvent>> = Mutex::new(Vec::new());
+static EXECUTOR: Mutex<Executor> = Mutex::new(Executor { change_event: None });
 
 impl symmetric_executor::Guest for Guest {
     type CallbackFunction = Ignore;
@@ -448,16 +677,16 @@ impl symmetric_executor::Guest for Guest {
                     println!("{} registration unnecessary", gettid());
                 }
                 return symmetric_executor::CallbackRegistration::new(
-                    CallbackRegistrationInternal(0),
+                    CallbackRegistrationInternal(None),
                 );
             }
         }
 
         let subscr = QueuedEvent::new(trigger, CallbackEntry(cb, data));
-        let id = subscr.id;
+        let reg = Arc::clone(&subscr.reg);
         match EXECUTOR.try_lock() {
             Ok(mut lock) => {
-                lock.active_tasks.push(subscr);
+                TASKS.lock().unwrap().push_back(subscr);
                 let mut ws = WaitSet::new(None);
                 // process as long as there is immediate progress
                 loop {
@@ -473,15 +702,14 @@ impl symmetric_executor::Guest for Guest {
                 if EXECUTOR_BUSY.load(Ordering::Acquire) {
                     NEW_TASKS.lock().unwrap().push(subscr);
                 } else {
-                    // actually this is unlikely, but give it a try
-                    EXECUTOR.lock().unwrap().active_tasks.push(subscr);
+                    TASKS.lock().unwrap().push_back(subscr);
                 }
                 // The thread running the executor might just have decided to
                 // wait for events (without this task), so wake it up.
                 wake_executor();
             }
         }
-        symmetric_executor::CallbackRegistration::new(CallbackRegistrationInternal(id))
+        symmetric_executor::CallbackRegistration::new(CallbackRegistrationInternal(Some(reg)))
     }
 
     fn register_unique(
@@ -524,44 +752,90 @@ impl symmetric_executor::Guest for Guest {
                 }
             }
         }
-        // part of this function is never used
-        let queue = QueuedEvent::new(
-            trigger,
-            CallbackEntry(|_| CallbackState::Ready, std::ptr::null_mut()),
-        );
-        if queue.inner.ready() {
-            if DEBUGGING {
-                println!("{} block_on already ready", gettid());
+        wait_for(trigger);
+    }
+
+    fn cancel_task(task: symmetric_executor::EventSubscription) -> bool {
+        let task: EventSubscriptionInternal = task.into_inner();
+        let (event, last_counter) = match &task.inner {
+            EventType::Triggered {
+                last_counter,
+                event,
+            } => (Arc::clone(event), last_counter.load(Ordering::Acquire)),
+            // a timeout is no task, nothing to wait for
+            EventType::SystemTime(_) => return false,
+        };
+        let cancel = {
+            let inner = event.lock().unwrap();
+            if inner.counter != last_counter {
+                // completed already (or cancelled on its own)
+                if DEBUGGING {
+                    println!(
+                        "{} cancel_task({:x}) completed already",
+                        gettid(),
+                        Arc::as_ptr(&event) as usize
+                    );
+                }
+                return inner.cancelled;
             }
-            // this can happen if the subscription is a bit older
-            return;
-        }
-        run_until(Some(queue));
+            inner.cancel.clone()
+        };
         if DEBUGGING {
-            println!("{} block_on ENDED", gettid());
+            println!(
+                "{} cancel_task({:x}) cancel={:x?}",
+                gettid(),
+                Arc::as_ptr(&event) as usize,
+                cancel.as_ref().map(|c| Arc::as_ptr(c) as usize)
+            );
         }
+        // no lock held here
+        if let Some(cancel) = cancel {
+            activate_event(&cancel, false);
+        }
+        wait_for(task);
+        let cancelled = event.lock().unwrap().cancelled;
+        cancelled
     }
 }
 
-// TODO: Make this more efficient by polling the event?
+/// `block_on` for a subscription
+fn wait_for(trigger: EventSubscriptionInternal) {
+    // part of this function is never used
+    let queue = QueuedEvent::new(
+        trigger,
+        CallbackEntry(|_| CallbackState::Ready, std::ptr::null_mut()),
+    );
+    if queue.inner.ready() {
+        if DEBUGGING {
+            println!("{} block_on already ready", gettid());
+        }
+        // this can happen if the subscription is a bit older
+        return;
+    }
+    run_until(Some(queue));
+    if DEBUGGING {
+        println!("{} block_on ENDED", gettid());
+    }
+}
+
 /// `block_on` called from a callback, i.e. while this thread is already running the
-/// executor (and holds its lock). Tasks which are being processed by the outer loop are
-/// not available, only the tasks registered meanwhile (like the one `block_on` waits for)
-/// run here.
+/// executor (and holds its lock). All tasks except the running callbacks are
+/// available here (they are in `TASKS`).
 fn run_until_nested(event: Option<QueuedEvent>) {
     let change_event = CHANGE_EVENT.load(Ordering::Acquire);
-    let mut local: Vec<QueuedEvent> = Vec::new();
     loop {
-        local.append(&mut NEW_TASKS.lock().unwrap());
         let mut ws = WaitSet::new((change_event != INVALID_FD).then_some(change_event));
         if let Some(event) = event.as_ref() {
-            ws.register(event.event_fd);
+            if event.event_fd != INVALID_FD {
+                ws.register(event.event_fd);
+            }
         }
-        let (count_events, _count_waiting) = Executor::tick_tasks(&mut local, &mut ws);
-        if !NEW_TASKS.lock().unwrap().is_empty() {
+        collect_new_tasks();
+        let (count_events, _count_waiting) = Executor::tick_tasks(&mut ws);
+        if collect_new_tasks() {
             continue;
         }
-        if local.is_empty() {
+        if TASKS.lock().unwrap().is_empty() {
             break;
         }
         if count_events != 0 {
@@ -581,8 +855,6 @@ fn run_until_nested(event: Option<QueuedEvent>) {
             break;
         }
     }
-    // let the outer loop take care of the remaining tasks
-    NEW_TASKS.lock().unwrap().append(&mut local);
 }
 
 fn run_until(event: Option<QueuedEvent>) {
@@ -593,38 +865,33 @@ fn run_until(event: Option<QueuedEvent>) {
     loop {
         let mut ws = WaitSet::new(Some(change_event));
         if let Some(event) = event.as_ref() {
-            ws.register(event.event_fd);
+            if event.event_fd != INVALID_FD {
+                ws.register(event.event_fd);
+            }
         }
         let (count_events, count_waiting) = {
             let mut ex = EXECUTOR.lock().unwrap();
-            let (count_events, count_waiting) = Executor::tick(&mut ex, &mut ws);
-            {
-                let mut new_tasks = NEW_TASKS.lock().unwrap();
-                if !new_tasks.is_empty() {
-                    if DEBUGGING {
-                        println!("{} Adding {} new tasks", gettid(), new_tasks.len());
-                    }
-                    ex.active_tasks.append(&mut new_tasks);
-                    // collect callbacks and timeouts again
-                    continue;
-                }
+            let result = Executor::tick(&mut ex, &mut ws);
+            if collect_new_tasks() {
+                // collect callbacks and timeouts again
+                continue;
             }
-            if ex.active_tasks.is_empty() {
-                if DEBUGGING {
-                    println!("{} No work left, exiting run_until()", gettid(),);
-                }
-                break;
-            }
-            (count_events, count_waiting)
+            result
         };
+        if TASKS.lock().unwrap().is_empty() {
+            if DEBUGGING {
+                println!("{} No work left, exiting run_until()", gettid(),);
+            }
+            break;
+        }
         if count_events != 0 {
             // we processed events, perhaps more became ready
             if DEBUGGING {
                 println!(
-                        "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
-                        gettid(),
-                        EXECUTOR.lock().unwrap().active_tasks.len()
-                    );
+                    "{} Relooping with {} tasks after {count_events} events, {count_waiting} waiting",
+                    gettid(),
+                    TASKS.lock().unwrap().len()
+                );
             }
             continue;
         }
@@ -659,6 +926,10 @@ type Count = u32;
 struct EventInner {
     counter: Count,
     waiting: Vec<EventFd>,
+    // callee side: activated when the task signalled by this event is cancelled
+    cancel: Option<Arc<Mutex<EventInner>>>,
+    // the task ended because of a cancellation (activate_cancelled)
+    cancelled: bool,
 }
 
 struct EventGenerator(Arc<Mutex<EventInner>>);
@@ -670,18 +941,18 @@ type CallbackType = fn(*mut OpaqueData) -> CallbackState;
 struct CallbackEntry(CallbackType, *mut OpaqueData);
 
 unsafe impl Send for CallbackEntry {}
+unsafe impl Sync for CallbackEntry {}
 
 struct EventSubscriptionInternal {
     inner: EventType,
 }
 
 struct QueuedEvent {
-    id: usize,
     inner: EventType,
     event_fd: EventFd,
-    callback: Option<CallbackEntry>,
-    // whether callback is listed in REGISTRATIONS
-    registered: bool,
+    reg: Arc<Registration>,
+    // the last pass of the executor which visited this task
+    pass: u64,
 }
 
 /// Identity of the event a registration waits for
@@ -725,11 +996,8 @@ fn is_registered(key: &EventKey, entry: &CallbackEntry) -> bool {
         .any(|(k, e)| k == key && e == entry)
 }
 
-static ID_SOURCE: AtomicUsize = AtomicUsize::new(1);
-
 impl QueuedEvent {
     fn new(trigger: EventSubscriptionInternal, callback: CallbackEntry) -> Self {
-        let id = ID_SOURCE.fetch_add(1, Ordering::Relaxed);
         let inner = trigger.inner;
         let event_fd = match &inner {
             EventType::Triggered {
@@ -769,14 +1037,26 @@ impl QueuedEvent {
                 }
             }
         }
-        remember_registration(EventKey::of(&inner), CallbackEntry(callback.0, callback.1));
         QueuedEvent {
-            id,
+            reg: Registration::new(EventKey::of(&inner), callback),
             inner,
-            callback: Some(callback),
             event_fd,
-            registered: true,
+            pass: 0,
         }
+    }
+
+    /// Run the callback (the event is ready), returns whether it stays registered
+    /// (it returned pending and was not cancelled meanwhile).
+    fn run_callback(&mut self) -> bool {
+        if !self.reg.start() {
+            return false;
+        }
+        let entry = &self.reg.callback;
+        let result = (entry.0)(entry.1);
+        if DEBUGGING {
+            println!("{} callback returned {:?}", gettid(), result,);
+        }
+        self.reg.stop(matches!(result, CallbackState::Ready))
     }
 }
 
@@ -810,18 +1090,18 @@ impl EventSubscriptionInternal {
 
 impl Drop for QueuedEvent {
     fn drop(&mut self) {
-        if let (true, Some(cb)) = (self.registered, &self.callback) {
-            forget_registration(&EventKey::of(&self.inner), cb);
-        }
-        if let Some(cb) = &self.callback {
-            if DEBUGGING {
+        {
+            let mut state = self.reg.state.lock().unwrap();
+            if DEBUGGING && state.phase != Phase::Done {
                 println!(
                     "{} drop() with active callback {:x},{:x}",
                     gettid(),
-                    cb.0 as usize,
-                    cb.1 as usize
+                    self.reg.callback.0 as usize,
+                    self.reg.callback.1 as usize
                 );
             }
+            state.phase = Phase::Done;
+            self.reg.forget(&mut state);
         }
         match &self.inner {
             EventType::Triggered {

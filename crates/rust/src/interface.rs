@@ -1355,9 +1355,16 @@ unsafe fn call_import(&mut self, _params: Self::ParamsLower, _results: *mut u8) 
             needs_cleanup_list,
             src,
             handle_decls,
+            task_started,
             ..
         } = f;
-        if async_ {
+        if async_ && task_started {
+            // `start_task` is part of `src`, after lifting the arguments
+            if needs_cleanup_list {
+                let vec = self.path_to_vec();
+                uwriteln!(self.src, "let mut cleanup_list = {vec}::new();");
+            }
+        } else if async_ {
             let async_support = self.r#gen.async_support_path();
             uwriteln!(self.src, "{async_support}::start_task(async move {{");
             uwriteln!(

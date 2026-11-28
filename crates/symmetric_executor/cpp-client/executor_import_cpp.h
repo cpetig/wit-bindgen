@@ -83,6 +83,14 @@ public:
   EventSubscription Subscribe() const;
   /// Trigger all subscribers
   void Activate() const;
+  /// Callee side: `cancel` gets activated when a caller cancels the task whose
+  /// completion this generator signals (see cancel-task).
+  void LinkCancel(
+      std::reference_wrapper<const symmetric_executor::EventGenerator> cancel)
+      const;
+  /// Callee side: the task ended because of a cancellation, its results are
+  /// not written. Activates the generator like `activate`.
+  void ActivateCancelled() const;
   EventGenerator(wit::ResourceImportBase &&);
   EventGenerator(EventGenerator &&) = default;
   EventGenerator &operator=(EventGenerator &&) = default;
@@ -94,8 +102,24 @@ class CallbackRegistration : public wit::ResourceImportBase {
 
 public:
   ~CallbackRegistration();
-  /// returns the data passed to the registration
-  static CallbackData Cancel(symmetric_executor::CallbackRegistration &&obj);
+  /// Unregister the callback, it is never called again after this returns
+  /// (from any thread).
+  ///
+  /// * `some(data)`: the callback was not running, the registration is
+  ///   removed (its resources are released right away), the caller owns
+  ///   `data` again. This is also the result if the callback was running
+  ///   on another thread and returned `pending`: cancel waits for it.
+  /// * `none`: the callback finished with `ready` (and freed `data`), also
+  ///   when it is waited for on another thread, or the registration was
+  ///   completed by `register` itself, or the callback is running on the
+  ///   calling thread right now (cancel was called from inside the callback
+  ///   or from a nested executor loop it runs): then it is not called again
+  ///   after it returned, whatever it returns, and `data` stays with it.
+  static ::ara::core::Optional<CallbackData>
+  Cancel(symmetric_executor::CallbackRegistration &&obj);
+  /// Whether the callback can still be called: it is registered and has
+  /// neither returned `ready` nor been cancelled (true while it runs).
+  bool IsPending() const;
   CallbackRegistration(wit::ResourceImportBase &&);
   CallbackRegistration(CallbackRegistration &&) = default;
   CallbackRegistration &operator=(CallbackRegistration &&) = default;
@@ -124,6 +148,15 @@ RegisterUnique(EventSubscription &&trigger, CallbackFunction &&callback,
                CallbackData &&data);
 /// Wait for a specific event
 void BlockOn(EventSubscription &&trigger);
+/// Caller side: cancel the task behind `task` (the subscription returned by an
+/// async call). If it already completed, returns false right away. Otherwise
+/// the linked cancel generator (if any) is activated and the executor runs
+/// (like block-on) until the callee completes. Returns true if the callee ended
+/// with activate-cancelled (results not written), false if it completed
+/// normally (results written). Afterwards the callee no longer accesses
+/// arguments or results. A callee without link-cancel simply runs to
+/// completion.
+bool CancelTask(EventSubscription &&task);
 } // namespace symmetric_executor
 } // namespace runtime
 } // namespace symmetric

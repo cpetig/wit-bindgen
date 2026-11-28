@@ -121,9 +121,13 @@ impl LanguageMethods for C {
                 // (`a.ptr` is uninitialized), which is harmless in a wasm
                 // module but crashes when running natively.
                 matches!(component.kind, crate::Kind::Runner) && name == "lists"
-                // Cancelling an import is not supported: the callee can't be
-                // asked to stop, as there are no backpressure and
-                // `task.cancel` either.
+                // `cancel-import`: the C callee calls `backpressure_inc`, which
+                // the C support of the symmetric ABI doesn't implement (aborts).
+                // The C runner expects an import to stay in the "starting"
+                // state under backpressure and to keep its arguments when it
+                // is cancelled there, but symmetric calls start right away
+                // (they are queued by the callee) and own their arguments.
+                // Cancelling a running call works in both directions.
                 || name == "cancel-import"
             )
     }

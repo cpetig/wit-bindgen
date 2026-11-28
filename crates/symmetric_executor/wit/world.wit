@@ -5,7 +5,9 @@
 // 0.3.0: start-writing/reading can fail, remove is-ready-to-write, remove read/write_ready_activate
 // 0.3.1: register-unique
 // 0.4.0: rendezvous streams: writer first (offer-write), cancel-read/write, buffer element-size, close-read returns option
-package symmetric:runtime@0.4.0;
+// 0.5.0: task cancellation: link-cancel, activate-cancelled, cancel-task
+// 0.6.0: unregistering: callback-registration.cancel returns option, is-pending
+package symmetric:runtime@0.6.0;
 
 world executor {
     export symmetric-executor;

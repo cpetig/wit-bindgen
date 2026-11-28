@@ -61,7 +61,7 @@ typedef struct {
   } val;
 } symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_t;
 
-// Imported Functions from `symmetric:runtime/symmetric-stream@0.4.0`
+// Imported Functions from `symmetric:runtime/symmetric-stream@0.6.0`
 // `capacity` elements of `element-size` bytes each at `addr`
 extern symmetric_runtime_symmetric_stream_own_buffer_t symmetric_runtime_symmetric_stream_constructor_buffer(symmetric_runtime_symmetric_stream_own_address_t addr, uint64_t capacity, uint64_t element_size);
 extern symmetric_runtime_symmetric_stream_own_address_t symmetric_runtime_symmetric_stream_method_buffer_get_address(symmetric_runtime_symmetric_stream_borrow_buffer_t self);

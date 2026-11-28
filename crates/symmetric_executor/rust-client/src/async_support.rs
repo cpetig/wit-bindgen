@@ -134,6 +134,17 @@ pub fn context_set_wait(cx: &Context, wait_for: EventSubscription) {
     }
 }
 
+/// Poll based counterpart of [`wait_on`], `Ready` if the event is active,
+/// otherwise the task is registered to be polled when it fires.
+pub(crate) fn poll_event(cx: &mut Context<'_>, wait_for: &EventSubscription) -> Poll<()> {
+    if wait_for.ready() {
+        Poll::Ready(())
+    } else {
+        context_set_wait(cx, wait_for.dup());
+        Poll::Pending
+    }
+}
+
 pub async fn wait_on(wait_for: EventSubscription) {
     std::future::poll_fn(move |cx| {
         if wait_for.ready() {
@@ -271,9 +282,63 @@ pub fn first_poll(future: impl Future<Output = ()> + 'static) -> *mut () {
     first_poll_sub(future.fuse())
 }
 
+// Tasks created while backpressure is active, they start (are polled
+// for the first time) once it is released. The caller already got the
+// subscription of their completion.
+struct StartingTask(Box<dyn FnOnce()>);
+
+// tasks are only ever started by the thread which releases the backpressure,
+// the same as everything else polling a task
+unsafe impl Send for StartingTask {}
+
+static BACKPRESSURE: AtomicUsize = AtomicUsize::new(0);
+static STARTING: Mutex<Vec<StartingTask>> = Mutex::new(Vec::new());
+
 #[doc(hidden)]
 pub fn start_task(future: impl Future<Output = ()> + 'static) -> *mut u8 {
-    first_poll(future).cast()
+    let mut starting = STARTING.lock().unwrap();
+    if BACKPRESSURE.load(Ordering::Acquire) == 0 {
+        drop(starting);
+        return first_poll(future).cast();
+    }
+    let completion = EventGenerator::new();
+    let subscription = completion.subscribe();
+    starting.push(StartingTask(Box::new(move || {
+        let wait_for = first_poll(async move {
+            future.await;
+            completion.activate();
+        });
+        if !wait_for.is_null() {
+            drop(unsafe { EventSubscription::from_handle(wait_for as usize) });
+        }
+    })));
+    subscription.take_handle() as *mut u8
+}
+
+/// Delay the start of new tasks of exported async functions until
+/// [`backpressure_dec`] was called as often. The caller of such a function
+/// gets the completion event right away, the body of the function does not
+/// run before it is started.
+pub fn backpressure_inc() {
+    let _starting = STARTING.lock().unwrap();
+    BACKPRESSURE.fetch_add(1, Ordering::AcqRel);
+}
+
+/// See [`backpressure_inc`], starts the delayed tasks when it reaches zero.
+pub fn backpressure_dec() {
+    let tasks = {
+        let mut starting = STARTING.lock().unwrap();
+        let previous = BACKPRESSURE.fetch_sub(1, Ordering::AcqRel);
+        assert!(previous > 0, "backpressure_dec without backpressure_inc");
+        if previous == 1 {
+            std::mem::take(&mut *starting)
+        } else {
+            Vec::new()
+        }
+    };
+    for StartingTask(start) in tasks {
+        start();
+    }
 }
 
 /// Await the completion of a call to an async-lowered import.

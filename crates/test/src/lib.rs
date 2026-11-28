@@ -1429,49 +1429,39 @@ impl<'a> StepResult<'a> {
 /// `should_fail_runtime2` of the languages can only judge one component at a
 /// time, but these fail only in this combination.
 ///
-/// * "pending writer": a C reader (`test.c`) reads a future or stream while
-///   a writer in another language has started to write, and asserts that the
-///   read completes. Rust and C++ writers hand elements over only to the
-///   buffer which a reader has offered (`start_writing` is pending until
-///   then, there is nothing a reader could take), so the read can't complete
-///   before the executor has run the writer.
-/// * "pending reader": the Rust reader of a future, written by C, is expected
-///   to finish in the call which started it. A C writer waits for a reader's
-///   buffer like the Rust and C++ writers, which only happens when the
-///   executor runs it. The same holds for the C++17 reader (`test_cpp17.cpp`),
-///   which is a pending call anyway as it waits in another thread.
-/// * "small buffer": see below.
-/// * "dropped future": the C++17 variants (`--async-api future`) have no way
-///   to tell the writer that a `std::future` has been dropped (see below).
+/// The reason of each entry is documented at the entry. The runtime follows the
+/// canonical ABI for both orders of arrival and for partial transfers (a read
+/// completes with the first elements, a write stays pending until everything
+/// was consumed, the reader dropped or it was cancelled); what remains are
+/// limits of the clients (std::future, blocking C++17 writes, the buffer of
+/// the C++17 reader).
 const SYMMETRIC_EXPECTED_FAILURES: &[(&str, &[&str])] = &[
-    // pending writer
-    ("simple-future", &["runner.cpp", "test.c"]),
-    ("simple-future", &["runner.rs", "test.c"]),
-    ("simple-future", &["runner-nostd.rs", "test.c"]),
-    ("simple-stream", &["runner.cpp", "test.c"]),
-    ("simple-stream", &["runner.rs", "test.c"]),
-    ("simple-stream", &["runner-nostd.rs", "test.c"]),
-    ("simple-stream-payload", &["runner.cpp", "test.c"]),
-    ("ping-pong", &["runner.c", "test.rs"]),
-    ("ping-pong", &["runner.c", "test.cpp"]),
-    ("simple-future", &["runner_cpp17.cpp", "test.c"]),
-    ("simple-stream", &["runner_cpp17.cpp", "test.c"]),
-    ("simple-stream-payload", &["runner_cpp17.cpp", "test.c"]),
-    ("ping-pong", &["runner.c", "test_cpp17.cpp"]),
-    // pending reader
-    ("simple-future", &["runner.c", "test.rs"]),
-    ("simple-future", &["runner.c", "test_cpp17.cpp"]),
-    // "small buffer": the reader of the C++17 stream offers a buffer for a
-    // single element (the default of `wit::stream`) and a C writer asserts that
-    // the write of two elements completes (the Rust writer is expected to fail
-    // in `simple-stream-payload` for the same reason)
-    ("simple-stream-payload", &["runner.c", "test_cpp17.cpp"]),
     // "dropped future": the reader of a std::future can't tell that it has
     // been dropped, so the value is read (and discarded) and the writer
-    // doesn't see the future dropped
+    // doesn't see the future dropped (`write` returns true / completes).
     ("simple-future", &["runner.cpp", "test_cpp17.cpp"]),
     ("simple-future", &["runner.rs", "test_cpp17.cpp"]),
     ("simple-future", &["runner-nostd.rs", "test_cpp17.cpp"]),
+    // "late value": the std::future given to `ReadFuture` is not ready yet,
+    // a helper thread copies the value into the stream after the call
+    // returned, but test.c asserts that its read completes synchronously
+    // (a canonical writer which has written before the call).
+    ("simple-future", &["runner_cpp17.cpp", "test.c"]),
+    // "async export not done": the exported function of test_cpp17.cpp returns
+    // the std::future of a helper thread (std::async) which has not finished
+    // yet, but runner.c asserts that the call returned synchronously.
+    ("simple-future", &["runner.c", "test_cpp17.cpp"]),
+    // "blocking writer": the C++17 `stream_writer::write` blocks until the
+    // reader took the elements, so the reader is called before the write is
+    // in flight, but test.c asserts that its first read completes synchronously.
+    ("simple-stream", &["runner_cpp17.cpp", "test.c"]),
+    ("simple-stream-payload", &["runner_cpp17.cpp", "test.c"]),
+    // "small buffer": the reader of the C++17 stream offers a buffer for a
+    // single element (the default of `wit::stream`) and the writer asserts
+    // that the write of two elements completes (as the canonical ABI, the
+    // symmetric runtime completes the write only partly then).
+    ("simple-stream-payload", &["runner.c", "test_cpp17.cpp"]),
+    ("simple-stream-payload", &["runner.rs", "test_cpp17.cpp"]),
 ];
 
 fn should_fail_combination(runner: &Runner, name: &str, files: &[&str]) -> bool {

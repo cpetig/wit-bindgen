@@ -80,10 +80,13 @@ uintptr_t wit_stream_new(uintptr_t *writer);
 // Return waitable status codes (see `wit-bindgen c`), `elem_size` is the size
 // of one element, 0 for streams and futures without payload.
 uint32_t wit_stream_read(uintptr_t reader, void *buf, size_t amt, size_t elem_size, bool is_future);
-// `own` (can be NULL) is called for the elements copied to the reader, to
-// duplicate everything they refer to.
+// `own` (can be NULL) is called for a copy of the elements offered to the
+// reader, to duplicate everything they refer to (the reader owns what it
+// receives). `disown` releases such a copy again for the elements which were
+// not transferred.
 uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t elem_size,
-                          bool is_future, void (*own)(void *elems, size_t count));
+                          bool is_future, void (*own)(void *elems, size_t count),
+                          void (*disown)(void *elems, size_t count));
 uint32_t wit_stream_cancel_read(uintptr_t reader);
 uint32_t wit_stream_cancel_write(uintptr_t writer);
 void wit_stream_drop_readable(uintptr_t reader);

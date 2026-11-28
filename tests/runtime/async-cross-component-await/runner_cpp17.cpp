@@ -6,7 +6,6 @@
 
 // C++17 variant of runner.cpp: `std::future` instead of coroutines
 #include <assert.h>
-#include <chrono>
 #include <runner_cpp.h>
 
 std::future<void> exports::runner::Run() {
@@ -16,8 +15,11 @@ std::future<void> exports::runner::Run() {
     }
     {
         auto task = test::cross::string_delay::Forward(wit::string::from_view("x"));
-        // the middle component waits for the leaf component
-        assert(task.wait_for(std::chrono::seconds::zero()) != std::future_status::ready);
+        // The middle component waits for the leaf component, but whether the
+        // future is already ready here can't be asserted: a helper thread of
+        // the import blocks on the executor and may well finish before this
+        // thread looks (runner.cpp asserts `!task.done()`, which is
+        // deterministic for coroutines).
         auto r = task.get();
         assert(r.get_view() == "after sleep: x");
     }

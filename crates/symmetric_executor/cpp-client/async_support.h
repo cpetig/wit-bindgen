@@ -126,19 +126,39 @@ template <class T, class LIFT> struct fulfil_promise_data {
   uint8_t value[LIFT::SIZE];
 };
 
+// internal: complete the promise of lift_future if the read has completed.
+// Returns false if it is still pending.
+template <class T, class LIFT>
+static bool fulfil_promise_if_done(fulfil_promise_data<T, LIFT> &data) {
+  auto buffer = data.stream.ReadResult();
+  if (wit::result_ok(buffer)) {
+    if constexpr (std::is_void_v<T>) {
+      // future without payload
+      data.promise.set_value();
+    } else {
+      data.promise.set_value(LIFT::lift(data.value));
+    }
+    return true;
+  }
+  if (wit::result_error(buffer) == symmetric::runtime::symmetric_stream::StreamState::kEof) {
+    // the writer is gone without a value
+    data.promise.set_exception(std::make_exception_ptr(
+        std::future_error(std::future_errc::broken_promise)));
+    return true;
+  }
+  return false;
+}
+
 // internal callback used by lift_future
 template <class T, class LIFT>
 static symmetric::runtime::symmetric_executor::CallbackState
 fulfil_promise(void *data) {
-  std::unique_ptr<fulfil_promise_data<T, LIFT>> ptr(
-      (fulfil_promise_data<T, LIFT> *)data);
-  auto buffer = ptr->stream.ReadResult();
-  if constexpr (std::is_void_v<T>) {
-    // future without payload
-    ptr->promise.set_value();
-  } else {
-    ptr->promise.set_value(LIFT::lift(ptr->value));
+  auto *ptr = (fulfil_promise_data<T, LIFT> *)data;
+  if (!fulfil_promise_if_done<T, LIFT>(*ptr)) {
+    // not the event of the completion, wait for the next one
+    return symmetric::runtime::symmetric_executor::CallbackState::kPending;
   }
+  delete ptr;
   return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
 
@@ -156,8 +176,12 @@ template <class T, class LIFT> wit::future<T> lift_future(uint8_t *stream) {
       symmetric::runtime::symmetric_stream::Buffer(
           symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase(
               (wit::ResourceImportBase::handle_t)&data->value)),
-          1);
+          1, LIFT::SIZE);
   data->stream.StartReading(std::move(buf));
+  // a writer which was first has completed the read already
+  if (fulfil_promise_if_done<T, LIFT>(*data)) {
+    return result;
+  }
   // return value doesn't influence callback logic
   symmetric::runtime::symmetric_executor::Register(
       std::move(event),
@@ -193,43 +217,107 @@ std::pair<future_writer<T>, future_reader<T>> create_wasi_future() {
 template <class T> struct stream_writer {
   symmetric::runtime::symmetric_stream::StreamObj handle;
 
-  // non blocking write, returns remaining data
-  std::vector<T> write_nb(std::vector<T> data) {
-    auto result = handle.StartWriting();
-    if (wit::result_ok(result)) {
-      auto buffer = wit::result_value(std::move(result));
-      auto capacity = buffer.Capacity();
-      uint8_t *dest = (uint8_t *)buffer.GetAddress().into_handle();
-      auto elements = data.size();
-      if (capacity < elements)
-        elements = capacity;
-      for (uint32_t i = 0; i < elements; ++i) {
-        wit::StreamProperties<T>::lower(
-            std::move(data[i]),
-            dest + (i * wit::StreamProperties<T>::lowered_size));
-      }
-      buffer.SetSize(elements);
-      handle.FinishWriting(std::move(buffer));
-
-      if (capacity > data.size())
-        capacity = data.size();
-      data.erase(data.begin(), data.begin() + capacity);
-    }
-    // no need to handle eof or pending
-    return data;
+private:
+  // the size of an element in the stream, elements without payload have none
+  static constexpr size_t element_size() {
+    return std::is_same_v<T, wit::Void> ? 0 : wit::StreamProperties<T>::lowered_size;
   }
 
+  // `data` lowered, `done` of the elements belong to the reader
+  struct lowered {
+    std::vector<uint8_t> mem;
+    size_t count;
+    size_t done = 0;
+
+    explicit lowered(std::vector<T> &data)
+        : mem(data.size() * wit::StreamProperties<T>::lowered_size),
+          count(data.size()) {
+      for (size_t i = 0; i < count; ++i) {
+        wit::StreamProperties<T>::lower(
+            std::move(data[i]),
+            mem.data() + i * wit::StreamProperties<T>::lowered_size);
+      }
+      data.clear();
+    }
+    // the elements not taken by the reader are ours again
+    std::vector<T> rest() {
+      std::vector<T> result;
+      for (; done < count; ++done) {
+        result.push_back(wit::StreamProperties<T>::lift(
+            mem.data() + done * wit::StreamProperties<T>::lowered_size));
+      }
+      return result;
+    }
+  };
+
+  // offer the elements, completed at once if a reader is waiting and takes all
+  bool offer(lowered &data) {
+    symmetric::runtime::symmetric_stream::Buffer buffer(
+        symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase(
+            (wit::ResourceImportBase::handle_t)(data.mem.data() +
+                                                data.done * wit::StreamProperties<T>::lowered_size))),
+        data.count - data.done, element_size());
+    buffer.SetSize(data.count - data.done);
+    // a write in flight is not possible, as everything is done in one call
+    return wit::result_ok(handle.OfferWrite(std::move(buffer)));
+  }
+
+  // take a completed write into account
+  enum class progress { pending, taken, eof };
+  progress collect(lowered &data) {
+    auto result = handle.WriteResult();
+    if (wit::result_ok(result)) {
+      data.done += wit::result_value(std::move(result)).GetSize();
+      return progress::taken;
+    }
+    return wit::result_error(result) == symmetric::runtime::symmetric_stream::StreamState::kEof
+               ? progress::eof
+               : progress::pending;
+  }
+
+public:
+  // non blocking write, returns remaining data
+  std::vector<T> write_nb(std::vector<T> data) {
+    if (data.empty()) {
+      return data;
+    }
+    lowered mem(data);
+    if (!offer(mem)) {
+      abort();
+    }
+    if (collect(mem) == progress::pending) {
+      // no reader is waiting, take the elements back (unless it came meanwhile)
+      auto buffer = handle.CancelWrite();
+      if (buffer.has_value()) {
+        mem.done += buffer->GetSize();
+      }
+    }
+    // no need to handle eof
+    return mem.rest();
+  }
+
+  // blocks until all data is written or the reader is gone (the elements the
+  // reader took before it went away are not dropped)
   void write(std::vector<T> &&data) {
-    while (!data.empty()) {
+    if (data.empty()) {
+      return;
+    }
+    lowered mem(data);
+    if (!offer(mem)) {
+      abort();
+    }
+    // The runtime keeps the write pending until the readers have taken all
+    // elements (it remembers the offset), or they are gone.
+    for (;;) {
       auto subsc = handle.WriteReadySubscribe();
       subsc.Reset();
-      data = write_nb(std::move(data));
-      if (!data.empty()) {
-        if (handle.IsReadClosed()) {
-          return;
-        }
-        symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));
+      progress state = collect(mem);
+      if (state != progress::pending) {
+        // the elements not taken (reader gone) are dropped
+        mem.rest();
+        return;
       }
+      symmetric::runtime::symmetric_executor::BlockOn(std::move(subsc));
     }
   }
   // bool IsReadyToWrite() const {
@@ -240,11 +328,7 @@ template <class T> struct stream_writer {
     return handle.WriteReadySubscribe();
   }
 
-  ~stream_writer() {
-    // if (handle.get_handle()!=wit::ResourceImportBase::invalid) {
-    //     handle.FinishWriting(std::optional<symmetric::runtime::symmetric_stream::Buffer>());
-    // }
-  }
+  ~stream_writer() {}
   stream_writer(symmetric::runtime::symmetric_stream::StreamObj &&h)
       : handle(std::move(h)) {}
   stream_writer(const stream_writer &) = delete;
@@ -290,33 +374,27 @@ template <class T> struct write_to_future_data {
   wit::future<T> fut;
 };
 
+// internal: the value is copied into the stream, nobody has to wait for the
+// reader (and the value is dropped if there is none)
+template <class T, class LOWER>
+static void write_future_value(write_to_future_data<T> &data) {
+  auto result = take_future_value(data.fut);
+  alignas(std::max_align_t) uint8_t lowered[LOWER::SIZE];
+  lower_future_value<T, LOWER>(std::move(result), lowered);
+  symmetric::runtime::symmetric_stream::Buffer buffer(
+      symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase(
+          (wit::ResourceImportBase::handle_t)lowered)),
+      1, LOWER::SIZE);
+  buffer.SetSize(1);
+  data.wr.handle.WriteDetached(std::move(buffer));
+}
+
 // internal function used by lower_future
 template <class T, class LOWER>
-static symmetric::runtime::symmetric_executor::CallbackState
-write_to_future(void *data) {
-  std::unique_ptr<write_to_future_data<T>> ptr((write_to_future_data<T> *)data);
+static void write_to_future(std::unique_ptr<write_to_future_data<T>> ptr) {
   // is future ready?
   if (wit::future_ready(ptr->fut)) {
-    auto result = take_future_value(ptr->fut);
-    auto written = ptr->wr.handle.StartWriting();
-    if (wit::result_ok(written)) {
-      auto buffer = wit::result_value(std::move(written));
-      assert(buffer.Capacity() == 1);
-      uint8_t *dataptr = (uint8_t *)(buffer.GetAddress().into_handle());
-      lower_future_value<T, LOWER>(std::move(result), dataptr);
-      buffer.SetSize(1);
-      ptr->wr.handle.FinishWriting(std::move(buffer));
-    } else {
-      if (wit::result_error(written) ==
-          symmetric::runtime::symmetric_stream::StreamState::kPending) {
-        symmetric::runtime::symmetric_executor::Register(
-            ptr->wr.handle.WriteReadySubscribe(),
-            symmetric::runtime::symmetric_executor::CallbackFunction(
-                wit::ResourceImportBase((uint8_t *)write_to_future<T, LOWER>)),
-            symmetric::runtime::symmetric_executor::CallbackData(
-                wit::ResourceImportBase((uint8_t *)ptr.release())));
-      }
-    }
+    write_future_value<T, LOWER>(*ptr);
   } else {
     // sadly there is no easier way to wait for a future in the background?
     // move to run_in_background
@@ -325,27 +403,7 @@ write_to_future(void *data) {
     auto task = wit::spawn(
         [](std::unique_ptr<write_to_future_data<T>> &&ptr,
            symmetric::runtime::symmetric_executor::EventGenerator &&gen) {
-          auto result = take_future_value(ptr->fut);
-          while (!ptr->wr.handle.IsReadClosed()) {
-            auto written = ptr->wr.handle.StartWriting();
-            if (wit::result_ok(written)) {
-              auto buffer = wit::result_value(std::move(written));
-              // assert(buffer.GetSize()==1); //sizeof(T));
-              uint8_t *dataptr =
-                  (uint8_t *)(buffer.GetAddress().into_handle());
-              lower_future_value<T, LOWER>(std::move(result), dataptr);
-              buffer.SetSize(1);
-              ptr->wr.handle.FinishWriting(std::move(buffer));
-              // a future is written only once
-              break;
-            } else {
-              if (wit::result_error(written) ==
-                  symmetric::runtime::symmetric_stream::StreamState::kPending) {
-                symmetric::runtime::symmetric_executor::BlockOn(
-                    ptr->wr.handle.WriteReadySubscribe());
-              }
-            }
-          }
+          write_future_value<T, LOWER>(*ptr);
           gen.Activate();
         },
         std::move(ptr), std::move(gen));
@@ -357,20 +415,12 @@ write_to_future(void *data) {
         symmetric::runtime::symmetric_executor::CallbackData(
             wit::ResourceImportBase((uint8_t *)fut)));
   }
-  return symmetric::runtime::symmetric_executor::CallbackState::kReady;
 }
 
 template <class T, class LOWER> uint8_t *lower_future(wit::future<T> &&f) {
   auto handles = create_wasi_future<T>();
-  auto wait_on = handles.first.handle.WriteReadySubscribe();
-  auto fut = std::make_unique<write_to_future_data<T>>(
-      write_to_future_data<T>{std::move(handles.first), std::move(f)});
-  symmetric::runtime::symmetric_executor::Register(
-      std::move(wait_on),
-      symmetric::runtime::symmetric_executor::CallbackFunction(
-          wit::ResourceImportBase((uint8_t *)&write_to_future<T, LOWER>)),
-      symmetric::runtime::symmetric_executor::CallbackData(
-          wit::ResourceImportBase((uint8_t *)fut.release())));
+  write_to_future<T, LOWER>(std::make_unique<write_to_future_data<T>>(
+      write_to_future_data<T>{std::move(handles.first), std::move(f)}));
   return handles.second.handle.into_handle();
 }
 

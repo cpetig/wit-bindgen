@@ -116,7 +116,7 @@ public:
     symmetric::runtime::symmetric_stream::Buffer b(
         symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase{
             (wit::ResourceImportBase::handle_t)object->buffer.data()}),
-        buffer_size);
+        buffer_size, StreamProperties<T>::lowered_size);
 
     auto res = object->handle.StartReading(std::move(b));
     // success will trigger the event, a buffer indicates misuse

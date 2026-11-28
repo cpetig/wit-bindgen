@@ -505,7 +505,7 @@ inline void wit_async_context_set(void *val) { wit_async_tls_slot() = val; }
 // Access to the symmetric executor (see crates/symmetric_executor/wit). The
 // symbols are declared here directly, as the generated bindings of the
 // executor include this header.
-#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00##x
+#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00##x
 extern "C" uint8_t *WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
 extern "C" uint8_t *WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(uint8_t *);
@@ -1434,9 +1434,9 @@ const StreamVtable<void> *get_stream_vtable<void>();
 namespace detail {
 // The symmetric stream runtime (see crates/symmetric_executor/wit/stream.wit),
 // accessed with plain pointers like the executor above.
-#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00##x
+#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00##x
 extern "C" void WIT_SYM_STR(X5Bresource_dropX5Dbuffer)(uint8_t *);
-extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dbuffer)(uint8_t *, int64_t);
+extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dbuffer)(uint8_t *, int64_t, int64_t);
 extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(uint8_t *);
 extern "C" int64_t WIT_SYM_STR(X5BmethodX5DbufferX2Eget_size)(uint8_t *);
 extern "C" void WIT_SYM_STR(X5BmethodX5DbufferX2Eset_size)(uint8_t *, int64_t);
@@ -1447,9 +1447,11 @@ extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5Dstream_objX2Eclone)(uint8_t *, int32
 extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_reading)(uint8_t *, uint8_t *, uint8_t *);
 extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_ready_subscribe)(uint8_t *);
 extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_result)(uint8_t *, uint8_t *);
-extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_writing)(uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Ecancel_read)(uint8_t *, uint8_t *);
 extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5Dstream_objX2Ewrite_ready_subscribe)(uint8_t *);
-extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Efinish_writing)(uint8_t *, uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Eoffer_write)(uint8_t *, uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Ecancel_write)(uint8_t *, uint8_t *);
+extern "C" void WIT_SYM_STR(X5BmethodX5Dstream_objX2Ewrite_result)(uint8_t *, uint8_t *);
 extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_subscriptionX2Ereset)(uint8_t *);
 
 /// Elements without a payload use this as their (unused) memory
@@ -1461,9 +1463,10 @@ inline void sym_stream_drop(uint8_t *stream) {
   WIT_SYM_STR(X5Bresource_dropX5Dstream_obj)(stream);
 }
 
-inline uint8_t *sym_buffer_new(void *addr, size_t capacity) {
+inline uint8_t *sym_buffer_new(void *addr, size_t capacity, size_t element_size) {
   return WIT_SYM_STR(X5BconstructorX5Dbuffer)(static_cast<uint8_t *>(addr),
-                                              static_cast<int64_t>(capacity));
+                                              static_cast<int64_t>(capacity),
+                                              static_cast<int64_t>(element_size));
 }
 inline uint8_t *sym_buffer_address(uint8_t *buf) {
   return WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(buf);
@@ -1498,15 +1501,32 @@ inline SymResult sym_read_result(uint8_t *stream) {
           nullptr};
 }
 
-/// The buffer a reader is waiting with
-inline SymResult sym_start_writing(uint8_t *stream) {
+/// The completed write, `Ok` has the buffer (the size is the number of
+/// elements the reader took)
+inline SymResult sym_write_result(uint8_t *stream) {
   alignas(void *) uint8_t ret[2 * sizeof(void *)];
-  WIT_SYM_STR(X5BmethodX5Dstream_objX2Estart_writing)(stream, ret);
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Ewrite_result)(stream, ret);
   if (ret[0] == 0) {
     return {SymState::Ok, *reinterpret_cast<uint8_t **>(ret + sizeof(void *))};
   }
   return {ret[sizeof(void *)] == 0 ? SymState::Eof : SymState::Pending,
           nullptr};
+}
+
+/// The buffer of the read in flight (with the number of elements read so far)
+inline uint8_t *sym_cancel_read(uint8_t *stream) {
+  alignas(void *) uint8_t ret[2 * sizeof(void *)];
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Ecancel_read)(stream, ret);
+  return ret[0] == 0 ? nullptr
+                     : *reinterpret_cast<uint8_t **>(ret + sizeof(void *));
+}
+
+/// The buffer of the write in flight (with the number of elements taken so far)
+inline uint8_t *sym_cancel_write(uint8_t *stream) {
+  alignas(void *) uint8_t ret[2 * sizeof(void *)];
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Ecancel_write)(stream, ret);
+  return ret[0] == 0 ? nullptr
+                     : *reinterpret_cast<uint8_t **>(ret + sizeof(void *));
 }
 
 /// Returns null if the buffer was accepted, otherwise it is handed back
@@ -1518,9 +1538,9 @@ inline uint8_t *sym_start_reading(uint8_t *stream, uint8_t *buffer) {
 }
 
 /// Returns null if the buffer was accepted, otherwise it is handed back
-inline uint8_t *sym_finish_writing(uint8_t *stream, uint8_t *buffer) {
+inline uint8_t *sym_offer_write(uint8_t *stream, uint8_t *buffer) {
   alignas(void *) uint8_t ret[2 * sizeof(void *)];
-  WIT_SYM_STR(X5BmethodX5Dstream_objX2Efinish_writing)(stream, buffer, ret);
+  WIT_SYM_STR(X5BmethodX5Dstream_objX2Eoffer_write)(stream, buffer, ret);
   return ret[0] == 0 ? nullptr
                      : *reinterpret_cast<uint8_t **>(ret + sizeof(void *));
 }
@@ -1534,19 +1554,29 @@ inline void sym_subscription_drop(uint8_t *event) {
   WIT_SYM_EXE(X5Bresource_dropX5Devent_subscription)(event);
 }
 
-/// Memory for the elements a reader is waiting for. If the reader gives up
-/// while the buffer is lent to the writer it must not be freed.
+/// Memory for the elements a reader is waiting for. It is lent to the stream
+/// while `offered`, if the reader gives up (the coroutine is destroyed) the
+/// read is cancelled before the memory is freed.
 struct SymReadBuffer {
+  uint8_t *stream;
   uint8_t *ptr;
   bool owned;
   bool offered = false;
-  explicit SymReadBuffer(size_t bytes)
-      : ptr(bytes > 0 ? static_cast<uint8_t *>(malloc(bytes)) : sym_no_payload),
-        owned(bytes > 0) {}
+  size_t element_size;
+  SymReadBuffer(uint8_t *stream, size_t bytes, size_t element_size)
+      : stream(stream),
+        ptr(bytes > 0 ? static_cast<uint8_t *>(malloc(bytes)) : sym_no_payload),
+        owned(bytes > 0), element_size(element_size) {}
   SymReadBuffer(const SymReadBuffer &) = delete;
   SymReadBuffer &operator=(const SymReadBuffer &) = delete;
   ~SymReadBuffer() {
-    if (owned && !offered) {
+    if (offered) {
+      uint8_t *buffer = sym_cancel_read(stream);
+      if (buffer) {
+        sym_buffer_drop(buffer);
+      }
+    }
+    if (owned) {
       free(ptr);
     }
   }
@@ -1557,64 +1587,137 @@ struct SymRead {
   uint8_t *data;
 };
 
-/// Wait for the writer to provide up to `max` elements (in `buf` if it
-/// uses the buffer we offer)
+/// Offer `buf` for up to `max` elements and wait until a writer provided
+/// (some of) them. If a writer is waiting already this completes without
+/// suspending.
 inline Task<SymRead> sym_read(uint8_t *stream, SymReadBuffer &buf, size_t max) {
   for (;;) {
+    if (!buf.offered) {
+      uint8_t *rejected = sym_start_reading(
+          stream, sym_buffer_new(buf.ptr, max, buf.element_size));
+      if (rejected) {
+        // the stream has only one reader operation at a time
+        sym_buffer_drop(rejected);
+        abort();
+      }
+      buf.offered = true;
+    }
     uint8_t *event = sym_subscription_new(
         WIT_SYM_STR(X5BmethodX5Dstream_objX2Eread_ready_subscribe)(stream));
     SymResult r = sym_read_result(stream);
     if (r.state == SymState::Ok) {
       sym_subscription_drop(event);
+      buf.offered = false;
       size_t count = sym_buffer_size(r.buffer);
-      uint8_t *data = sym_buffer_address(r.buffer);
       sym_buffer_drop(r.buffer);
-      if (data == buf.ptr) {
-        buf.offered = false;
-      }
-      co_return SymRead{count, data};
+      co_return SymRead{count, buf.ptr};
     }
     if (r.state == SymState::Eof) {
+      // the offer is withdrawn
       sym_subscription_drop(event);
+      buf.offered = false;
       co_return SymRead{0, nullptr};
     }
-    if (!buf.offered) {
-      uint8_t *rejected = sym_start_reading(stream, sym_buffer_new(buf.ptr, max));
-      if (rejected) {
-        // an earlier offer is still open, which is as good
-        sym_buffer_drop(rejected);
-      }
-      buf.offered = true;
-    }
     co_await EventAwaiter(event);
   }
 }
 
-/// Wait for a reader to offer a buffer, null if there are no readers anymore
-inline Task<uint8_t *> sym_wait_writable(uint8_t *stream) {
+/// Lowered elements which are offered to a reader. The elements the reader
+/// took belong to it, `done` counts them. The rest is lifted (and dropped)
+/// when the write ends, a write in flight is cancelled first.
+struct SymLowered {
+  uint8_t *stream;
+  uint8_t *mem;
+  bool owned;
+  bool offered = false;
+  size_t count;
+  size_t done = 0;
+  size_t element_size;
+  void (*discard)(uint8_t *element); // lifts an element and drops it
+  SymLowered(uint8_t *stream, size_t count, size_t element_size,
+             void (*discard)(uint8_t *))
+      : stream(stream),
+        mem(element_size * count > 0
+                ? static_cast<uint8_t *>(malloc(element_size * count))
+                : sym_no_payload),
+        owned(element_size * count > 0), count(count),
+        element_size(element_size), discard(discard) {}
+  SymLowered(const SymLowered &) = delete;
+  SymLowered &operator=(const SymLowered &) = delete;
+  ~SymLowered() {
+    if (offered) {
+      uint8_t *buffer = sym_cancel_write(stream);
+      if (buffer) {
+        done += sym_buffer_size(buffer);
+        sym_buffer_drop(buffer);
+      }
+    }
+    if (discard) {
+      for (; done < count; ++done) {
+        discard(mem + done * element_size);
+      }
+    }
+    if (owned) {
+      free(mem);
+    }
+  }
+};
+
+/// The (lifted) element behind a lowered one is dropped
+template <typename T> inline void sym_discard_future(uint8_t *element) {
+  if constexpr (std::is_void_v<T>) {
+    (void)element;
+  } else {
+    (void)get_future_vtable<T>()->lift(element);
+  }
+}
+template <typename T> inline void sym_discard_stream(uint8_t *element) {
+  if constexpr (std::is_void_v<T>) {
+    (void)element;
+  } else {
+    (void)get_stream_vtable<T>()->lift(element);
+  }
+}
+
+/// Offer the elements not yet taken and wait until a reader took all of
+/// them (`done` is increased; the runtime keeps the offset when the reader
+/// takes only some, the write stays pending). If a reader is waiting already
+/// and takes everything this completes without suspending. When the readers
+/// go away `done` is the number of elements they took before and the result is
+/// false (the elements not taken are the writer's).
+inline Task<bool> sym_write(uint8_t *stream, SymLowered &data) {
   for (;;) {
+    if (!data.offered) {
+      uint8_t *buffer = sym_buffer_new(data.mem + data.done * data.element_size,
+                                       data.count - data.done, data.element_size);
+      sym_buffer_set_size(buffer, data.count - data.done);
+      uint8_t *rejected = sym_offer_write(stream, buffer);
+      if (rejected) {
+        // the stream has only one writer operation at a time
+        sym_buffer_drop(rejected);
+        abort();
+      }
+      data.offered = true;
+    }
     uint8_t *event = sym_subscription_new(
         WIT_SYM_STR(X5BmethodX5Dstream_objX2Ewrite_ready_subscribe)(stream));
-    SymResult r = sym_start_writing(stream);
+    SymResult r = sym_write_result(stream);
     if (r.state == SymState::Ok) {
       sym_subscription_drop(event);
-      co_return r.buffer;
+      data.offered = false;
+      size_t n = sym_buffer_size(r.buffer);
+      sym_buffer_drop(r.buffer);
+      data.done += n;
+      // fewer than offered means that the readers are gone
+      co_return data.done == data.count;
     }
     if (r.state == SymState::Eof) {
+      // the offer is withdrawn
       sym_subscription_drop(event);
-      co_return nullptr;
+      data.offered = false;
+      co_return false;
     }
     co_await EventAwaiter(event);
-  }
-}
-
-/// Hand over the first `count` elements (the buffer is consumed)
-inline void sym_finish_write(uint8_t *stream, uint8_t *buffer, size_t count) {
-  sym_buffer_set_size(buffer, count);
-  uint8_t *rejected = sym_finish_writing(stream, buffer);
-  if (rejected) {
-    // can't happen, the reader's offer was just taken
-    sym_buffer_drop(rejected);
   }
 }
 } // namespace detail
@@ -1658,7 +1761,7 @@ public:
     assert(handle);
     FutureReader<T> self(into_handle());
     const auto *vt = detail::get_future_vtable<T>();
-    detail::SymReadBuffer buf(vt->size);
+    detail::SymReadBuffer buf(self.handle, vt->size, vt->size);
     detail::SymRead res = co_await detail::sym_read(self.handle, buf, 1);
     // the writer has to provide a value
     if (res.count == 0) {
@@ -1714,13 +1817,10 @@ public:
     assert(handle);
     FutureWriter<T> self(into_handle());
     const auto *vt = detail::get_future_vtable<T>();
-    uint8_t *buffer = co_await detail::sym_wait_writable(self.handle);
-    if (!buffer) {
-      co_return false;
-    }
-    vt->lower(std::move(value), detail::sym_buffer_address(buffer));
-    detail::sym_finish_write(self.handle, buffer, 1);
-    co_return true;
+    detail::SymLowered data(self.handle, 1, vt->size,
+                            &detail::sym_discard_future<T>);
+    vt->lower(std::move(value), data.mem);
+    co_return co_await detail::sym_write(self.handle, data);
   }
 };
 
@@ -1762,12 +1862,8 @@ public:
   Task<bool> write() {
     assert(handle);
     FutureWriter<void> self(into_handle());
-    uint8_t *buffer = co_await detail::sym_wait_writable(self.handle);
-    if (!buffer) {
-      co_return false;
-    }
-    detail::sym_finish_write(self.handle, buffer, 1);
-    co_return true;
+    detail::SymLowered data(self.handle, 1, 0, nullptr);
+    co_return co_await detail::sym_write(self.handle, data);
   }
 };
 
@@ -2111,7 +2207,7 @@ public:
                                  std::vector<T>{});
       }
       const auto *vt = detail::get_stream_vtable<T>();
-      detail::SymReadBuffer buf(vt->size * max_count);
+      detail::SymReadBuffer buf(handle, vt->size * max_count, vt->size);
       detail::SymRead res = co_await detail::sym_read(handle, buf, max_count);
       if (res.count == 0) {
         peer_dropped = true;
@@ -2212,7 +2308,7 @@ public:
       if (peer_dropped) {
         co_return StreamStatus{StreamState::Dropped, 0};
       }
-      detail::SymReadBuffer buf(0);
+      detail::SymReadBuffer buf(handle, 0, 0);
       detail::SymRead res = co_await detail::sym_read(handle, buf, max_count);
       if (res.count == 0) {
         peer_dropped = true;
@@ -2281,24 +2377,16 @@ public:
     }
     const auto *vt = detail::get_stream_vtable<T>();
     size_t count = values.size();
-    size_t done = 0;
-    while (done < count) {
-      uint8_t *buffer = co_await detail::sym_wait_writable(handle);
-      if (!buffer) {
-        peer_dropped = true;
-        break;
-      }
-      size_t n = detail::sym_buffer_capacity(buffer);
-      if (n > count - done) {
-        n = count - done;
-      }
-      uint8_t *dest = detail::sym_buffer_address(buffer);
-      for (size_t i = 0; i < n; ++i) {
-        vt->lower(std::move(values[done + i]), dest + i * vt->size);
-      }
-      detail::sym_finish_write(handle, buffer, n);
-      done += n;
+    detail::SymLowered data(handle, count, vt->size,
+                            &detail::sym_discard_stream<T>);
+    for (size_t i = 0; i < count; ++i) {
+      vt->lower(std::move(values[i]), data.mem + i * vt->size);
     }
+    // the write completes when all values were taken or the reader is gone
+    if (count > 0 && !co_await detail::sym_write(handle, data)) {
+      peer_dropped = true;
+    }
+    size_t done = data.done;
     StreamState s = done > 0               ? StreamState::Complete
                     : peer_dropped         ? StreamState::Dropped
                                            : StreamState::Cancelled;
@@ -2376,20 +2464,11 @@ public:
     if (peer_dropped) {
       co_return StreamStatus{StreamState::Dropped, 0};
     }
-    size_t done = 0;
-    while (done < count) {
-      uint8_t *buffer = co_await detail::sym_wait_writable(handle);
-      if (!buffer) {
-        peer_dropped = true;
-        break;
-      }
-      size_t n = detail::sym_buffer_capacity(buffer);
-      if (n > count - done) {
-        n = count - done;
-      }
-      detail::sym_finish_write(handle, buffer, n);
-      done += n;
+    detail::SymLowered data(handle, count, 0, nullptr);
+    if (count > 0 && !co_await detail::sym_write(handle, data)) {
+      peer_dropped = true;
     }
+    size_t done = data.done;
     StreamState s = done > 0               ? StreamState::Complete
                     : peer_dropped         ? StreamState::Dropped
                                            : StreamState::Cancelled;

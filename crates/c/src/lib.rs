@@ -3267,13 +3267,15 @@ impl InterfaceGenerator<'_> {
             }
         };
         // Reader and writer must not share memory, so strings are copied when
-        // written. Other payloads containing pointers are not.
-        let (own_fn, own_def) = if matches!(payload_type, Some(Type::String)) {
+        // written (the copy belongs to the reader if it is transferred, otherwise
+        // it is freed again). Other payloads containing pointers are not.
+        let (own_fn, disown_fn, own_def) = if matches!(payload_type, Some(Type::String)) {
             let string_ty = self.r#gen.type_name(&Type::String);
             let char_ty = self.r#gen.char_type();
             self.r#gen.c_include("<string.h>");
             (
                 format!("{name}__own"),
+                format!("{name}__disown"),
                 format!(
                     r#"
 static void {name}__own(void *elems, size_t count) {{
@@ -3285,11 +3287,18 @@ static void {name}__own(void *elems, size_t count) {{
         strings[i].ptr = copy;
     }}
 }}
+
+static void {name}__disown(void *elems, size_t count) {{
+    {string_ty} *strings = ({string_ty} *) elems;
+    for (size_t i = 0; i < count; i++) {{
+        if (strings[i].len != 0) free(strings[i].ptr);
+    }}
+}}
 "#
                 ),
             )
         } else {
-            ("NULL".to_string(), String::new())
+            ("NULL".to_string(), "NULL".to_string(), String::new())
         };
         let empty = "";
         uwriteln!(
@@ -3304,7 +3313,7 @@ static void {name}__own(void *elems, size_t count) {{
 }}
 
 {snake}_waitable_status_t {name}_write({name}_writer_t writer{write_arg_ty}) {{
-    return wit_stream_write(writer, {write_args}, {elem_size}, {is_future}, {own_fn});
+    return wit_stream_write(writer, {write_args}, {elem_size}, {is_future}, {own_fn}, {disown_fn});
 }}
 
 {snake}_waitable_status_t {name}_cancel_read({ty} reader){empty} {{

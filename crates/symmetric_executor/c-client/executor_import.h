@@ -74,7 +74,7 @@ typedef struct {
   symmetric_runtime_symmetric_executor_own_callback_registration_t val;
 } symmetric_runtime_symmetric_executor_option_own_callback_registration_t;
 
-// Imported Functions from `symmetric:runtime/symmetric-executor@0.3.1`
+// Imported Functions from `symmetric:runtime/symmetric-executor@0.4.0`
 // Whether the event is active (used by poll implementation)
 extern bool symmetric_runtime_symmetric_executor_method_event_subscription_ready(symmetric_runtime_symmetric_executor_borrow_event_subscription_t self);
 // Create a timeout event

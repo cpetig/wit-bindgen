@@ -80,7 +80,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -88,12 +88,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-function"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_function(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_function(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_function(
                             _handle as *mut u8,
                         )
                     };
@@ -126,7 +126,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -134,12 +134,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-data"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_data(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_data(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_data(
                             _handle as *mut u8,
                         )
                     };
@@ -171,7 +171,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -179,12 +179,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]event-subscription"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_subscription(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_subscription(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_subscription(
                             _handle as *mut u8,
                         )
                     };
@@ -216,7 +216,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -224,12 +224,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]event-generator"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_generator(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Devent_generator(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Devent_generator(
                             _handle as *mut u8,
                         )
                     };
@@ -261,7 +261,7 @@ pub mod symmetric {
                 #[inline]
                 unsafe fn drop(_handle: usize) {
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -269,12 +269,12 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "[resource-drop]callback-registration"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_registration(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
+                            arg0: *mut u8,
                         );
                     }
                     unsafe {
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5Bresource_dropX5Dcallback_registration(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5Bresource_dropX5Dcallback_registration(
                             _handle as *mut u8,
                         )
                     };
@@ -329,7 +329,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -337,11 +337,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.ready"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Eready(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
+                                arg0: *mut u8,
                             ) -> i32;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Eready(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Eready(
                             (self).handle() as *mut u8,
                         );
                         _rt::bool_lift(ret as u8)
@@ -359,7 +359,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -367,11 +367,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[static]event-subscription.from-timeout"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
-                                _: i64,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+                                arg0: i64,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(
                             _rt::as_i64(&nanoseconds),
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -389,7 +389,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -397,11 +397,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.dup"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Edup(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
+                                arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Edup(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Edup(
                             (self).handle() as *mut u8,
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -419,7 +419,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -427,11 +427,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-subscription.reset"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Ereset(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
+                                arg0: *mut u8,
                             );
                         }
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_subscriptionX2Ereset(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(
                             (self).handle() as *mut u8,
                         );
                     }
@@ -447,7 +447,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -455,9 +455,9 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[constructor]event-generator"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BconstructorX5Devent_generator() -> *mut u8;
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator() -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BconstructorX5Devent_generator();
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BconstructorX5Devent_generator();
                         EventGenerator::from_handle(ret as usize)
                     }
                 }
@@ -474,7 +474,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -482,11 +482,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-generator.subscribe"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Esubscribe(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
+                                arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Esubscribe(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(
                             (self).handle() as *mut u8,
                         );
                         EventSubscription::from_handle(ret as usize)
@@ -504,7 +504,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -512,11 +512,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[method]event-generator.activate"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Eactivate(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
+                                arg0: *mut u8,
                             );
                         }
-                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BmethodX5Devent_generatorX2Eactivate(
+                        symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BmethodX5Devent_generatorX2Eactivate(
                             (self).handle() as *mut u8,
                         );
                     }
@@ -533,7 +533,7 @@ pub mod symmetric {
                             link(name = "symmetric_executor")
                         )]
                         #[link(
-                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                            wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                         )]
                         unsafe extern "C" {
                             #[allow(non_snake_case)]
@@ -541,11 +541,11 @@ pub mod symmetric {
                                 target_arch = "wasm32",
                                 link_name = "[static]callback-registration.cancel"
                             )]
-                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Dcallback_registrationX2Ecancel(
-                                _: *mut u8,
+                            fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
+                                arg0: *mut u8,
                             ) -> *mut u8;
                         }
-                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00X5BstaticX5Dcallback_registrationX2Ecancel(
+                        let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(
                             (&obj).take_handle() as *mut u8,
                         );
                         CallbackData::from_handle(ret as usize)
@@ -562,14 +562,14 @@ pub mod symmetric {
                         link(name = "symmetric_executor")
                     )]
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "run")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00run();
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00run();
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00run();
                 }
             }
             #[allow(unused_unsafe, clippy::all)]
@@ -586,18 +586,18 @@ pub mod symmetric {
                         link(name = "symmetric_executor")
                     )]
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "register")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register(
-                            _: *mut u8,
-                            _: *mut u8,
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
+                            arg0: *mut u8,
+                            arg1: *mut u8,
+                            arg2: *mut u8,
                         ) -> *mut u8;
                     }
-                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register(
+                    let ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register(
                         (&trigger).take_handle() as *mut u8,
                         (&callback).take_handle() as *mut u8,
                         (&data).take_handle() as *mut u8,
@@ -631,7 +631,7 @@ pub mod symmetric {
                         link(name = "symmetric_executor")
                     )]
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
@@ -639,14 +639,14 @@ pub mod symmetric {
                             target_arch = "wasm32",
                             link_name = "register-unique"
                         )]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register_unique(
-                            _: *mut u8,
-                            _: *mut u8,
-                            _: *mut u8,
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
+                            arg0: *mut u8,
+                            arg1: *mut u8,
+                            arg2: *mut u8,
+                            arg3: *mut u8,
                         );
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00register_unique(
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00register_unique(
                         (&trigger).take_handle() as *mut u8,
                         (&callback).take_handle() as *mut u8,
                         (&data).take_handle() as *mut u8,
@@ -678,16 +678,16 @@ pub mod symmetric {
                         link(name = "symmetric_executor")
                     )]
                     #[link(
-                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.3.1"
+                        wasm_import_module = "symmetric:runtime/symmetric-executor@0.4.0"
                     )]
                     unsafe extern "C" {
                         #[allow(non_snake_case)]
                         #[cfg_attr(target_arch = "wasm32", link_name = "block-on")]
-                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00block_on(
-                            _: *mut u8,
+                        fn symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
+                            arg0: *mut u8,
                         );
                     }
-                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00block_on(
+                    symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00block_on(
                         (&trigger).take_handle() as *mut u8,
                     );
                 }
@@ -815,9 +815,11 @@ mod _rt {
     }
 }
 #[rustfmt::skip]
-#[cfg(target_arch = "wasm32")]
-#[unsafe(
-    link_section = "component-type:wit-bindgen:0.63.0:symmetric:runtime@0.3.1:executor-import:encoded world"
+#[cfg_attr(
+    target_family = "wasm",
+    unsafe(
+        link_section = "component-type:wit-bindgen:0.63.0:symmetric:runtime@0.4.0:executor-import:encoded world"
+    )
 )]
 #[doc(hidden)]
 #[allow(clippy::octal_escapes)]
@@ -838,10 +840,22 @@ self\x11\0\x0b\x04\0![method]event-generator.subscribe\x01\x12\x01@\x01\x04self\
 \x04\0\x03run\x01\x17\x01i\x02\x01@\x03\x07trigger\x0b\x08callback\x18\x04data\x15\
 \0\x14\x04\0\x08register\x01\x19\x01k\x14\x01@\x03\x07trigger\x0b\x08callback\x18\
 \x04data\x15\0\x1a\x04\0\x0fregister-unique\x01\x1b\x01@\x01\x07trigger\x0b\x01\0\
-\x04\0\x08block-on\x01\x1c\x03\0*symmetric:runtime/symmetric-executor@0.3.1\x05\0\
-\x04\0'symmetric:runtime/executor-import@0.3.1\x04\0\x0b\x15\x01\0\x0fexecutor-i\
+\x04\0\x08block-on\x01\x1c\x03\0*symmetric:runtime/symmetric-executor@0.4.0\x05\0\
+\x04\0'symmetric:runtime/executor-import@0.4.0\x04\0\x0b\x15\x01\0\x0fexecutor-i\
 mport\x03\0\0\0G\x09producers\x01\x0cprocessed-by\x02\x0dwit-component\x070.263.\
 0\x10wit-bindgen-rust\x060.63.0";
+#[cfg(not(target_family = "wasm"))]
+const _: () = {
+    #[unsafe(export_name = "__wit_bindgen_world_symmetricX3AruntimeX400X2E4X2E0X2Fexecutor_import")]
+    unsafe extern "C" fn __wit_bindgen_world(len: *mut usize) -> *const u8 {
+        if !len.is_null() {
+            unsafe {
+                *len = __WIT_BINDGEN_COMPONENT_TYPE.len();
+            }
+        }
+        __WIT_BINDGEN_COMPONENT_TYPE.as_ptr()
+    }
+};
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {

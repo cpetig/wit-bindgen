@@ -2,37 +2,39 @@
 #include "executor_import.h"
 #include <stdlib.h>
 
-// Imported Functions from `symmetric:runtime/symmetric-executor@0.5.0`
+// Imported Functions from `symmetric:runtime/symmetric-executor@0.6.0`
 
-extern int32_t symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Eready(uint8_t *);
+extern int32_t symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Eready(uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(int64_t);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout(int64_t);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Edup(uint8_t *);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Edup(uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Ereset(uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BconstructorX5Devent_generator(void);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BconstructorX5Devent_generator(void);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(uint8_t *);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Esubscribe(uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate(uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel(uint8_t *, uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel(uint8_t *, uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled(uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel(uint8_t *, uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00run(void);
+extern int32_t symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Dcallback_registrationX2Eis_pending(uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register(uint8_t *, uint8_t *, uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00run(void);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register_unique(uint8_t *, uint8_t *, uint8_t *, uint8_t *);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register(uint8_t *, uint8_t *, uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00block_on(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register_unique(uint8_t *, uint8_t *, uint8_t *, uint8_t *);
 
-extern int32_t symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00cancel_task(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00block_on(uint8_t *);
+
+extern int32_t symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00cancel_task(uint8_t *);
 
 // Canonical ABI intrinsics
 __attribute__((__weak__))
@@ -46,74 +48,79 @@ void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {
 
 // Helper Functions
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_function(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_function(uint8_t * handle);
 
 void symmetric_runtime_symmetric_executor_callback_function_drop_own(symmetric_runtime_symmetric_executor_own_callback_function_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_function(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_function(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_executor_callback_function_drop_borrow(symmetric_runtime_symmetric_executor_borrow_callback_function_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_function(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_function(handle.__handle);
 }
 
 symmetric_runtime_symmetric_executor_borrow_callback_function_t symmetric_runtime_symmetric_executor_borrow_callback_function(symmetric_runtime_symmetric_executor_own_callback_function_t arg) {
   return (symmetric_runtime_symmetric_executor_borrow_callback_function_t) { arg.__handle };
 }
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_data(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_data(uint8_t * handle);
 
 void symmetric_runtime_symmetric_executor_callback_data_drop_own(symmetric_runtime_symmetric_executor_own_callback_data_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_data(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_data(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_executor_callback_data_drop_borrow(symmetric_runtime_symmetric_executor_borrow_callback_data_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_data(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_data(handle.__handle);
 }
 
 symmetric_runtime_symmetric_executor_borrow_callback_data_t symmetric_runtime_symmetric_executor_borrow_callback_data(symmetric_runtime_symmetric_executor_own_callback_data_t arg) {
   return (symmetric_runtime_symmetric_executor_borrow_callback_data_t) { arg.__handle };
 }
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_subscription(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_subscription(uint8_t * handle);
 
 void symmetric_runtime_symmetric_executor_event_subscription_drop_own(symmetric_runtime_symmetric_executor_own_event_subscription_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_subscription(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_subscription(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_executor_event_subscription_drop_borrow(symmetric_runtime_symmetric_executor_borrow_event_subscription_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_subscription(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_subscription(handle.__handle);
 }
 
 symmetric_runtime_symmetric_executor_borrow_event_subscription_t symmetric_runtime_symmetric_executor_borrow_event_subscription(symmetric_runtime_symmetric_executor_own_event_subscription_t arg) {
   return (symmetric_runtime_symmetric_executor_borrow_event_subscription_t) { arg.__handle };
 }
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_generator(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_generator(uint8_t * handle);
 
 void symmetric_runtime_symmetric_executor_event_generator_drop_own(symmetric_runtime_symmetric_executor_own_event_generator_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_generator(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_generator(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_executor_event_generator_drop_borrow(symmetric_runtime_symmetric_executor_borrow_event_generator_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Devent_generator(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Devent_generator(handle.__handle);
 }
 
 symmetric_runtime_symmetric_executor_borrow_event_generator_t symmetric_runtime_symmetric_executor_borrow_event_generator(symmetric_runtime_symmetric_executor_own_event_generator_t arg) {
   return (symmetric_runtime_symmetric_executor_borrow_event_generator_t) { arg.__handle };
 }
 
-extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_registration(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_registration(uint8_t * handle);
 
 void symmetric_runtime_symmetric_executor_callback_registration_drop_own(symmetric_runtime_symmetric_executor_own_callback_registration_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_registration(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_registration(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_executor_callback_registration_drop_borrow(symmetric_runtime_symmetric_executor_borrow_callback_registration_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5Bresource_dropX5Dcallback_registration(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5Bresource_dropX5Dcallback_registration(handle.__handle);
 }
 
 symmetric_runtime_symmetric_executor_borrow_callback_registration_t symmetric_runtime_symmetric_executor_borrow_callback_registration(symmetric_runtime_symmetric_executor_own_callback_registration_t arg) {
   return (symmetric_runtime_symmetric_executor_borrow_callback_registration_t) { arg.__handle };
+}
+
+void symmetric_runtime_symmetric_executor_option_own_callback_data_free(symmetric_runtime_symmetric_executor_option_own_callback_data_t *ptr) {
+  if (ptr->is_some) {
+  }
 }
 
 void symmetric_runtime_symmetric_executor_option_own_callback_registration_free(symmetric_runtime_symmetric_executor_option_own_callback_registration_t *ptr) {
@@ -124,57 +131,78 @@ void symmetric_runtime_symmetric_executor_option_own_callback_registration_free(
 // Component Adapters
 
 bool symmetric_runtime_symmetric_executor_method_event_subscription_ready(symmetric_runtime_symmetric_executor_borrow_event_subscription_t self) {
-  int32_t ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Eready((self).__handle);
+  int32_t ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Eready((self).__handle);
   return ret;
 }
 
 symmetric_runtime_symmetric_executor_own_event_subscription_t symmetric_runtime_symmetric_executor_static_event_subscription_from_timeout(uint64_t nanoseconds) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout((int64_t) (nanoseconds));
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Devent_subscriptionX2Efrom_timeout((int64_t) (nanoseconds));
   return (symmetric_runtime_symmetric_executor_own_event_subscription_t) { ret };
 }
 
 symmetric_runtime_symmetric_executor_own_event_subscription_t symmetric_runtime_symmetric_executor_method_event_subscription_dup(symmetric_runtime_symmetric_executor_borrow_event_subscription_t self) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Edup((self).__handle);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Edup((self).__handle);
   return (symmetric_runtime_symmetric_executor_own_event_subscription_t) { ret };
 }
 
 void symmetric_runtime_symmetric_executor_method_event_subscription_reset(symmetric_runtime_symmetric_executor_borrow_event_subscription_t self) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_subscriptionX2Ereset((self).__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_subscriptionX2Ereset((self).__handle);
 }
 
 symmetric_runtime_symmetric_executor_own_event_generator_t symmetric_runtime_symmetric_executor_constructor_event_generator(void) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BconstructorX5Devent_generator();
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BconstructorX5Devent_generator();
   return (symmetric_runtime_symmetric_executor_own_event_generator_t) { ret };
 }
 
 symmetric_runtime_symmetric_executor_own_event_subscription_t symmetric_runtime_symmetric_executor_method_event_generator_subscribe(symmetric_runtime_symmetric_executor_borrow_event_generator_t self) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Esubscribe((self).__handle);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Esubscribe((self).__handle);
   return (symmetric_runtime_symmetric_executor_own_event_subscription_t) { ret };
 }
 
 void symmetric_runtime_symmetric_executor_method_event_generator_activate(symmetric_runtime_symmetric_executor_borrow_event_generator_t self) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate((self).__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate((self).__handle);
 }
 
 void symmetric_runtime_symmetric_executor_method_event_generator_link_cancel(symmetric_runtime_symmetric_executor_borrow_event_generator_t self, symmetric_runtime_symmetric_executor_borrow_event_generator_t cancel) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel((self).__handle, (cancel).__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Elink_cancel((self).__handle, (cancel).__handle);
 }
 
 void symmetric_runtime_symmetric_executor_method_event_generator_activate_cancelled(symmetric_runtime_symmetric_executor_borrow_event_generator_t self) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled((self).__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Devent_generatorX2Eactivate_cancelled((self).__handle);
 }
 
-symmetric_runtime_symmetric_executor_own_callback_data_t symmetric_runtime_symmetric_executor_static_callback_registration_cancel(symmetric_runtime_symmetric_executor_own_callback_registration_t obj) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel((obj).__handle);
-  return (symmetric_runtime_symmetric_executor_own_callback_data_t) { ret };
+bool symmetric_runtime_symmetric_executor_static_callback_registration_cancel(symmetric_runtime_symmetric_executor_own_callback_registration_t obj, symmetric_runtime_symmetric_executor_own_callback_data_t *ret) {
+  __attribute__((__aligned__(sizeof(void*))))
+  uint8_t ret_area[(2*sizeof(void*))];
+  uint8_t *ptr = (uint8_t *) &ret_area;
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BstaticX5Dcallback_registrationX2Ecancel((obj).__handle, ptr);
+  symmetric_runtime_symmetric_executor_option_own_callback_data_t option;
+  switch ((int32_t) *((uint8_t*) (ptr + 0))) {
+    case 0: {
+      option.is_some = false;
+      break;
+    }
+    case 1: {
+      option.is_some = true;
+      option.val = (symmetric_runtime_symmetric_executor_own_callback_data_t) { *((uint8_t **) (ptr + sizeof(void*))) };
+      break;
+    }
+  }
+  *ret = option.val;
+  return option.is_some;
+}
+
+bool symmetric_runtime_symmetric_executor_method_callback_registration_is_pending(symmetric_runtime_symmetric_executor_borrow_callback_registration_t self) {
+  int32_t ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00X5BmethodX5Dcallback_registrationX2Eis_pending((self).__handle);
+  return ret;
 }
 
 void symmetric_runtime_symmetric_executor_run(void) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00run();
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00run();
 }
 
 symmetric_runtime_symmetric_executor_own_callback_registration_t symmetric_runtime_symmetric_executor_register(symmetric_runtime_symmetric_executor_own_event_subscription_t trigger, symmetric_runtime_symmetric_executor_own_callback_function_t callback, symmetric_runtime_symmetric_executor_own_callback_data_t data) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register((trigger).__handle, (callback).__handle, (data).__handle);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register((trigger).__handle, (callback).__handle, (data).__handle);
   return (symmetric_runtime_symmetric_executor_own_callback_registration_t) { ret };
 }
 
@@ -182,7 +210,7 @@ bool symmetric_runtime_symmetric_executor_register_unique(symmetric_runtime_symm
   __attribute__((__aligned__(sizeof(void*))))
   uint8_t ret_area[(2*sizeof(void*))];
   uint8_t *ptr = (uint8_t *) &ret_area;
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00register_unique((trigger).__handle, (callback).__handle, (data).__handle, ptr);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00register_unique((trigger).__handle, (callback).__handle, (data).__handle, ptr);
   symmetric_runtime_symmetric_executor_option_own_callback_registration_t option;
   switch ((int32_t) *((uint8_t*) (ptr + 0))) {
     case 0: {
@@ -200,10 +228,10 @@ bool symmetric_runtime_symmetric_executor_register_unique(symmetric_runtime_symm
 }
 
 void symmetric_runtime_symmetric_executor_block_on(symmetric_runtime_symmetric_executor_own_event_subscription_t trigger) {
-  symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00block_on((trigger).__handle);
+  symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00block_on((trigger).__handle);
 }
 
 bool symmetric_runtime_symmetric_executor_cancel_task(symmetric_runtime_symmetric_executor_own_event_subscription_t task) {
-  int32_t ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00cancel_task((task).__handle);
+  int32_t ret = symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00cancel_task((task).__handle);
   return ret;
 }

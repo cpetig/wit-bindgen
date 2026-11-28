@@ -499,7 +499,7 @@ inline void wit_async_context_set(void *val) { wit_async_tls_slot() = val; }
 // Access to the symmetric executor (see crates/symmetric_executor/wit). The
 // symbols are declared here directly, as the generated bindings of the
 // executor include this header.
-#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E5X2E0X00##x
+#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E6X2E0X00##x
 extern "C" uint8_t *WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
 extern "C" uint8_t *WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(uint8_t *);
@@ -1508,7 +1508,7 @@ const StreamVtable<void> *get_stream_vtable<void>();
 namespace detail {
 // The symmetric stream runtime (see crates/symmetric_executor/wit/stream.wit),
 // accessed with plain pointers like the executor above.
-#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E5X2E0X00##x
+#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E6X2E0X00##x
 extern "C" void WIT_SYM_STR(X5Bresource_dropX5Dbuffer)(uint8_t *);
 extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dbuffer)(uint8_t *, int64_t, int64_t);
 extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(uint8_t *);

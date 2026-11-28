@@ -100,8 +100,24 @@ class CallbackRegistration : public wit::ResourceImportBase {
 
 public:
   ~CallbackRegistration();
-  /// returns the data passed to the registration
-  static CallbackData Cancel(symmetric_executor::CallbackRegistration &&obj);
+  /// Unregister the callback, it is never called again after this returns
+  /// (from any thread).
+  ///
+  /// * `some(data)`: the callback was not running, the registration is
+  ///   removed (its resources are released right away), the caller owns
+  ///   `data` again. This is also the result if the callback was running
+  ///   on another thread and returned `pending`: cancel waits for it.
+  /// * `none`: the callback finished with `ready` (and freed `data`), also
+  ///   when it is waited for on another thread, or the registration was
+  ///   completed by `register` itself, or the callback is running on the
+  ///   calling thread right now (cancel was called from inside the callback
+  ///   or from a nested executor loop it runs): then it is not called again
+  ///   after it returned, whatever it returns, and `data` stays with it.
+  static std::optional<CallbackData>
+  Cancel(symmetric_executor::CallbackRegistration &&obj);
+  /// Whether the callback can still be called: it is registered and has
+  /// neither returned `ready` nor been cancelled (true while it runs).
+  bool IsPending() const;
   CallbackRegistration(wit::ResourceImportBase &&);
   CallbackRegistration(CallbackRegistration &&) = default;
   CallbackRegistration &operator=(CallbackRegistration &&) = default;

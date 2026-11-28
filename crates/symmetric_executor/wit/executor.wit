@@ -49,10 +49,26 @@ interface symmetric-executor {
         activate-cancelled: func();
     }
 
-    /// Handle to cancel a callback registration
+    /// Handle to cancel a callback registration. Dropping the handle keeps the
+    /// registration (the callback is still called when the event triggers).
     resource callback-registration {
-        /// returns the data passed to the registration
-        cancel: static func(obj: callback-registration) -> callback-data;
+        /// Unregister the callback, it is never called again after this returns
+        /// (from any thread).
+        ///
+        /// * `some(data)`: the callback was not running, the registration is
+        ///   removed (its resources are released right away), the caller owns
+        ///   `data` again. This is also the result if the callback was running
+        ///   on another thread and returned `pending`: cancel waits for it.
+        /// * `none`: the callback finished with `ready` (and freed `data`), also
+        ///   when it is waited for on another thread, or the registration was
+        ///   completed by `register` itself, or the callback is running on the
+        ///   calling thread right now (cancel was called from inside the callback
+        ///   or from a nested executor loop it runs): then it is not called again
+        ///   after it returned, whatever it returns, and `data` stays with it.
+        cancel: static func(obj: callback-registration) -> option<callback-data>;
+        /// Whether the callback can still be called: it is registered and has
+        /// neither returned `ready` nor been cancelled (true while it runs).
+        is-pending: func() -> bool;
     }
 
     /// Return value of an async call, lowest bit encoding

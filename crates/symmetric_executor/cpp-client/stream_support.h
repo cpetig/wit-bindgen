@@ -29,19 +29,31 @@ template <class T> struct stream {
 private:
   struct background_object {
     symmetric::runtime::symmetric_stream::StreamObj handle;
-    std::function<void(wit::span<T>)> reader;
+    std::function<bool(wit::span<T>)> reader;
     std::vector<uint8_t> buffer;
 
     background_object(symmetric::runtime::symmetric_stream::StreamObj &&h,
-                      std::function<void(wit::span<T>)> &&r,
+                      std::function<bool(wit::span<T>)> &&r,
                       std::vector<uint8_t> &&b)
         : handle(std::move(h)), reader(std::move(r)), buffer(std::move(b)) {}
   };
 
   static symmetric::runtime::symmetric_executor::CallbackState
   data_available(background_object *data) {
-    auto buffer = data->handle.ReadResult();
-    if (buffer.has_value()) {
+    // several events (data and the end of the stream) can be merged into one
+    // callback, so read until no data is left
+    for (;;) {
+      auto buffer = data->handle.ReadResult();
+      if (!buffer.has_value()) {
+        if (buffer.error() ==
+            symmetric::runtime::symmetric_stream::StreamState::kEof) {
+          data->reader(wit::span<T>());
+          auto release = std::unique_ptr<background_object>(data);
+          return symmetric::runtime::symmetric_executor::CallbackState::kReady;
+        }
+        // just wait for the next event
+        return symmetric::runtime::symmetric_executor::CallbackState::kPending;
+      }
       assert(buffer->GetAddress().into_handle() ==
              (wit::ResourceImportBase::handle_t)data->buffer.data());
       uint32_t size = buffer->GetSize();
@@ -51,8 +63,11 @@ private:
         lifted.push_back(StreamProperties<T>::lift(
             data->buffer.data() + i * StreamProperties<T>::lowered_size));
       }
-      if (size > 0)
-        data->reader(wit::span<T>(lifted.data(), size));
+      if (size > 0 && !data->reader(wit::span<T>(lifted.data(), size))) {
+        // the reader is not interested in more data, this closes the stream
+        auto release = std::unique_ptr<background_object>(data);
+        return symmetric::runtime::symmetric_executor::CallbackState::kReady;
+      }
 
       auto res = data->handle.StartReading(std::move(*buffer));
       if (!res.has_value()) {
@@ -61,16 +76,7 @@ private:
         data->reader(wit::span<T>());
         auto release = std::unique_ptr<background_object>(data);
         return symmetric::runtime::symmetric_executor::CallbackState::kReady;
-      } else {
-        // just wait for the next event
-        return symmetric::runtime::symmetric_executor::CallbackState::kPending;
       }
-    } else {
-      assert(buffer.error() ==
-             symmetric::runtime::symmetric_stream::StreamState::kEof);
-      data->reader(wit::span<T>());
-      auto release = std::unique_ptr<background_object>(data);
-      return symmetric::runtime::symmetric_executor::CallbackState::kReady;
     }
   }
 
@@ -80,10 +86,23 @@ public:
     buffer_size = amount;
     return *this;
   }
-  /// @brief Register a reader for data sent via the stream
+  /// @brief Register a reader for data sent via the stream, until the end of
+  /// the stream
   /// @return Handle to remove callback
   symmetric::runtime::symmetric_executor::CallbackRegistration
   set_reader(std::function<void(wit::span<T>)> &&fun) && {
+    return std::move(*this).set_reader_until(
+        [fun = std::move(fun)](wit::span<T> data) {
+          fun(data);
+          return true;
+        });
+  }
+
+  /// @brief Register a reader for data sent via the stream, which stops
+  /// reading (and closes the stream) when the function returns false
+  /// @return Handle to remove callback
+  symmetric::runtime::symmetric_executor::CallbackRegistration
+  set_reader_until(std::function<bool(wit::span<T>)> &&fun) && {
     std::vector<uint8_t> buffer(buffer_size * StreamProperties<T>::lowered_size,
                                 uint8_t(0));
     background_object *object =

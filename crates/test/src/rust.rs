@@ -549,16 +549,6 @@ mod core {}
                 // `block_on` runs the whole symmetric executor, including tasks which
                 // were spawned outside of it.
                 || name == "block-on-spawn"
-                // Dropping an import future does not cancel the task (no `EVENT_CANCEL`).
-                || name == "rust-cancel-wake"
-                // The caller of an async function has no way to tell the callee
-                // task (which is only reachable through the event it returns)
-                // that the call was cancelled, so its handles are not dropped.
-                || name == "cancel-import"
-                // These rely on cancelling a task, which the symmetric runtime
-                // doesn't have.
-                || name == "nested-future-stream"
-                || name == "stream-write-cancel"
                 // `intermediate` imports `toplevel-import`, which the wasm
                 // composition (compose.wac) satisfies with the
                 // `toplevel-export` of `leaf-toplevel`; symmetric linking

@@ -20,6 +20,7 @@
 #include <vector>
 #ifdef WIT_ARA_FUTURE
 #include <ara/core/future.h>
+#include <ara/core/future_error_domain.h>
 #include <ara/core/promise.h>
 #else
 #include <future>
@@ -41,6 +42,18 @@ template <class T> bool future_ready(future<T> &fut) {
   return fut.is_ready();
 #else
   return fut.wait_for(std::chrono::seconds::zero()) == std::future_status::ready;
+#endif
+}
+
+/// The writer is gone without a value: `fut.get()` throws
+/// std::future_error(broken_promise), ara::core reports
+/// future_errc::broken_promise in its Result
+template <class T> void promise_set_broken(promise<T> &p) {
+#ifdef WIT_ARA_FUTURE
+  p.SetError(::ara::core::MakeErrorCode(::ara::core::future_errc::broken_promise, 0));
+#else
+  p.set_exception(std::make_exception_ptr(
+      std::future_error(std::future_errc::broken_promise)));
 #endif
 }
 

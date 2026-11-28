@@ -362,6 +362,13 @@ impl LanguageMethods for Cpp {
         {
             return true;
         }
+        // the same for the hand written std::future tests of runtime-async
+        if runner.is_symmetric()
+            && (test.name == "future-string"
+                || (test.name == "stream-string" && matches!(component.kind, crate::Kind::Runner)))
+        {
+            return true;
+        }
         runner.is_symmetric()
             && matches!(component.kind, crate::Kind::Test)
             && (test.name == "resources" || test.name == "resource_borrow_in_record")

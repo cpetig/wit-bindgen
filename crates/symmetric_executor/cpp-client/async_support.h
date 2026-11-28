@@ -142,8 +142,7 @@ static bool fulfil_promise_if_done(fulfil_promise_data<T, LIFT> &data) {
   }
   if (wit::result_error(buffer) == symmetric::runtime::symmetric_stream::StreamState::kEof) {
     // the writer is gone without a value
-    data.promise.set_exception(std::make_exception_ptr(
-        std::future_error(std::future_errc::broken_promise)));
+    wit::promise_set_broken(data.promise);
     return true;
   }
   return false;

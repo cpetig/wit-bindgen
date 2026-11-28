@@ -171,6 +171,8 @@ pub struct FutureReader<T: 'static> {
     handle: Stream,
     vtable: &'static FutureVtable<T>,
     has_completed: bool,
+    // a buffer was handed to the stream and not yet taken back
+    read_pending: bool,
 }
 
 impl<T> FutureReader<T> {
@@ -179,6 +181,7 @@ impl<T> FutureReader<T> {
             handle: unsafe { Stream::from_handle(handle as usize) },
             vtable,
             has_completed: false,
+            read_pending: false,
         }
     }
 
@@ -200,7 +203,10 @@ impl<T> FutureReader<T> {
 
 impl<T> Drop for FutureReader<T> {
     fn drop(&mut self) {
-        if !self.has_completed && self.handle.handle() != 0 {
+        // Without a pending read dropping the handle is all there is to do (it
+        // signals the writer), otherwise the buffer of the read must be reclaimed
+        // before it is freed.
+        if self.read_pending && !self.has_completed && self.handle.handle() != 0 {
             let _ = self.handle.close_read();
         }
     }
@@ -223,6 +229,7 @@ impl<T: Unpin + Sized + Send> Future for FutureRead<T> {
         if me.future.is_none() {
             let handle = me.reader.handle.clone(false);
             let vtable = me.reader.vtable;
+            me.reader.read_pending = true;
             me.future = Some(Box::pin(async move {
                 // sadly there is no easy way to embed this in the future as the size is not accessible at compile time
                 let (buffer0, cleanup) = Cleanup::new(vtable.layout);
@@ -280,6 +287,7 @@ impl<T> FutureRead<T> {
                 handle: Stream::new(),
                 vtable: me.reader.vtable,
                 has_completed: false,
+                read_pending: false,
             },
             future: None,
         };

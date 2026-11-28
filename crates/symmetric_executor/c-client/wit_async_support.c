@@ -173,22 +173,25 @@ struct wit_stream_op {
   uintptr_t handle;
   bool is_write;
   bool is_future;
-  handle_t event;  // see read/write_ready_subscribe
-  bool fired;      // writes: the event has been consumed
+  handle_t event;  // reads: read_ready_subscribe, writes: see `done_gen`
   // reads
   void *buf;
   size_t amt;
   size_t elem_size;
-  // writes
-  size_t count;
-  // The data of a write which couldn't be handed to the channel yet because
-  // it still holds the previous one, passed on once the reader has taken that.
-  uint8_t *deferred;
-  bool deferred_allocated;
+  // writes: the caller's buffer stays valid until the write is reported
+  // as done, the reader (or the callback which hands elements to it) copies
+  // from it
+  const void *wbuf;
+  size_t count;     // elements to write
+  size_t consumed;  // elements copied to the reader so far
+  void (*own)(void *, size_t);
+  bool finished;    // everything is consumed or the reader is gone
+  handle_t done_gen;  // activated when `finished`, `event` is its subscription
+  uintptr_t serial;   // identifies the op in callbacks of the executor
 };
 
-// The reader and writer of a stream, as the writer's data is passed on by the
-// reader (possibly in another component).
+// The reader and writer of a stream created here, so that a reader (possibly
+// in another C component) can take the elements of a write which waits.
 struct wit_stream_pair {
   uintptr_t reader, writer;
 };
@@ -268,7 +271,6 @@ static size_t set_events(uint32_t set, handle_t *events, size_t max) {
       struct wit_stream_op *op = op_find(w);
       if (op) {
         // reads are polled, so they only need to be woken up by new events
-        // while writes consume theirs
         if (!op->is_write) {
           ev_reset(op->event);
         }
@@ -631,9 +633,6 @@ static struct wit_stream_op *op_new(uintptr_t handle, bool is_write, bool is_fut
 }
 
 static void op_free(struct wit_stream_op *op) {
-  if (op->deferred_allocated) {
-    free(op->deferred);
-  }
   for (size_t i = 0; i < S.ops_len; i++) {
     if (S.ops[i] == op) {
       S.ops[i] = S.ops[--S.ops_len];
@@ -641,6 +640,7 @@ static void op_free(struct wit_stream_op *op) {
     }
   }
   ev_drop(op->event);
+  if (op->done_gen) gen_drop(op->done_gen);
   free(op);
 }
 
@@ -687,6 +687,10 @@ static uint32_t read_status(bool is_future, size_t n) {
   return WAITABLE_STATUS(WAITABLE_COMPLETED, is_future ? 0 : n);
 }
 
+static void write_progress(struct wit_stream_op *op, size_t n);
+static void copy_elements(void *dest, const void *src, size_t count, size_t elem_size,
+                          void (*own)(void *, size_t));
+
 static uintptr_t pair_writer(uintptr_t reader) {
   for (size_t i = 0; i < S.pairs_len; i++) {
     if (S.pairs[i].reader == reader) return S.pairs[i].writer;
@@ -700,25 +704,6 @@ static void pair_remove(uintptr_t handle) {
       S.pairs[i] = S.pairs[--S.pairs_len];
       return;
     }
-  }
-}
-
-// The reader has taken what was in the channel, so the next write of the
-// writer (if one has been waiting) can be handed over now.
-static void pump_deferred(uintptr_t reader) {
-  uintptr_t writer = pair_writer(reader);
-  struct wit_stream_op *op = writer ? op_find(writer) : NULL;
-  if (!op || !op->deferred) {
-    return;
-  }
-  handle_t out = buf_new(op->deferred, op->count);
-  buf_set_size(out, op->count);
-  handle_t rejected;
-  if (stream_finish_writing((handle_t)writer, out, &rejected)) {
-    op->deferred = NULL;
-    op->deferred_allocated = false;
-  } else {
-    buf_drop(rejected);
   }
 }
 
@@ -747,7 +732,6 @@ uint32_t wit_stream_read(uintptr_t reader, void *buf, size_t amt, size_t elem_si
     rem->base = NULL;  // handed on
     remainder_remove(rem);
     size_t n = read_elements(reader, buf, amt, elem, data, count, base);
-    pump_deferred(reader);
     return read_status(is_future, n);
   }
 
@@ -755,11 +739,24 @@ uint32_t wit_stream_read(uintptr_t reader, void *buf, size_t amt, size_t elem_si
   handle_t result = stream_read_result(stream, &eof);
   if (result) {
     size_t n = take_buffer(reader, result, buf, amt, elem_size);
-    pump_deferred(reader);
     return read_status(is_future, n);
   }
   if (eof) {
     return WAITABLE_STATUS(WAITABLE_DROPPED, 0);
+  }
+
+  // The writer is in a C component (this or another one) and waits for
+  // a reader, so what it has is taken directly. Writers of other languages
+  // only write into the buffer offered by the reader.
+  uintptr_t writer = pair_writer(reader);
+  struct wit_stream_op *wop = writer ? op_find(writer) : NULL;
+  if (wop && wop->is_write && wop->consumed < wop->count) {
+    size_t n = wop->count - wop->consumed;
+    n = n < amt ? n : amt;
+    copy_elements(buf, (const uint8_t *)wop->wbuf + wop->consumed * elem_size, n, elem_size,
+                  wop->own);
+    write_progress(wop, n);
+    return read_status(is_future, n);
   }
 
   // Nothing there yet: offer a buffer to write to, then wait for the data. The
@@ -780,34 +777,26 @@ uint32_t wit_stream_read(uintptr_t reader, void *buf, size_t amt, size_t elem_si
   return WAITABLE_BLOCKED;
 }
 
-// Does the writer know that its data has been taken? It can't ask the
-// channel, so this probes whether it can be written to again, which is
-// only fine if nobody reads anymore.
-static bool write_consumed(handle_t stream) {
-  handle_t probe = buf_new(&no_payload, 1);
-  buf_set_size(probe, 1);
-  handle_t rejected;
-  if (stream_finish_writing(stream, probe, &rejected)) {
-    return true;
+// A write is done once everything was copied or nobody reads anymore.
+static void write_progress(struct wit_stream_op *op, size_t n) {
+  op->consumed += n;
+  if (op->consumed == op->count && !op->finished) {
+    op->finished = true;
+    gen_activate(op->done_gen);
   }
-  buf_drop(rejected);
-  return false;
 }
 
-// The status of a write for which the reader has posted its next read
-// (or went away)
+// The status of a write which is finished (or cancelled)
 static uint32_t write_done(struct wit_stream_op *op) {
   handle_t stream = (handle_t)op->handle;
-  size_t count = op->is_future ? 0 : op->count;
-  if (stream_is_read_closed(stream)) {
-    // data which never made it to the channel hasn't been read for sure
-    if (!op->deferred && write_consumed(stream)) {
-      return op->is_future ? WAITABLE_STATUS(WAITABLE_COMPLETED, 0)
-                           : WAITABLE_STATUS(WAITABLE_DROPPED, count);
-    }
-    return WAITABLE_STATUS(WAITABLE_DROPPED, 0);
+  bool closed = stream_is_read_closed(stream);
+  size_t count = op->is_future ? 0 : op->consumed;
+  if (op->consumed == op->count) {
+    // everything was read, but the reader might be gone by now
+    return closed && !op->is_future ? WAITABLE_STATUS(WAITABLE_DROPPED, count)
+                                    : WAITABLE_STATUS(WAITABLE_COMPLETED, count);
   }
-  return WAITABLE_STATUS(WAITABLE_COMPLETED, count);
+  return WAITABLE_STATUS(closed ? WAITABLE_DROPPED : WAITABLE_COMPLETED, count);
 }
 
 static void copy_elements(void *dest, const void *src, size_t count, size_t elem_size,
@@ -815,6 +804,69 @@ static void copy_elements(void *dest, const void *src, size_t count, size_t elem
   if (elem_size == 0) return;
   memcpy(dest, src, count * elem_size);
   if (own) own(dest, count);
+}
+
+// Hand elements to the reader's buffer, if it has offered one. Returns how
+// many were copied (0 if there is no buffer).
+static size_t write_to_offered(handle_t stream, const uint8_t *src, size_t amt, size_t elem_size,
+                               void (*own)(void *, size_t)) {
+  handle_t offered = stream_start_writing(stream);
+  if (!offered) {
+    return 0;
+  }
+  size_t n = (size_t)buf_capacity(offered);
+  n = n < amt ? n : amt;
+  copy_elements(buf_address(offered), src, n, elem_size, own);
+  buf_set_size(offered, n);
+  handle_t rejected;
+  if (!stream_finish_writing(stream, offered, &rejected)) {
+    buf_drop(rejected);
+    wit_unsupported("writing to a stream while the previous write is unread");
+  }
+  return n;
+}
+
+static void write_offered(struct wit_stream_op *op) {
+  size_t n = write_to_offered((handle_t)op->handle,
+                              (const uint8_t *)op->wbuf + op->consumed * op->elem_size,
+                              op->count - op->consumed, op->elem_size, op->own);
+  if (n > 0) {
+    write_progress(op, n);
+  }
+}
+
+static struct wit_stream_op *op_find_serial(uintptr_t serial) {
+  for (size_t i = 0; i < S.ops_len; i++) {
+    if (S.ops[i]->is_write && S.ops[i]->serial == serial) return S.ops[i];
+  }
+  return NULL;
+}
+
+static void write_wait_for_reader(struct wit_stream_op *op);
+
+// The reader offers a buffer (or is gone) while the write waits
+static uint32_t write_wake_up(void *data) {
+  struct wit_stream_op *op = op_find_serial((uintptr_t)data);
+  if (!op || op->finished) {
+    return 1;
+  }
+  if (stream_is_read_closed((handle_t)op->handle)) {
+    op->finished = true;
+    gen_activate(op->done_gen);
+    return 1;
+  }
+  write_offered(op);
+  if (!op->finished) {
+    write_wait_for_reader(op);
+  }
+  return 1;
+}
+
+static void write_wait_for_reader(struct wit_stream_op *op) {
+  handle_t ready = stream_write_ready_subscribe((handle_t)op->handle);
+  // offers made before have been looked at
+  ev_reset(ready);
+  ex_register(ready, write_wake_up, (void *)op->serial);
 }
 
 uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t elem_size,
@@ -828,36 +880,23 @@ uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t 
   }
 
   // Is the reader waiting?
-  handle_t offered = stream_start_writing(stream);
-  if (offered) {
-    size_t n = (size_t)buf_capacity(offered);
-    n = n < amt ? n : amt;
-    copy_elements(buf_address(offered), buf, n, elem_size, own);
-    buf_set_size(offered, n);
-    handle_t rejected;
-    if (!stream_finish_writing(stream, offered, &rejected)) {
-      buf_drop(rejected);
-      wit_unsupported("writing to a stream while the previous write is unread");
-    }
+  size_t n = write_to_offered(stream, buf, amt, elem_size, own);
+  if (n > 0) {
     return WAITABLE_STATUS(WAITABLE_COMPLETED, is_future ? 0 : n);
   }
 
-  // Otherwise the reader finds the data when it looks for it.
-  uint8_t *data = elem_size > 0 ? malloc(amt * elem_size) : &no_payload;
-  if (!data) abort();
-  copy_elements(data, buf, amt, elem_size, own);
-  handle_t out = buf_new(data, amt);
-  buf_set_size(out, amt);
-  handle_t rejected;
-  bool handed_over = stream_finish_writing(stream, out, &rejected);
-  struct wit_stream_op *op = op_new(writer, true, is_future, stream_write_ready_subscribe(stream));
+  // Otherwise the reader looks for the data (C) or offers a buffer (the
+  // other languages), which is noticed by a callback of the executor.
+  static uintptr_t serials;
+  handle_t done_gen = gen_new();
+  struct wit_stream_op *op = op_new(writer, true, is_future, gen_subscribe(done_gen));
+  op->wbuf = buf;
   op->count = amt;
-  if (!handed_over) {
-    // the reader hasn't read the previous write yet
-    buf_drop(rejected);
-    op->deferred = data;
-    op->deferred_allocated = elem_size > 0;
-  }
+  op->elem_size = elem_size;
+  op->own = own;
+  op->serial = ++serials;
+  op->done_gen = done_gen;
+  write_wait_for_reader(op);
   return WAITABLE_BLOCKED;
 }
 
@@ -875,7 +914,6 @@ static uint32_t op_poll(uintptr_t handle, uint32_t *code) {
     if (result) {
       size_t n = take_buffer(handle, result, op->buf, op->amt, op->elem_size);
       *code = read_status(op->is_future, n);
-      pump_deferred(handle);
     } else if (eof) {
       *code = WAITABLE_STATUS(WAITABLE_DROPPED, 0);
     } else {
@@ -884,10 +922,10 @@ static uint32_t op_poll(uintptr_t handle, uint32_t *code) {
     op_free(op);
     return event;
   }
-  if (!op->fired && ev_ready(op->event)) {
-    op->fired = true;
+  if (!op->finished && stream_is_read_closed(stream)) {
+    op->finished = true;
   }
-  if (!op->fired) {
+  if (!op->finished) {
     return EVENT_NONE;
   }
   uint32_t event = op->is_future ? EVENT_FUTURE_WRITE : EVENT_STREAM_WRITE;
@@ -917,15 +955,11 @@ uint32_t wit_stream_cancel_write(uintptr_t writer) {
   if (op_poll(writer, &code) != EVENT_NONE) {
     return code;
   }
-  // The data can't be taken back from the channel, but if the reader is
-  // gone nobody is going to miss it.
+  // what the reader has taken is gone
   op = op_find(writer);
-  bool closed = stream_is_read_closed((handle_t)writer);
-  if (closed) {
-    code = write_done(op);
-  }
+  size_t count = op->is_future ? 0 : op->consumed;
   op_free(op);
-  return closed ? code : WAITABLE_STATUS(WAITABLE_CANCELLED, 0);
+  return WAITABLE_STATUS(WAITABLE_CANCELLED, count);
 }
 
 void wit_stream_drop_readable(uintptr_t reader) {

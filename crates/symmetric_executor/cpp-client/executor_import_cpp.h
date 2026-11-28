@@ -3,6 +3,7 @@
 #define __CPP_GUEST_BINDINGS_EXECUTOR_IMPORT_H
 #define WIT_SYMMETRIC
 #define WIT_ARA_SPAN
+#define WIT_ARA_FUTURE
 #include "wit.h"
 #include <ara/core/optional.h>
 #include <cassert>

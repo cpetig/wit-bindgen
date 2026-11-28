@@ -151,6 +151,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Call the run function
     if let Ok(run) = run {
         run();
+    } else if let Ok(main) = unsafe { lib.get::<extern "C" fn() -> i32>(b"main") } {
+        // a runner without the `run` export, but a C `main`
+        let result = main();
+        if result != 0 {
+            std::process::exit(result);
+        }
     } else {
         // try async run
         let run_async: libloading::Symbol<extern "C" fn() -> *mut wit_bindgen_symmetric_rt::EventSubscription2> = unsafe { lib.get(b"runA") }?;
@@ -526,31 +532,11 @@ mod core {}
         component: &crate::Component,
     ) -> bool {
         runner.is_symmetric()
-            && ((test.name == /*rust*/"other-dependencies"
-                || (test.name == "resource_floats" && component.name != "leaf")
+            && ((test.name == "resource_floats" && component.name != "leaf")
                 || test.name == "map"
-                || test.name == /*rust*/"with-types")
-                || (test.name == /*async*/"yield-loop-receives-events" && component.name == "leaf")
-                // The symmetric Rust runtime lacks `spawn_local`, `yield_async`,
-                // `StreamReader::collect` and `StreamWriter::write`'s
-                // `into_vec`.
-                || (matches!(component.kind, crate::Kind::Test)
-                    && (test.name == "ping-pong"
-                        || test.name == "stream-param-future-result"
-                        || test.name == "async-import-results"))
-                || (matches!(component.kind, crate::Kind::Runner)
-                    && (test.name == "simple-stream-payload"
-                        || test.name == "async-import-results"))
-                || (matches!(component.kind, crate::Kind::Test)
-                    && (test.name == /*async*/"simple-pending-import"
-                        || test.name == "simple-yield"
-//                        || test.name == /*async*/"stream-to-futures-stream"
-                        || test.name == /*async*/"cancel-import"))
-                || (matches!(component.kind, crate::Kind::Runner)
-                    && (test.name == "cancel-import"
-                        || test.name == "pending-import"
-                        || test.name == /*async*/"rust-cross-task-wakeup"
-                        || test.name == /*async*/"rust-lowered-send")))
+                || test.name == /*rust*/"with-types"
+                // no `backpressure_inc`/`backpressure_dec` in the symmetric Rust runtime
+                || (matches!(component.kind, crate::Kind::Test) && test.name == "cancel-import"))
     }
 
     fn should_fail_runtime2(
@@ -562,18 +548,18 @@ mod core {}
         runner.is_symmetric()
             && (name == "skip"
                 || name == "with-only-affects-imports"
-                // The Rust leaf's yield (`wake_by_ref` in a `poll_fn`) is
-                // ignored by the symmetric Rust runtime, which asserts in
-                // async_support.rs.
-                || (name == "async-cross-component-await"
-                    && component.path.file_stem().is_some_and(|s| s == "leaf"))
-                // An async export which completes without waiting is never
-                // run, as the symmetric Rust runtime ignores its own
-                // `wake_by_ref` (`drop-future` hangs).
-                || (name == "simple-future" && matches!(component.kind, crate::Kind::Test))
-                // `stream<_>` without payload: the layout size of `()`
-                // is not zero (assert in the symmetric Rust `StreamWrite`).
-                || (name == "simple-stream" && matches!(component.kind, crate::Kind::Runner))
+                // `block_on` runs the whole symmetric executor, including tasks which
+                // were spawned outside of it.
+                || name == "block-on-spawn"
+                // Dropping an import future does not cancel the task (no `EVENT_CANCEL`).
+                || name == "rust-cancel-wake"
+                // A write is completed by a read of a smaller buffer, the symmetric
+                // stream returns the partial count.
+                || (name == "simple-stream-payload" && matches!(component.kind, crate::Kind::Runner))
+                // These rely on cancelling a task or a stream write, which the symmetric
+                // runtime doesn't have.
+                || name == "nested-future-stream"
+                || name == "stream-write-cancel"
                 // `intermediate` imports `toplevel-import`, which the wasm
                 // composition (compose.wac) satisfies with the
                 // `toplevel-export` of `leaf-toplevel`; symmetric linking

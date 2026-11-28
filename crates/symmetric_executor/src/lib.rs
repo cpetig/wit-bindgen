@@ -287,6 +287,15 @@ struct Executor {
     change_event: Option<EventFd>,
 }
 
+thread_local! {
+    // set while this thread runs callbacks of the executor
+    static IN_TICK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+// copy of Executor::change_event, readable while the executor is locked (by a callback
+// calling block_on)
+static CHANGE_EVENT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(INVALID_FD);
+
 impl Executor {
     fn change_event(&mut self) -> EventFd {
         *self.change_event.get_or_insert_with(|| {
@@ -294,18 +303,29 @@ impl Executor {
             if DEBUGGING {
                 println!("{} change event fd={fd}", gettid());
             }
+            CHANGE_EVENT.store(fd, Ordering::Release);
             fd
         })
     }
 
     /// run the executor until it would block, returns number of handled events
     fn tick(ex: &mut std::sync::MutexGuard<'_, Self>, ws: &mut WaitSet) -> (usize, usize) {
+        let old_busy = EXECUTOR_BUSY.swap(true, Ordering::Acquire);
+        assert!(!old_busy);
+        let was_in_tick = IN_TICK.replace(true);
+        let result = Self::tick_tasks(&mut ex.active_tasks, ws);
+        IN_TICK.set(was_in_tick);
+        let old_busy = EXECUTOR_BUSY.swap(false, Ordering::Release);
+        assert!(old_busy);
+        result
+    }
+
+    /// run the given tasks until they would block, returns number of handled events
+    fn tick_tasks(tasks: &mut Vec<QueuedEvent>, ws: &mut WaitSet) -> (usize, usize) {
         let mut count_events = 0;
         let mut count_waiting = 0;
         let now = SystemTime::now();
-        let old_busy = EXECUTOR_BUSY.swap(true, Ordering::Acquire);
-        assert!(!old_busy);
-        ex.active_tasks.iter_mut().for_each(|task| {
+        tasks.iter_mut().for_each(|task| {
             if task.inner.ready() {
                 if DEBUGGING {
                     println!(
@@ -370,10 +390,18 @@ impl Executor {
                 }
             }
         });
-        let old_busy = EXECUTOR_BUSY.swap(false, Ordering::Release);
-        assert!(old_busy);
-        ex.active_tasks.retain(|task| task.callback.is_some());
+        tasks.retain(|task| task.callback.is_some());
         (count_events, count_waiting)
+    }
+}
+
+/// Make a thread blocked in the executor loop collect the tasks which were
+/// registered meanwhile (by another thread). Nothing to do if the loop has
+/// never run (it will see the tasks when it starts).
+fn wake_executor() {
+    let fd = CHANGE_EVENT.load(Ordering::Acquire);
+    if fd != INVALID_FD {
+        event_fd::activate(fd);
     }
 }
 
@@ -448,6 +476,9 @@ impl symmetric_executor::Guest for Guest {
                     // actually this is unlikely, but give it a try
                     EXECUTOR.lock().unwrap().active_tasks.push(subscr);
                 }
+                // The thread running the executor might just have decided to
+                // wait for events (without this task), so wake it up.
+                wake_executor();
             }
         }
         symmetric_executor::CallbackRegistration::new(CallbackRegistrationInternal(id))
@@ -513,7 +544,51 @@ impl symmetric_executor::Guest for Guest {
 }
 
 // TODO: Make this more efficient by polling the event?
+/// `block_on` called from a callback, i.e. while this thread is already running the
+/// executor (and holds its lock). Tasks which are being processed by the outer loop are
+/// not available, only the tasks registered meanwhile (like the one `block_on` waits for)
+/// run here.
+fn run_until_nested(event: Option<QueuedEvent>) {
+    let change_event = CHANGE_EVENT.load(Ordering::Acquire);
+    let mut local: Vec<QueuedEvent> = Vec::new();
+    loop {
+        local.append(&mut NEW_TASKS.lock().unwrap());
+        let mut ws = WaitSet::new((change_event != INVALID_FD).then_some(change_event));
+        if let Some(event) = event.as_ref() {
+            ws.register(event.event_fd);
+        }
+        let (count_events, _count_waiting) = Executor::tick_tasks(&mut local, &mut ws);
+        if !NEW_TASKS.lock().unwrap().is_empty() {
+            continue;
+        }
+        if local.is_empty() {
+            break;
+        }
+        if count_events != 0 {
+            continue;
+        }
+        let selectresult = ws.wait();
+        let mut exit = false;
+        if selectresult > 0 {
+            for i in ws.iter_active() {
+                event_fd::consume(i);
+                if event.as_ref().map_or(false, |event| i == event.event_fd) {
+                    exit = true;
+                }
+            }
+        }
+        if exit {
+            break;
+        }
+    }
+    // let the outer loop take care of the remaining tasks
+    NEW_TASKS.lock().unwrap().append(&mut local);
+}
+
 fn run_until(event: Option<QueuedEvent>) {
+    if IN_TICK.get() {
+        return run_until_nested(event);
+    }
     let change_event = EXECUTOR.lock().unwrap().change_event();
     loop {
         let mut ws = WaitSet::new(Some(change_event));

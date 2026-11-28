@@ -109,3 +109,87 @@ impl Drop for Cleanup {
         }
     }
 }
+
+/// Lowering of the parameters of an imported function in the symmetric ABI
+/// passes borrowed pointers, the values must stay alive until the callee is
+/// done with them. This hands owned values over to `deallocate` (the generated
+/// code frees them after the call), borrowed values just stay where they are.
+pub trait KeepAlive {
+    fn keep_alive(self, deallocate: &mut Vec<(*mut u8, Layout)>) -> (*const u8, usize);
+}
+
+fn leak_boxed<T>(boxed: Box<[T]>, deallocate: &mut Vec<(*mut u8, Layout)>) -> (*const u8, usize) {
+    let len = boxed.len();
+    let layout = Layout::for_value(&*boxed);
+    let ptr = Box::into_raw(boxed).cast::<u8>();
+    if layout.size() != 0 {
+        deallocate.push((ptr, layout));
+    }
+    (ptr, len)
+}
+
+impl KeepAlive for String {
+    fn keep_alive(self, deallocate: &mut Vec<(*mut u8, Layout)>) -> (*const u8, usize) {
+        leak_boxed(self.into_bytes().into_boxed_slice(), deallocate)
+    }
+}
+
+impl<T> KeepAlive for Vec<T> {
+    fn keep_alive(self, deallocate: &mut Vec<(*mut u8, Layout)>) -> (*const u8, usize) {
+        leak_boxed(self.into_boxed_slice(), deallocate)
+    }
+}
+
+impl<T> KeepAlive for Box<[T]> {
+    fn keep_alive(self, deallocate: &mut Vec<(*mut u8, Layout)>) -> (*const u8, usize) {
+        leak_boxed(self, deallocate)
+    }
+}
+
+/// Values which stay where they are while borrowed.
+pub trait Borrowed {
+    fn ptr_len(&self) -> (*const u8, usize);
+}
+
+impl Borrowed for str {
+    fn ptr_len(&self) -> (*const u8, usize) {
+        (self.as_ptr(), self.len())
+    }
+}
+
+impl Borrowed for String {
+    fn ptr_len(&self) -> (*const u8, usize) {
+        (self.as_ptr(), self.len())
+    }
+}
+
+impl<T> Borrowed for [T] {
+    fn ptr_len(&self) -> (*const u8, usize) {
+        (self.as_ptr().cast(), self.len())
+    }
+}
+
+impl<T> Borrowed for Vec<T> {
+    fn ptr_len(&self) -> (*const u8, usize) {
+        (self.as_ptr().cast(), self.len())
+    }
+}
+
+impl<T: Borrowed + ?Sized> Borrowed for &T {
+    fn ptr_len(&self) -> (*const u8, usize) {
+        (**self).ptr_len()
+    }
+}
+
+impl<T: Borrowed + ?Sized> KeepAlive for &T {
+    fn keep_alive(self, _deallocate: &mut Vec<(*mut u8, Layout)>) -> (*const u8, usize) {
+        self.ptr_len()
+    }
+}
+
+pub fn keep_alive<T: KeepAlive>(
+    value: T,
+    deallocate: &mut Vec<(*mut u8, Layout)>,
+) -> (*const u8, usize) {
+    value.keep_alive(deallocate)
+}

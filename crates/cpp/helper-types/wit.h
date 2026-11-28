@@ -17,7 +17,7 @@
 #include <new>
 #ifdef WIT_ARA_SPAN
 #include <ara/core/span.h>
-#else
+#elif __cplusplus >= 202002L
 #include <span>
 #endif
 #include <type_traits>
@@ -30,9 +30,51 @@
 namespace wit {
 #ifdef WIT_ARA_SPAN
 template <class T> using span=::ara::core::Span<T>;
-#else
+#elif __cplusplus >= 202002L
 template <class T> using span=std::span<T>;
+#else
+/// Minimal replacement of std::span for C++17 (a view of contiguous elements),
+/// the C++17 bindings (`--async-api future`) use it where C++20 uses std::span
+template <class T> class span {
+  T *data_;
+  size_t size_;
+
+public:
+  using element_type = T;
+  using value_type = std::remove_cv_t<T>;
+  using size_type = size_t;
+  using pointer = T *;
+  using reference = T &;
+  using iterator = T *;
+
+  constexpr span() noexcept : data_(nullptr), size_(0) {}
+  constexpr span(T *ptr, size_t count) noexcept : data_(ptr), size_(count) {}
+  template <size_t N>
+  constexpr span(T (&arr)[N]) noexcept : data_(arr), size_(N) {}
+  template <class C, class = std::enable_if_t<std::is_convertible_v<
+                         std::remove_pointer_t<decltype(std::declval<C &>().data())> (*)[],
+                         T (*)[]>>>
+  constexpr span(C &c) : data_(c.data()), size_(c.size()) {}
+  template <class U, class = std::enable_if_t<std::is_convertible_v<U (*)[], T (*)[]>>>
+  constexpr span(span<U> const &o) noexcept : data_(o.data()), size_(o.size()) {}
+
+  constexpr T *data() const noexcept { return data_; }
+  constexpr size_t size() const noexcept { return size_; }
+  constexpr bool empty() const noexcept { return size_ == 0; }
+  constexpr T *begin() const noexcept { return data_; }
+  constexpr T *end() const noexcept { return data_ + size_; }
+  constexpr T &operator[](size_t n) const { return data_[n]; }
+  constexpr T &front() const { return data_[0]; }
+  constexpr T &back() const { return data_[size_ - 1]; }
+};
 #endif
+/// std::bit_cast (C++20) for all language versions
+template <class To, class From> To bit_cast(From const &from) noexcept {
+  static_assert(sizeof(To) == sizeof(From), "size mismatch");
+  To to;
+  memcpy(static_cast<void *>(&to), static_cast<void const *>(&from), sizeof(To));
+  return to;
+}
 /// @brief Helper class to map between IDs and resources
 /// @tparam R Type of the Resource
 template <class R> class ResourceTable {
@@ -177,9 +219,9 @@ public:
   T* leak() { T*result = data_; data_ = nullptr; return result; }
   // typically called by post
   static void drop_raw(void *ptr) { if (ptr!=empty_ptr()) free(ptr); }
-  span<T> get_view() const { return span<T>(data_, length); }
-  span<const T> get_const_view() const { return span<const T>(data_, length); }
-  template <class U> static vector<T> from_view(span<U> const& a) {
+  wit::span<T> get_view() const { return wit::span<T>(data_, length); }
+  wit::span<const T> get_const_view() const { return wit::span<const T>(data_, length); }
+  template <class U> static vector<T> from_view(wit::span<U> const& a) {
     auto result = vector<T>::allocate(a.size());
     for (uint32_t i=0;i<a.size();++i) {
       new ((void*)(result.data_+i)) T(a[i]);

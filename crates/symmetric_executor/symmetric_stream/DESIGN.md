@@ -11,7 +11,9 @@ the top of `src/lib.rs`. This file only summarizes the pieces.
   (`start-writing` .. `finish-writing`, a short section; `cancel-read` and
   closing the reader wait for it, using a condition variable)
 - `read_done`, `write_done`: completed operations (the buffer with the number
-  of elements transferred), collected by `read-result` / `write-result`
+  of elements transferred), collected by `read-result` / `write-result`. A
+  write is only done when all its elements were consumed (or the reader went
+  away after it took some)
 - `readers`, `writers`: number of open handles, 0 means closed
 - `read_event` (reader subscribes, activated on completion/EOF),
   `write_event` (writer subscribes, activated on completion, when a reader
@@ -19,8 +21,11 @@ the top of `src/lib.rs`. This file only summarizes the pieces.
 
 ## Rendezvous
 Whoever arrives second performs the transfer inside its call (`start-reading`
-or `offer-write`), `min(capacity, size)` elements are copied, both operations
-complete with that count. Writers of the same process may also borrow the
+or `offer-write`), `min(capacity, remaining)` elements are copied and the read
+completes with that count. The write completes if everything was taken;
+otherwise the write offer keeps the offset (`consumed`), the remainder stays on
+offer for the next reads and the write stays pending (canonical ABI partial
+transfer semantics). Writers of the same process may also borrow the
 reader's offer (`start-writing`/`finish-writing`) to fill it without an
 intermediate copy.
 

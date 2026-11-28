@@ -21,7 +21,9 @@ fn buffer(data: &[u64], size: u64) -> Buffer {
 }
 
 fn count(result: Result<Buffer, StreamState>) -> u64 {
-    result.unwrap_or_else(|_| panic!("not completed")).get_size()
+    result
+        .unwrap_or_else(|_| panic!("not completed"))
+        .get_size()
 }
 
 fn is_pending(result: Result<Buffer, StreamState>) -> bool {
@@ -54,15 +56,135 @@ fn writer_first_with_partial_consumption() {
     reader.start_reading(buffer(&small, 0)).unwrap();
     assert_eq!(count(reader.read_result()), 2);
     assert_eq!(small, [1, 2]);
-    // the write is complete with the count, the rest is up to the writer
-    assert_eq!(count(writer.write_result()), 2);
+    // the write stays pending, the runtime remembers the offset
+    assert!(is_pending(writer.write_result()));
+    // a second write is still rejected
+    assert!(writer.offer_write(buffer(&src, 5)).is_err());
 
-    writer.offer_write(buffer(&src[2..], 3)).unwrap();
     let big = [0u64; 8];
     reader.start_reading(buffer(&big, 0)).unwrap();
+    // synchronously the rest of the same write
     assert_eq!(count(reader.read_result()), 3);
     assert_eq!(big[..3], [3, 4, 5]);
-    assert_eq!(count(writer.write_result()), 3);
+    // the write completes with the total
+    assert_eq!(count(writer.write_result()), 5);
+    assert!(is_pending(writer.write_result()));
+}
+
+#[test]
+fn write_stays_pending_while_the_reader_reads_one_by_one() {
+    let (writer, reader) = new_stream();
+    let src = [10u64, 20];
+    writer.offer_write(buffer(&src, 2)).unwrap();
+    let one = [0u64; 1];
+    reader.start_reading(buffer(&one, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 1);
+    assert_eq!(one[0], 10);
+    assert!(is_pending(writer.write_result()));
+    reader.start_reading(buffer(&one, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 1);
+    assert_eq!(one[0], 20);
+    assert_eq!(count(writer.write_result()), 2);
+}
+
+#[test]
+fn reader_first_partial_keeps_the_write_pending() {
+    let (writer, reader) = new_stream();
+    let src = [1u64, 2, 3, 4, 5];
+    let small = [0u64; 2];
+    reader.start_reading(buffer(&small, 0)).unwrap();
+    writer.offer_write(buffer(&src, 5)).unwrap();
+    // the reader completes with what fits, the write is not complete
+    assert_eq!(count(reader.read_result()), 2);
+    assert_eq!(small, [1, 2]);
+    assert!(is_pending(writer.write_result()));
+    let rest = [0u64; 2];
+    reader.start_reading(buffer(&rest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 2);
+    assert_eq!(rest, [3, 4]);
+    assert!(is_pending(writer.write_result()));
+    reader.start_reading(buffer(&rest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 1);
+    assert_eq!(rest[0], 5);
+    assert_eq!(count(writer.write_result()), 5);
+}
+
+#[test]
+fn reader_first_whole_write_completes() {
+    let (writer, reader) = new_stream();
+    let src = [1u64, 2];
+    let dest = [0u64; 2];
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    writer.offer_write(buffer(&src, 2)).unwrap();
+    assert_eq!(count(reader.read_result()), 2);
+    assert_eq!(count(writer.write_result()), 2);
+}
+
+#[test]
+fn write_reports_the_reader_gone_when_observed() {
+    // everything was consumed, but the reader is gone when the writer looks
+    let (writer, reader) = new_stream();
+    let src = [1u64, 2];
+    writer.offer_write(buffer(&src, 2)).unwrap();
+    let dest = [0u64; 2];
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 2);
+    assert!(!writer.is_read_closed());
+    drop(reader);
+    // the count is the total, `is-read-closed` tells that the reader is gone
+    assert_eq!(count(writer.write_result()), 2);
+    assert!(writer.is_read_closed());
+    assert!(matches!(writer.write_result(), Err(StreamState::Eof)));
+}
+
+#[test]
+fn write_reports_progress_when_the_reader_is_dropped() {
+    let (writer, reader) = new_stream();
+    let src = [1u64, 2, 3];
+    writer.offer_write(buffer(&src, 3)).unwrap();
+    let dest = [0u64; 1];
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 1);
+    assert!(is_pending(writer.write_result()));
+    drop(reader);
+    // the elements the reader took are gone, the others are the writer's
+    assert_eq!(count(writer.write_result()), 1);
+    assert!(writer.is_read_closed());
+    assert!(matches!(writer.write_result(), Err(StreamState::Eof)));
+    assert!(writer.cancel_write().is_none());
+}
+
+#[test]
+fn cancel_write_reports_the_progress() {
+    let (writer, reader) = new_stream();
+    let src = [1u64, 2, 3, 4];
+    writer.offer_write(buffer(&src, 4)).unwrap();
+    let dest = [0u64; 3];
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 3);
+    assert_eq!(writer.cancel_write().unwrap().get_size(), 3);
+    // the fourth element is the writer's, nobody can read it
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    assert!(is_pending(reader.read_result()));
+    assert!(writer.cancel_write().is_none());
+}
+
+#[test]
+fn detached_write_is_consumed_piecewise() {
+    let (writer, reader) = new_stream();
+    {
+        let src = [1u64, 2, 3];
+        writer.write_detached(buffer(&src, 3));
+    }
+    drop(writer);
+    let dest = [0u64; 2];
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 2);
+    assert_eq!(dest, [1, 2]);
+    reader.start_reading(buffer(&dest, 0)).unwrap();
+    assert_eq!(count(reader.read_result()), 1);
+    assert_eq!(dest[0], 3);
+    assert!(matches!(reader.read_result(), Err(StreamState::Eof)));
 }
 
 #[test]

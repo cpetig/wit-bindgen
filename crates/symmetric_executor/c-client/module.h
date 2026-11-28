@@ -94,8 +94,10 @@ extern bool symmetric_runtime_symmetric_stream_method_stream_obj_start_writing(s
 extern symmetric_runtime_symmetric_stream_own_event_subscription_t symmetric_runtime_symmetric_stream_method_stream_obj_write_ready_subscribe(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self);
 // complete the read of the borrowed buffer with `get-size` elements
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_finish_writing(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer, symmetric_runtime_symmetric_stream_own_buffer_t *err);
-// offer `get-size` elements to read, completes immediately if a reader
-// is waiting. Returns the buffer if a write is still in flight.
+// offer `get-size` elements to read, a waiting reader takes what fits
+// right away. The write is pending until all elements are consumed (the
+// runtime remembers the offset). Returns the buffer if a write is still
+// in flight.
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_offer_write(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer, symmetric_runtime_symmetric_stream_own_buffer_t *err);
 // like offer-write, but the elements are copied, there is no
 // result and nothing to cancel
@@ -103,6 +105,8 @@ extern void symmetric_runtime_symmetric_stream_method_stream_obj_write_detached(
 // cancel the pending write, see above
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_cancel_write(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret);
 // the completed write, `get-size` is the number of elements consumed
+// in total (all of them unless the reader went away), `pending` while
+// elements are still on offer
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_write_result(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret, symmetric_runtime_symmetric_stream_stream_state_t *err);
 
 // Helper Functions

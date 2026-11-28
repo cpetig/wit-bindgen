@@ -12,21 +12,30 @@
 //!   reader:  idle --start-reading--> offered (read_offer) --writer arrives--> done (read_done) --read-result--> idle
 //!                                    offered --start-writing--> lent (read_lent) --finish-writing--> done
 //!                                    offered/done --cancel-read--> idle
-//!   writer:  idle --offer-write--> offered (write_offer) --reader arrives--> done (write_done) --write-result--> idle
-//!                                  offered/done --cancel-write--> idle
+//!   writer:  idle --offer-write--> offered (write_offer, offset) --reader arrives--> offered (offset advanced)*
+//!                                  offered --all consumed--> done (write_done) --write-result--> idle
+//!                                  offered/done --cancel-write--> idle      (* a partial transfer)
 //! ```
 //!
 //! If the counterpart is already offered when an operation starts, the
 //! arriving side performs the transfer *inside that call* (under the lock, so a
 //! concurrent cancel sees either the posted or the completed operation, never a
-//! half copied one): `n = min(reader capacity, writer size)` elements are
-//! copied bytewise, both operations move to *done* with count `n`, and both ready
-//! events are activated. Ownership of those `n` lowered elements moves to the
-//! reader. The rest of the writer's buffer (`[n, size)`) stays with the writer,
-//! which learns about it from the count of its completed operation and offers
-//! it again (or lifts it back). The runtime never remembers an offset: partial
-//! consumption simply completes the operation of both sides, the remainder is
-//! a new operation.
+//! half copied one): `n = min(reader capacity, writer remainder)` elements are
+//! copied bytewise, the read moves to *done* with count `n` (its ready event
+//! is activated). Ownership of those `n` lowered elements moves to the reader.
+//!
+//! Partial transfers follow the canonical ABI: a read completes with the
+//! first elements it gets, a write completes only when everything was
+//! consumed. The writer's offer therefore carries the *offset* `consumed`: when
+//! the reader took only part of it the remainder `[consumed, size)` stays
+//! offered (the write stays pending, the writer is not woken up) and the next
+//! `start-reading` copies from there, completing synchronously. The write
+//! moves to *done* when `consumed == size`, its count is the total. If the last
+//! reader goes away first, a write which consumed elements becomes *done* with
+//! that count (the elements `[count, size)` are the writer's again), one which
+//! consumed nothing is just withdrawn (`write-result` is `eof`). Whether the
+//! writer reports COMPLETED or DROPPED is up to the writer when it observes the
+//! result (`is-read-closed`).
 //!
 //! Zero length operations: a zero length read/write (`n == 0` although the
 //! other side is not empty) completes without consuming the counterpart
@@ -127,6 +136,9 @@ struct Offer {
     /// reader: unused until completed; writer: number of elements offered;
     /// completed: number of elements transferred
     size: usize,
+    /// writer: number of elements (from the start) the reader has taken so far,
+    /// the remainder `[consumed, size)` is still on offer
+    consumed: usize,
     /// copy of the elements of a detached write (`addr` points into it)
     _owned: Option<Vec<u8>>,
 }
@@ -139,6 +151,7 @@ impl Offer {
             capacity: b.capacity,
             element_size: b.element_size,
             size: b.size.load(Ordering::Relaxed),
+            consumed: 0,
             _owned: None,
         }
     }
@@ -155,6 +168,34 @@ impl Offer {
     fn with_size(mut self, size: usize) -> Self {
         self.size = size;
         self
+    }
+
+    /// the writer's offer as completed with the elements taken so far
+    fn into_progress(mut self) -> Self {
+        self.size = self.consumed;
+        self
+    }
+
+    /// copy as many of the remaining elements of this write offer as fit into
+    /// `read` (setting its size), returns the number copied
+    fn copy_into(&mut self, read: &mut Offer) -> usize {
+        let n = read.capacity.min(self.size - self.consumed);
+        if n > 0 {
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    (self.addr as *const u8).add(self.consumed * self.element_size),
+                    read.addr as *mut u8,
+                    n * self.element_size,
+                )
+            };
+            self.consumed += n;
+        }
+        read.size = n;
+        n
+    }
+
+    fn is_consumed(&self) -> bool {
+        self.consumed >= self.size
     }
 }
 
@@ -205,7 +246,7 @@ impl StreamInner {
     }
 
     /// A reader arrives with `read`, a writer offer may be waiting.
-    fn post_read(&self, state: &mut State, mut read: Offer) {
+    fn post_read(&self, state: &mut State, read: Offer) {
         match state.write_offer.take() {
             None => {
                 if state.writers == 0 {
@@ -226,44 +267,53 @@ impl StreamInner {
                     self.read_event.activate();
                 }
             }
-            Some(mut write) => {
-                let n = read.capacity.min(write.size);
-                if n > 0 {
-                    unsafe {
-                        ptr::copy_nonoverlapping(
-                            write.addr as *const u8,
-                            read.addr as *mut u8,
-                            n * write.element_size,
-                        )
-                    };
-                    trace!("Stream {:x} start_reading copied {n}", self.handle());
-                    read.size = n;
-                    write.size = n;
-                    state.read_done = Some(read);
-                    if !std::mem::take(&mut state.write_detached) {
-                        state.write_done = Some(write);
-                    }
-                } else if read.capacity == 0 {
-                    // readiness only, the writer remains
-                    read.size = 0;
-                    state.read_done = Some(read);
-                    state.write_offer = Some(write);
-                } else {
-                    // zero length write
-                    write.size = 0;
-                    if !std::mem::take(&mut state.write_detached) {
-                        state.write_done = Some(write);
-                    }
-                    state.read_offer = Some(read);
-                }
-                self.read_event.activate();
-                self.write_event.activate();
+            Some(write) => {
+                let detached = std::mem::take(&mut state.write_detached);
+                self.transfer(state, read, write, detached);
             }
         }
     }
 
+    /// Both sides are there, `write` (not on offer any more) is the writer's
+    /// remainder, `read` the reader's empty buffer. The elements which fit
+    /// are copied, the read completes with the count (if there is one). The
+    /// write completes if everything is taken, otherwise the remainder stays
+    /// on offer (the runtime remembers the offset), the write is pending until
+    /// all of it is consumed, the reader is gone or it is cancelled.
+    fn transfer(&self, state: &mut State, mut read: Offer, mut write: Offer, detached: bool) {
+        let n = write.copy_into(&mut read);
+        if n > 0 {
+            trace!("Stream {:x} copied {n}", self.handle());
+            state.read_done = Some(read);
+            if write.is_consumed() {
+                if !detached {
+                    state.write_done = Some(write.into_progress());
+                }
+                self.write_event.activate();
+            } else {
+                // the writer is not told about partial progress
+                state.write_offer = Some(write);
+                state.write_detached = detached;
+            }
+        } else if read.capacity == 0 {
+            // readiness only, the writer remains
+            state.read_done = Some(read);
+            state.write_offer = Some(write);
+            state.write_detached = detached;
+            self.write_event.activate();
+        } else {
+            // zero length write
+            if !detached {
+                state.write_done = Some(write.into_progress());
+            }
+            state.read_offer = Some(read);
+            self.write_event.activate();
+        }
+        self.read_event.activate();
+    }
+
     /// A writer arrives with `write` (not detached means: not copied)
-    fn post_write(&self, state: &mut State, mut write: Offer, detached: bool) {
+    fn post_write(&self, state: &mut State, write: Offer, detached: bool) {
         if state.readers == 0 {
             // nobody to read it, `write-result` reports EOF
             self.write_event.activate();
@@ -279,38 +329,7 @@ impl StreamInner {
                 state.write_offer = Some(write);
                 state.write_detached = detached;
             }
-            Some(mut read) => {
-                let n = read.capacity.min(write.size);
-                if n > 0 {
-                    unsafe {
-                        ptr::copy_nonoverlapping(
-                            write.addr as *const u8,
-                            read.addr as *mut u8,
-                            n * write.element_size,
-                        )
-                    };
-                    trace!("Stream {:x} offer_write copied {n}", self.handle());
-                    read.size = n;
-                    write.size = n;
-                    state.read_done = Some(read);
-                    if !detached {
-                        state.write_done = Some(write);
-                    }
-                } else if read.capacity == 0 {
-                    read.size = 0;
-                    state.read_done = Some(read);
-                    state.write_offer = Some(write);
-                    state.write_detached = detached;
-                } else {
-                    write.size = 0;
-                    if !detached {
-                        state.write_done = Some(write);
-                    }
-                    state.read_offer = Some(read);
-                }
-                self.read_event.activate();
-                self.write_event.activate();
-            }
+            Some(read) => self.transfer(state, read, write, detached),
         }
     }
 
@@ -319,8 +338,14 @@ impl StreamInner {
         state = self.wait_not_lent(state);
         state.read_offer = None;
         state.read_done = None;
-        state.write_offer = None;
-        state.write_detached = false;
+        // The writer learns when it looks at its write that the reader is gone;
+        // what the reader took before is still reported (with the count).
+        let detached = std::mem::take(&mut state.write_detached);
+        if let Some(write) = state.write_offer.take() {
+            if !detached && write.consumed > 0 {
+                state.write_done = Some(write.into_progress());
+            }
+        }
         drop(state);
         trace!("Stream {:x} last reader closed", self.handle());
         self.write_event.activate();
@@ -517,6 +542,7 @@ impl GuestStreamObj for StreamObj {
                 capacity: offer.capacity,
                 element_size: offer.element_size,
                 size: 0,
+                consumed: 0,
                 _owned: None,
             }
             .into_buffer();
@@ -602,7 +628,7 @@ impl GuestStreamObj for StreamObj {
         } else if state.write_detached {
             None
         } else {
-            state.write_offer.take().map(|offer| offer.with_size(0))
+            state.write_offer.take().map(Offer::into_progress)
         };
         trace!(
             "Stream::cancel_write {:x} -> {:?}",
@@ -616,6 +642,8 @@ impl GuestStreamObj for StreamObj {
         self.assert_direction(DecreaseOnDrop::Writer);
         let mut state = self.0.lock();
         if let Some(done) = state.write_done.take() {
+            // everything was consumed, or the reader is gone and the count
+            // is what it took before (`is-read-closed` tells which)
             trace!(
                 "Stream::write_result {:x} {:x} {}",
                 self.0.handle(),

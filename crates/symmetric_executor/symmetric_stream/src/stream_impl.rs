@@ -667,16 +667,30 @@ pub mod exports {
             ///   copies `min(capacity, size)` elements from the writer's into the reader's
             ///   buffer.
             /// * writer first: the writer offers a buffer holding `size` lowered elements
-            ///   (`offer-write`). A later `start-reading` copies `min(capacity, size)`
+            ///   (`offer-write`). A later `start-reading` copies `min(capacity, remaining)`
             ///   elements into the reader's buffer right away.
+            ///
+            /// Partial transfers follow the canonical ABI:
+            ///
+            /// * A read completes as soon as it received at least one element (or EOF),
+            ///   `get-size` of its buffer is the count.
+            /// * A write completes only when *all* its elements were consumed. If a read
+            ///   takes only some, the runtime remembers the offset: the remainder stays
+            ///   offered for later reads (which complete synchronously with it) and the
+            ///   write stays pending, progress accumulates. A write also ends when the
+            ///   reader is dropped or the write is cancelled.
+            /// * `write-result` returns the buffer with `get-size` = number of elements
+            ///   consumed in total (the offered size, or less if the reader went away or the
+            ///   write was cancelled). The writer decides between COMPLETED and DROPPED when
+            ///   it *observes* the result: if the readers are gone by then
+            ///   (`is-read-closed`) the write is dropped with that count, even if everything
+            ///   was consumed. `write-result` is `error(eof)` if the readers are gone and
+            ///   nothing was consumed.
             ///
             /// Whichever side arrived first completes when the transfer happened (its
             /// ready event is activated), the side arriving second completes in the call.
             /// Results are collected with `read-result` / `write-result` which return the
-            /// buffer of the operation, `get-size` of it is the number of elements
-            /// transferred (which may be smaller than offered, the operation is complete
-            /// nevertheless: a partial transfer is a completed operation, the owner
-            /// offers the remainder again).
+            /// buffer of the operation.
             ///
             /// ## Buffers and ownership
             ///
@@ -689,7 +703,8 @@ pub mod exports {
             /// Ownership of the elements moves with the copy, per element: the first
             /// `get-size` elements of a completed *write* buffer now belong to the reader
             /// (the writer must not free/drop them, it still owns elements
-            /// `[get-size, size)` and lifts them back or offers them again), the first
+            /// `[get-size, size)`, which are only given back by a result, a cancel or the
+            /// reader going away, and lifts them back), the first
             /// `get-size` elements of a completed *read* buffer are initialized and owned by
             /// the reader (they are lifted from there). An element is never half transferred
             /// and never transferred without being counted. The writer therefore only
@@ -700,16 +715,17 @@ pub mod exports {
             ///
             /// * `cancel-read` / `cancel-write` withdraw the operation. They return the
             ///   buffer with the count transferred so far (`0` if the operation was
-            ///   still waiting, the final count if the counterpart completed it
-            ///   meanwhile; a completed operation is *not* undone). `none` means no
+            ///   still waiting, the progress of a partly consumed write, the final count if
+            ///   the counterpart completed it meanwhile; a completed operation is *not*
+            ///   undone). `none` means no
             ///   operation was in flight. After the call the memory of the buffer is no
             ///   longer referenced by the runtime. If a writer currently has the buffer
             ///   of the reader borrowed (`start-writing` .. `finish-writing`, always a
             ///   short section) `cancel-read` waits for it.
             /// * EOF: when the last writer handle is dropped a pending read completes with
             ///   `stream-state.eof` (data already transferred is delivered first), when the last reader
-            ///   handle is dropped a pending write completes with `eof` (offers are
-            ///   withdrawn).
+            ///   handle is dropped a pending write ends (offers are withdrawn): its result
+            ///   is `eof`, or the progress count if the reader had consumed elements.
             /// * `write-detached` is a write whose elements are copied into the stream
             ///   (it needs no cancel, it is dropped when the reader closes), used for
             ///   the value of a dropped future writer.
@@ -1920,8 +1936,10 @@ pub mod exports {
                         &self,
                         buffer: Buffer,
                     ) -> ::core::result::Result<(), Buffer>;
-                    /// offer `get-size` elements to read, completes immediately if a reader
-                    /// is waiting. Returns the buffer if a write is still in flight.
+                    /// offer `get-size` elements to read, a waiting reader takes what fits
+                    /// right away. The write is pending until all elements are consumed (the
+                    /// runtime remembers the offset). Returns the buffer if a write is still
+                    /// in flight.
                     #[allow(async_fn_in_trait)]
                     fn offer_write(
                         &self,
@@ -1935,6 +1953,8 @@ pub mod exports {
                     #[allow(async_fn_in_trait)]
                     fn cancel_write(&self) -> ::core::option::Option<Buffer>;
                     /// the completed write, `get-size` is the number of elements consumed
+                    /// in total (all of them unless the reader went away), `pending` while
+                    /// elements are still on offer
                     #[allow(async_fn_in_trait)]
                     fn write_result(
                         &self,

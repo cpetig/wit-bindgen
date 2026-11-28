@@ -108,6 +108,14 @@ cargo run test \
   tests/runtime
 ```
 
+To see every external command (compilers, linkers, ...) that the test harness
+runs successfully, set the `WIT_BINDGEN_TRACE` environment variable. Each
+command is printed to stderr, which is useful to reproduce a step by hand:
+
+```sh
+WIT_BINDGEN_TRACE=1 cargo run test --languages rust tests/runtime/strings
+```
+
 ## Testing Layout
 
 If you're adding a test, all you should generally have to do is edit files in

@@ -88,9 +88,18 @@ impl LanguageMethods for Cpp {
             target_out_dir.push("debug");
 
             native_deps.push(target_out_dir);
-            // libruntime.a (async/stream support) for the C++ guests
+            // libruntime.a (async/stream support) for the C++ guests; the
+            // client is generated with --autosar and needs ara::core headers:
+            // WIT_ARA_INCLUDE points at a real installation, otherwise the
+            // stubs from test_headers/ara-stub are used explicitly.
+            let ara_include = ara_include_dir(&cwd);
+            if std::env::var_os("WIT_ARA_INCLUDE").is_none() {
+                eprintln!("WIT_ARA_INCLUDE not set, using ara::core stubs in {ara_include:?}");
+            }
             runner.run_command(
-                Command::new("make").current_dir(cwd.join("crates/symmetric_executor/cpp-client")),
+                Command::new("make")
+                    .arg(format!("ARA_INCLUDE=-I{ara_include}"))
+                    .current_dir(cwd.join("crates/symmetric_executor/cpp-client")),
             )?;
             let root_dir = runner.opts.artifacts.join(test_name);
             native_deps.push(root_dir);
@@ -172,6 +181,8 @@ impl LanguageMethods for Cpp {
         if runner.is_symmetric() {
             cmd.arg("-I")
                 .arg(helper_dir3.to_str().unwrap())
+                .arg("-I")
+                .arg(ara_include_dir(&cwd))
                 .arg("-fPIC");
         }
         cmd.arg("-fno-exceptions")
@@ -214,6 +225,7 @@ impl LanguageMethods for Cpp {
             cmd.arg("-fno-exceptions");
         } else {
             cmd.arg("-I").arg(helper_dir3.to_str().unwrap());
+            cmd.arg("-I").arg(ara_include_dir(&cwd));
         }
         cmd.arg("-Wall")
             .arg("-Wextra")
@@ -339,6 +351,17 @@ impl LanguageMethods for Cpp {
         test: &crate::Test,
         component: &crate::Component,
     ) -> bool {
+        // autosar branch: the cpp-client runtime is generated with --autosar
+        // (ara::core::Future), while the *_cpp17 test variants use the
+        // std::future API, so they can't build against it here.
+        if runner.is_symmetric()
+            && component
+                .path
+                .file_stem()
+                .is_some_and(|s| s.to_string_lossy().ends_with("_cpp17"))
+        {
+            return true;
+        }
         runner.is_symmetric()
             && matches!(component.kind, crate::Kind::Test)
             && (test.name == "resources" || test.name == "resource_borrow_in_record")
@@ -356,4 +379,15 @@ impl LanguageMethods for Cpp {
                 // cancellation is not supported by the symmetric ABI
                 || name == "cancel-import")
     }
+}
+
+/// ara::core headers for the --autosar generated cpp-client: `WIT_ARA_INCLUDE`
+/// (a real AUTOSAR installation or AUTOSAR CAPI core-types/include), otherwise
+/// the explicit stubs in crates/cpp/test_headers/ara-stub.
+fn ara_include_dir(cwd: &std::path::Path) -> String {
+    std::env::var("WIT_ARA_INCLUDE").unwrap_or_else(|_| {
+        cwd.join("crates/cpp/test_headers/ara-stub")
+            .display()
+            .to_string()
+    })
 }

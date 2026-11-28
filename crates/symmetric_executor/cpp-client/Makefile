@@ -5,7 +5,7 @@
 ifndef ARA_INCLUDE
 $(error set ARA_INCLUDE=-I<dir containing ara/core/*.h>)
 endif
-CXXFLAGS=-I../../cpp/helper-types -I../../cpp/test_headers $(ARA_INCLUDE) -g -fPIC -std=c++20
+CXXFLAGS=-I../../cpp/helper-types -I../../cpp/test_headers $(ARA_INCLUDE) -g -fPIC -std=c++17
 
 all: libruntime.a
 

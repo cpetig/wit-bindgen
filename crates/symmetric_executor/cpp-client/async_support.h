@@ -162,7 +162,7 @@ template <class T, class LIFT> std::future<T> lift_future(uint8_t *stream) {
       symmetric::runtime::symmetric_stream::Buffer(
           symmetric::runtime::symmetric_stream::Address(wit::ResourceImportBase(
               (wit::ResourceImportBase::handle_t)&data->value)),
-          1);
+          1, LIFT::SIZE);
   data->stream.StartReading(std::move(buf));
   // return value doesn't influence callback logic
   symmetric::runtime::symmetric_executor::Register(

@@ -13,6 +13,11 @@
 namespace symmetric {
 namespace runtime {
 namespace symmetric_executor {
+class CallbackFunction;
+class CallbackData;
+class EventSubscription;
+class EventGenerator;
+class CallbackRegistration;
 /// These pseudo-resources are just used to
 /// pass pointers to register
 /// Return value of an event callback

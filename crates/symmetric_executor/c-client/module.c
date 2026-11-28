@@ -2,39 +2,49 @@
 #include "module.h"
 #include <stdlib.h>
 
-// Imported Functions from `symmetric:runtime/symmetric-stream@0.3.1`
+// Imported Functions from `symmetric:runtime/symmetric-stream@0.4.0`
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dbuffer(uint8_t *, int64_t);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dbuffer(uint8_t *, int64_t, int64_t);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_address(uint8_t *);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_address(uint8_t *);
 
-extern int64_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_size(uint8_t *);
+extern int64_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_size(uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eset_size(uint8_t *, int64_t);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eset_size(uint8_t *, int64_t);
 
-extern int64_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Ecapacity(uint8_t *);
+extern int64_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Ecapacity(uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dstream_obj(void);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dstream_obj(void);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclone(uint8_t *, int32_t);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclone(uint8_t *, int32_t);
 
-extern int32_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_write_closed(uint8_t *);
+extern int32_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed(uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_reading(uint8_t *, uint8_t *, uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_reading(uint8_t *, uint8_t *, uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(uint8_t *);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclose_read(uint8_t *, uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_read(uint8_t *, uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_result(uint8_t *, uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclose_read(uint8_t *, uint8_t *);
 
-extern int32_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_read_closed(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_result(uint8_t *, uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_writing(uint8_t *, uint8_t *);
+extern int32_t symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed(uint8_t *);
 
-extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(uint8_t *);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_writing(uint8_t *, uint8_t *);
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Efinish_writing(uint8_t *, uint8_t *, uint8_t *);
+extern uint8_t * symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(uint8_t *);
+
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(uint8_t *, uint8_t *, uint8_t *);
+
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eoffer_write(uint8_t *, uint8_t *, uint8_t *);
+
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached(uint8_t *, uint8_t *);
+
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_write(uint8_t *, uint8_t *);
+
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_result(uint8_t *, uint8_t *);
 
 // Canonical ABI intrinsics
 __attribute__((__weak__))
@@ -48,42 +58,42 @@ void *cabi_realloc(void *ptr, size_t old_size, size_t align, size_t new_size) {
 
 // Helper Functions
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(uint8_t * handle);
 
 void symmetric_runtime_symmetric_stream_address_drop_own(symmetric_runtime_symmetric_stream_own_address_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_stream_address_drop_borrow(symmetric_runtime_symmetric_stream_borrow_address_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(handle.__handle);
 }
 
 symmetric_runtime_symmetric_stream_borrow_address_t symmetric_runtime_symmetric_stream_borrow_address(symmetric_runtime_symmetric_stream_own_address_t arg) {
   return (symmetric_runtime_symmetric_stream_borrow_address_t) { arg.__handle };
 }
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(uint8_t * handle);
 
 void symmetric_runtime_symmetric_stream_buffer_drop_own(symmetric_runtime_symmetric_stream_own_buffer_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_stream_buffer_drop_borrow(symmetric_runtime_symmetric_stream_borrow_buffer_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(handle.__handle);
 }
 
 symmetric_runtime_symmetric_stream_borrow_buffer_t symmetric_runtime_symmetric_stream_borrow_buffer(symmetric_runtime_symmetric_stream_own_buffer_t arg) {
   return (symmetric_runtime_symmetric_stream_borrow_buffer_t) { arg.__handle };
 }
 
-extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(uint8_t * handle);
+extern void symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(uint8_t * handle);
 
 void symmetric_runtime_symmetric_stream_stream_obj_drop_own(symmetric_runtime_symmetric_stream_own_stream_obj_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(handle.__handle);
 }
 
 void symmetric_runtime_symmetric_stream_stream_obj_drop_borrow(symmetric_runtime_symmetric_stream_borrow_stream_obj_t handle) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(handle.__handle);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(handle.__handle);
 }
 
 symmetric_runtime_symmetric_stream_borrow_stream_obj_t symmetric_runtime_symmetric_stream_borrow_stream_obj(symmetric_runtime_symmetric_stream_own_stream_obj_t arg) {
@@ -96,13 +106,8 @@ void symmetric_runtime_symmetric_stream_result_void_own_buffer_free(symmetric_ru
   }
 }
 
-void symmetric_runtime_symmetric_stream_list_own_buffer_free(symmetric_runtime_symmetric_stream_list_own_buffer_t *ptr) {
-  size_t list_len = ptr->len;
-  if (list_len > 0) {
-    symmetric_runtime_symmetric_stream_own_buffer_t *list_ptr = ptr->ptr;
-    for (size_t i = 0; i < list_len; i++) {
-    }
-    free(list_ptr);
+void symmetric_runtime_symmetric_stream_option_own_buffer_free(symmetric_runtime_symmetric_stream_option_own_buffer_t *ptr) {
+  if (ptr->is_some) {
   }
 }
 
@@ -114,42 +119,42 @@ void symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_free(symm
 
 // Component Adapters
 
-symmetric_runtime_symmetric_stream_own_buffer_t symmetric_runtime_symmetric_stream_constructor_buffer(symmetric_runtime_symmetric_stream_own_address_t addr, uint64_t capacity) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dbuffer((addr).__handle, (int64_t) (capacity));
+symmetric_runtime_symmetric_stream_own_buffer_t symmetric_runtime_symmetric_stream_constructor_buffer(symmetric_runtime_symmetric_stream_own_address_t addr, uint64_t capacity, uint64_t element_size) {
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dbuffer((addr).__handle, (int64_t) (capacity), (int64_t) (element_size));
   return (symmetric_runtime_symmetric_stream_own_buffer_t) { ret };
 }
 
 symmetric_runtime_symmetric_stream_own_address_t symmetric_runtime_symmetric_stream_method_buffer_get_address(symmetric_runtime_symmetric_stream_borrow_buffer_t self) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_address((self).__handle);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_address((self).__handle);
   return (symmetric_runtime_symmetric_stream_own_address_t) { ret };
 }
 
 uint64_t symmetric_runtime_symmetric_stream_method_buffer_get_size(symmetric_runtime_symmetric_stream_borrow_buffer_t self) {
-  int64_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_size((self).__handle);
+  int64_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_size((self).__handle);
   return (uint64_t) (ret);
 }
 
 void symmetric_runtime_symmetric_stream_method_buffer_set_size(symmetric_runtime_symmetric_stream_borrow_buffer_t self, uint64_t size) {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eset_size((self).__handle, (int64_t) (size));
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eset_size((self).__handle, (int64_t) (size));
 }
 
 uint64_t symmetric_runtime_symmetric_stream_method_buffer_capacity(symmetric_runtime_symmetric_stream_borrow_buffer_t self) {
-  int64_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Ecapacity((self).__handle);
+  int64_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Ecapacity((self).__handle);
   return (uint64_t) (ret);
 }
 
 symmetric_runtime_symmetric_stream_own_stream_obj_t symmetric_runtime_symmetric_stream_constructor_stream_obj(void) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dstream_obj();
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dstream_obj();
   return (symmetric_runtime_symmetric_stream_own_stream_obj_t) { ret };
 }
 
 symmetric_runtime_symmetric_stream_own_stream_obj_t symmetric_runtime_symmetric_stream_method_stream_obj_clone(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, bool writing) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclone((self).__handle, writing);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclone((self).__handle, writing);
   return (symmetric_runtime_symmetric_stream_own_stream_obj_t) { ret };
 }
 
 bool symmetric_runtime_symmetric_stream_method_stream_obj_is_write_closed(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self) {
-  int32_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_write_closed((self).__handle);
+  int32_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed((self).__handle);
   return ret;
 }
 
@@ -157,7 +162,7 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_start_reading(symmetri
   __attribute__((__aligned__(sizeof(void*))))
   uint8_t ret_area[(2*sizeof(void*))];
   uint8_t *ptr = (uint8_t *) &ret_area;
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_reading((self).__handle, (buffer).__handle, ptr);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_reading((self).__handle, (buffer).__handle, ptr);
   symmetric_runtime_symmetric_stream_result_void_own_buffer_t result;
   switch ((int32_t) *((uint8_t*) (ptr + 0))) {
     case 0: {
@@ -179,23 +184,57 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_start_reading(symmetri
 }
 
 symmetric_runtime_symmetric_stream_own_event_subscription_t symmetric_runtime_symmetric_stream_method_stream_obj_read_ready_subscribe(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_ready_subscribe((self).__handle);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe((self).__handle);
   return (symmetric_runtime_symmetric_stream_own_event_subscription_t) { ret };
 }
 
-void symmetric_runtime_symmetric_stream_method_stream_obj_close_read(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_list_own_buffer_t *ret) {
+bool symmetric_runtime_symmetric_stream_method_stream_obj_cancel_read(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret) {
   __attribute__((__aligned__(sizeof(void*))))
   uint8_t ret_area[(2*sizeof(void*))];
   uint8_t *ptr = (uint8_t *) &ret_area;
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclose_read((self).__handle, ptr);
-  *ret = (symmetric_runtime_symmetric_stream_list_own_buffer_t) { (symmetric_runtime_symmetric_stream_own_buffer_t*)(*((uint8_t **) (ptr + 0))), (*((size_t*) (ptr + sizeof(void*)))) };
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_read((self).__handle, ptr);
+  symmetric_runtime_symmetric_stream_option_own_buffer_t option;
+  switch ((int32_t) *((uint8_t*) (ptr + 0))) {
+    case 0: {
+      option.is_some = false;
+      break;
+    }
+    case 1: {
+      option.is_some = true;
+      option.val = (symmetric_runtime_symmetric_stream_own_buffer_t) { *((uint8_t **) (ptr + sizeof(void*))) };
+      break;
+    }
+  }
+  *ret = option.val;
+  return option.is_some;
+}
+
+bool symmetric_runtime_symmetric_stream_method_stream_obj_close_read(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret) {
+  __attribute__((__aligned__(sizeof(void*))))
+  uint8_t ret_area[(2*sizeof(void*))];
+  uint8_t *ptr = (uint8_t *) &ret_area;
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclose_read((self).__handle, ptr);
+  symmetric_runtime_symmetric_stream_option_own_buffer_t option;
+  switch ((int32_t) *((uint8_t*) (ptr + 0))) {
+    case 0: {
+      option.is_some = false;
+      break;
+    }
+    case 1: {
+      option.is_some = true;
+      option.val = (symmetric_runtime_symmetric_stream_own_buffer_t) { *((uint8_t **) (ptr + sizeof(void*))) };
+      break;
+    }
+  }
+  *ret = option.val;
+  return option.is_some;
 }
 
 bool symmetric_runtime_symmetric_stream_method_stream_obj_read_result(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret, symmetric_runtime_symmetric_stream_stream_state_t *err) {
   __attribute__((__aligned__(sizeof(void*))))
   uint8_t ret_area[(2*sizeof(void*))];
   uint8_t *ptr = (uint8_t *) &ret_area;
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_result((self).__handle, ptr);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_result((self).__handle, ptr);
   symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_t result;
   switch ((int32_t) *((uint8_t*) (ptr + 0))) {
     case 0: {
@@ -219,7 +258,7 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_read_result(symmetric_
 }
 
 bool symmetric_runtime_symmetric_stream_method_stream_obj_is_read_closed(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self) {
-  int32_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_read_closed((self).__handle);
+  int32_t ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed((self).__handle);
   return ret;
 }
 
@@ -227,7 +266,7 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_start_writing(symmetri
   __attribute__((__aligned__(sizeof(void*))))
   uint8_t ret_area[(2*sizeof(void*))];
   uint8_t *ptr = (uint8_t *) &ret_area;
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_writing((self).__handle, ptr);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_writing((self).__handle, ptr);
   symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_t result;
   switch ((int32_t) *((uint8_t*) (ptr + 0))) {
     case 0: {
@@ -251,7 +290,7 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_start_writing(symmetri
 }
 
 symmetric_runtime_symmetric_stream_own_event_subscription_t symmetric_runtime_symmetric_stream_method_stream_obj_write_ready_subscribe(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self) {
-  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe((self).__handle);
+  uint8_t * ret = symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe((self).__handle);
   return (symmetric_runtime_symmetric_stream_own_event_subscription_t) { ret };
 }
 
@@ -259,7 +298,7 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_finish_writing(symmetr
   __attribute__((__aligned__(sizeof(void*))))
   uint8_t ret_area[(2*sizeof(void*))];
   uint8_t *ptr = (uint8_t *) &ret_area;
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Efinish_writing((self).__handle, (buffer).__handle, ptr);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Efinish_writing((self).__handle, (buffer).__handle, ptr);
   symmetric_runtime_symmetric_stream_result_void_own_buffer_t result;
   switch ((int32_t) *((uint8_t*) (ptr + 0))) {
     case 0: {
@@ -273,6 +312,83 @@ bool symmetric_runtime_symmetric_stream_method_stream_obj_finish_writing(symmetr
     }
   }
   if (!result.is_err) {
+    return 1;
+  } else {
+    *err = result.val.err;
+    return 0;
+  }
+}
+
+bool symmetric_runtime_symmetric_stream_method_stream_obj_offer_write(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer, symmetric_runtime_symmetric_stream_own_buffer_t *err) {
+  __attribute__((__aligned__(sizeof(void*))))
+  uint8_t ret_area[(2*sizeof(void*))];
+  uint8_t *ptr = (uint8_t *) &ret_area;
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eoffer_write((self).__handle, (buffer).__handle, ptr);
+  symmetric_runtime_symmetric_stream_result_void_own_buffer_t result;
+  switch ((int32_t) *((uint8_t*) (ptr + 0))) {
+    case 0: {
+      result.is_err = false;
+      break;
+    }
+    case 1: {
+      result.is_err = true;
+      result.val.err = (symmetric_runtime_symmetric_stream_own_buffer_t) { *((uint8_t **) (ptr + sizeof(void*))) };
+      break;
+    }
+  }
+  if (!result.is_err) {
+    return 1;
+  } else {
+    *err = result.val.err;
+    return 0;
+  }
+}
+
+void symmetric_runtime_symmetric_stream_method_stream_obj_write_detached(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer) {
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached((self).__handle, (buffer).__handle);
+}
+
+bool symmetric_runtime_symmetric_stream_method_stream_obj_cancel_write(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret) {
+  __attribute__((__aligned__(sizeof(void*))))
+  uint8_t ret_area[(2*sizeof(void*))];
+  uint8_t *ptr = (uint8_t *) &ret_area;
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_write((self).__handle, ptr);
+  symmetric_runtime_symmetric_stream_option_own_buffer_t option;
+  switch ((int32_t) *((uint8_t*) (ptr + 0))) {
+    case 0: {
+      option.is_some = false;
+      break;
+    }
+    case 1: {
+      option.is_some = true;
+      option.val = (symmetric_runtime_symmetric_stream_own_buffer_t) { *((uint8_t **) (ptr + sizeof(void*))) };
+      break;
+    }
+  }
+  *ret = option.val;
+  return option.is_some;
+}
+
+bool symmetric_runtime_symmetric_stream_method_stream_obj_write_result(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret, symmetric_runtime_symmetric_stream_stream_state_t *err) {
+  __attribute__((__aligned__(sizeof(void*))))
+  uint8_t ret_area[(2*sizeof(void*))];
+  uint8_t *ptr = (uint8_t *) &ret_area;
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_result((self).__handle, ptr);
+  symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_t result;
+  switch ((int32_t) *((uint8_t*) (ptr + 0))) {
+    case 0: {
+      result.is_err = false;
+      result.val.ok = (symmetric_runtime_symmetric_stream_own_buffer_t) { *((uint8_t **) (ptr + sizeof(void*))) };
+      break;
+    }
+    case 1: {
+      result.is_err = true;
+      result.val.err = (int32_t) *((uint8_t*) (ptr + sizeof(void*)));
+      break;
+    }
+  }
+  if (!result.is_err) {
+    *ret = result.val.ok;
     return 1;
   } else {
     *err = result.val.err;

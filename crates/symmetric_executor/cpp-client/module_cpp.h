@@ -10,9 +10,77 @@
 #include <optional>
 #include <utility>
 /// language neutral stream implementation
+///
+/// # Rendezvous protocol (symmetric:runtime 0.4.0)
+///
+/// A stream is a single channel with (at most) one reader operation and one
+/// writer operation in flight. Like in the canonical ABI whoever arrives
+/// *second* performs the transfer, so both orders work:
+///
+/// * reader first: the reader offers an empty buffer (`start-reading`, capacity
+///   = maximum number of elements). The writer either takes the offered buffer
+///   (`start-writing`, fills it directly, hands it back with `finish-writing`)
+///   or offers its own filled buffer (`offer-write`), in which case the runtime
+///   copies `min(capacity, size)` elements from the writer's into the reader's
+///   buffer.
+/// * writer first: the writer offers a buffer holding `size` lowered elements
+///   (`offer-write`). A later `start-reading` copies `min(capacity, size)`
+///   elements into the reader's buffer right away.
+///
+/// Whichever side arrived first completes when the transfer happened (its
+/// ready event is activated), the side arriving second completes in the call.
+/// Results are collected with `read-result` / `write-result` which return the
+/// buffer of the operation, `get-size` of it is the number of elements
+/// transferred (which may be smaller than offered, the operation is complete
+/// nevertheless: a partial transfer is a completed operation, the owner
+/// offers the remainder again).
+///
+/// ## Buffers and ownership
+///
+/// A buffer is a caller provided piece of memory holding `capacity` elements of
+/// `element-size` bytes each (the lowered representation of the element type).
+/// The runtime only touches it while it is offered (between the call
+/// offering it and the call returning it, or a successful cancel) and
+/// `offer-write` + `start-reading` copy bytewise.
+///
+/// Ownership of the elements moves with the copy, per element: the first
+/// `get-size` elements of a completed *write* buffer now belong to the reader
+/// (the writer must not free/drop them, it still owns elements
+/// `[get-size, size)` and lifts them back or offers them again), the first
+/// `get-size` elements of a completed *read* buffer are initialized and owned
+/// by the reader (they are lifted from there). An element is never half
+/// transferred and never transferred without being counted. The writer
+/// therefore only loses ownership at the moment the count is reported, a
+/// cancelled or dropped operation transfers whatever was completed before.
+///
+/// ## Cancellation, EOF, drop
+///
+/// * `cancel-read` / `cancel-write` withdraw the operation. They return the
+///   buffer with the count transferred so far (`0` if the operation was
+///   still waiting, the final count if the counterpart completed it
+///   meanwhile; a completed operation is *not* undone). `none` means no
+///   operation was in flight. After the call the memory of the buffer is no
+///   longer referenced by the runtime. If a writer currently has the buffer
+///   of the reader borrowed (`start-writing` .. `finish-writing`, always a
+///   short section) `cancel-read` waits for it.
+/// * EOF: when the last writer handle is dropped a pending read completes with
+///   `stream-state.eof` (data already transferred is delivered first), when the
+///   last reader handle is dropped a pending write completes with `eof` (offers
+///   are withdrawn).
+/// * `write-detached` is a write whose elements are copied into the stream
+///   (it needs no cancel, it is dropped when the reader closes), used for
+///   the value of a dropped future writer.
+///
+/// ## Threads
+///
+/// All state of a stream is protected by a lock, readers and writers may run
+/// on different threads. Events are activated after the state changed.
 namespace symmetric {
 namespace runtime {
 namespace symmetric_stream {
+class Address;
+class Buffer;
+class StreamObj;
 using EventSubscription = symmetric_executor::EventSubscription;
 class Address : public wit::ResourceImportBase {
 
@@ -29,8 +97,12 @@ class Buffer : public wit::ResourceImportBase {
 
 public:
   ~Buffer();
-  Buffer(symmetric_stream::Address &&addr, uint64_t capacity);
+  /// `capacity` elements of `element-size` bytes each at `addr`
+  Buffer(symmetric_stream::Address &&addr, uint64_t capacity,
+         uint64_t element_size);
   Address GetAddress() const;
+  /// number of elements: offered (writer, set before offering) or transferred
+  /// (completed)
   uint64_t GetSize() const;
   void SetSize(uint64_t size) const;
   uint64_t Capacity() const;
@@ -57,18 +129,37 @@ public:
   /// reading (in roughly chronological order)
   /// indicates EOF
   bool IsWriteClosed() const;
+  /// offer a buffer to read into, completes immediately if a writer is
+  /// waiting. Returns the buffer if a read is still in flight.
   std::expected<void, Buffer>
   StartReading(symmetric_stream::Buffer &&buffer) const;
   symmetric_executor::EventSubscription ReadReadySubscribe() const;
-  /// close the reading side, returning any in-flight buffer(s)
-  wit::vector<Buffer> CloseRead() const;
+  /// cancel the pending read, see above
+  std::optional<Buffer> CancelRead() const;
+  /// close the reading side now (as dropping the last reader does),
+  /// returning the buffer of a read in flight (like `cancel-read`)
+  std::optional<Buffer> CloseRead() const;
+  /// the completed read, `get-size` is the number of elements read
   std::expected<Buffer, StreamState> ReadResult() const;
   /// writing
   bool IsReadClosed() const;
+  /// borrow the buffer a reader has offered (fill it, then finish-writing)
   std::expected<Buffer, StreamState> StartWriting() const;
   symmetric_executor::EventSubscription WriteReadySubscribe() const;
+  /// complete the read of the borrowed buffer with `get-size` elements
   std::expected<void, Buffer>
   FinishWriting(symmetric_stream::Buffer &&buffer) const;
+  /// offer `get-size` elements to read, completes immediately if a reader
+  /// is waiting. Returns the buffer if a write is still in flight.
+  std::expected<void, Buffer>
+  OfferWrite(symmetric_stream::Buffer &&buffer) const;
+  /// like offer-write, but the elements are copied, there is no
+  /// result and nothing to cancel
+  void WriteDetached(symmetric_stream::Buffer &&buffer) const;
+  /// cancel the pending write, see above
+  std::optional<Buffer> CancelWrite() const;
+  /// the completed write, `get-size` is the number of elements consumed
+  std::expected<Buffer, StreamState> WriteResult() const;
   StreamObj(wit::ResourceImportBase &&);
   StreamObj(StreamObj &&) = default;
   StreamObj &operator=(StreamObj &&) = default;

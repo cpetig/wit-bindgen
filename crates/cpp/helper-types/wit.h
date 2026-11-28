@@ -499,7 +499,7 @@ inline void wit_async_context_set(void *val) { wit_async_tls_slot() = val; }
 // Access to the symmetric executor (see crates/symmetric_executor/wit). The
 // symbols are declared here directly, as the generated bindings of the
 // executor include this header.
-#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E3X2E1X00##x
+#define WIT_SYM_EXE(x) symmetricX3AruntimeX2Fsymmetric_executorX400X2E4X2E0X00##x
 extern "C" uint8_t *WIT_SYM_EXE(X5BconstructorX5Devent_generator)();
 extern "C" uint8_t *WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Esubscribe)(uint8_t *);
 extern "C" void WIT_SYM_EXE(X5BmethodX5Devent_generatorX2Eactivate)(uint8_t *);
@@ -1428,9 +1428,9 @@ const StreamVtable<void> *get_stream_vtable<void>();
 namespace detail {
 // The symmetric stream runtime (see crates/symmetric_executor/wit/stream.wit),
 // accessed with plain pointers like the executor above.
-#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00##x
+#define WIT_SYM_STR(x) symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00##x
 extern "C" void WIT_SYM_STR(X5Bresource_dropX5Dbuffer)(uint8_t *);
-extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dbuffer)(uint8_t *, int64_t);
+extern "C" uint8_t *WIT_SYM_STR(X5BconstructorX5Dbuffer)(uint8_t *, int64_t, int64_t);
 extern "C" uint8_t *WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(uint8_t *);
 extern "C" int64_t WIT_SYM_STR(X5BmethodX5DbufferX2Eget_size)(uint8_t *);
 extern "C" void WIT_SYM_STR(X5BmethodX5DbufferX2Eset_size)(uint8_t *, int64_t);
@@ -1455,9 +1455,10 @@ inline void sym_stream_drop(uint8_t *stream) {
   WIT_SYM_STR(X5Bresource_dropX5Dstream_obj)(stream);
 }
 
-inline uint8_t *sym_buffer_new(void *addr, size_t capacity) {
+inline uint8_t *sym_buffer_new(void *addr, size_t capacity, size_t element_size) {
   return WIT_SYM_STR(X5BconstructorX5Dbuffer)(static_cast<uint8_t *>(addr),
-                                              static_cast<int64_t>(capacity));
+                                              static_cast<int64_t>(capacity),
+                                              static_cast<int64_t>(element_size));
 }
 inline uint8_t *sym_buffer_address(uint8_t *buf) {
   return WIT_SYM_STR(X5BmethodX5DbufferX2Eget_address)(buf);
@@ -1534,9 +1535,10 @@ struct SymReadBuffer {
   uint8_t *ptr;
   bool owned;
   bool offered = false;
-  explicit SymReadBuffer(size_t bytes)
+  size_t element_size;
+  SymReadBuffer(size_t bytes, size_t element_size)
       : ptr(bytes > 0 ? static_cast<uint8_t *>(malloc(bytes)) : sym_no_payload),
-        owned(bytes > 0) {}
+        owned(bytes > 0), element_size(element_size) {}
   SymReadBuffer(const SymReadBuffer &) = delete;
   SymReadBuffer &operator=(const SymReadBuffer &) = delete;
   ~SymReadBuffer() {
@@ -1573,7 +1575,7 @@ inline Task<SymRead> sym_read(uint8_t *stream, SymReadBuffer &buf, size_t max) {
       co_return SymRead{0, nullptr};
     }
     if (!buf.offered) {
-      uint8_t *rejected = sym_start_reading(stream, sym_buffer_new(buf.ptr, max));
+      uint8_t *rejected = sym_start_reading(stream, sym_buffer_new(buf.ptr, max, buf.element_size));
       if (rejected) {
         // an earlier offer is still open, which is as good
         sym_buffer_drop(rejected);
@@ -1652,7 +1654,7 @@ public:
     assert(handle);
     FutureReader<T> self(into_handle());
     const auto *vt = detail::get_future_vtable<T>();
-    detail::SymReadBuffer buf(vt->size);
+    detail::SymReadBuffer buf(vt->size, vt->size);
     detail::SymRead res = co_await detail::sym_read(self.handle, buf, 1);
     // the writer has to provide a value
     if (res.count == 0) {
@@ -2105,7 +2107,7 @@ public:
                                  std::vector<T>{});
       }
       const auto *vt = detail::get_stream_vtable<T>();
-      detail::SymReadBuffer buf(vt->size * max_count);
+      detail::SymReadBuffer buf(vt->size * max_count, vt->size);
       detail::SymRead res = co_await detail::sym_read(handle, buf, max_count);
       if (res.count == 0) {
         peer_dropped = true;
@@ -2206,7 +2208,7 @@ public:
       if (peer_dropped) {
         co_return StreamStatus{StreamState::Dropped, 0};
       }
-      detail::SymReadBuffer buf(0);
+      detail::SymReadBuffer buf(0, 0);
       detail::SymRead res = co_await detail::sym_read(handle, buf, max_count);
       if (res.count == 0) {
         peer_dropped = true;

@@ -29,64 +29,79 @@ __attribute__((__weak__)) void *cabi_realloc(void *ptr, size_t old_size,
 }
 
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(
     uint8_t *);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dbuffer(
-    uint8_t *, int64_t);
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dbuffer(
+    uint8_t *, int64_t, int64_t);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_address(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_address(
     uint8_t *);
 extern "C" int64_t
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_size(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_size(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eset_size(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eset_size(
     uint8_t *, int64_t);
 extern "C" int64_t
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Ecapacity(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Ecapacity(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(
     uint8_t *);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dstream_obj();
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dstream_obj();
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclone(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclone(
     uint8_t *, int32_t);
 extern "C" int32_t
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_write_closed(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_reading(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_reading(
     uint8_t *, uint8_t *, uint8_t *);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclose_read(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_read(
     uint8_t *, uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_result(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclose_read(
+    uint8_t *, uint8_t *);
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_result(
     uint8_t *, uint8_t *);
 extern "C" int32_t
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_read_closed(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_writing(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_writing(
     uint8_t *, uint8_t *);
 extern "C" uint8_t *
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(
     uint8_t *);
 extern "C" void
-symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Efinish_writing(
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(
     uint8_t *, uint8_t *, uint8_t *);
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eoffer_write(
+    uint8_t *, uint8_t *, uint8_t *);
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached(
+    uint8_t *, uint8_t *);
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_write(
+    uint8_t *, uint8_t *);
+extern "C" void
+symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_result(
+    uint8_t *, uint8_t *);
 symmetric::runtime::symmetric_stream::Address::~Address() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Daddress(
+    symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Daddress(
         handle);
   }
 }
@@ -95,38 +110,40 @@ symmetric::runtime::symmetric_stream::Address::Address(
     : wit::ResourceImportBase(std::move(b)) {}
 symmetric::runtime::symmetric_stream::Buffer::~Buffer() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dbuffer(
+    symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dbuffer(
         handle);
   }
 }
 symmetric::runtime::symmetric_stream::Buffer::Buffer(
-    symmetric_stream::Address &&addr, uint64_t capacity) {
+    symmetric_stream::Address &&addr, uint64_t capacity,
+    uint64_t element_size) {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dbuffer(
-          addr.into_handle(), static_cast<int64_t>(capacity));
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dbuffer(
+          addr.into_handle(), static_cast<int64_t>(capacity),
+          static_cast<int64_t>(element_size));
   this->handle = wit::ResourceImportBase{ret}.into_handle();
 }
 symmetric::runtime::symmetric_stream::Address
 symmetric::runtime::symmetric_stream::Buffer::GetAddress() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_address(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_address(
           (*this).get_handle());
   return wit::ResourceImportBase{ret};
 }
 uint64_t symmetric::runtime::symmetric_stream::Buffer::GetSize() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eget_size(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eget_size(
           (*this).get_handle());
   return static_cast<uint64_t>(ret);
 }
 void symmetric::runtime::symmetric_stream::Buffer::SetSize(
     uint64_t size) const {
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Eset_size(
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Eset_size(
       (*this).get_handle(), static_cast<int64_t>(size));
 }
 uint64_t symmetric::runtime::symmetric_stream::Buffer::Capacity() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5DbufferX2Ecapacity(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5DbufferX2Ecapacity(
           (*this).get_handle());
   return static_cast<uint64_t>(ret);
 }
@@ -135,25 +152,25 @@ symmetric::runtime::symmetric_stream::Buffer::Buffer(
     : wit::ResourceImportBase(std::move(b)) {}
 symmetric::runtime::symmetric_stream::StreamObj::~StreamObj() {
   if (handle != nullptr) {
-    symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5Bresource_dropX5Dstream_obj(
+    symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5Bresource_dropX5Dstream_obj(
         handle);
   }
 }
 symmetric::runtime::symmetric_stream::StreamObj::StreamObj() {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BconstructorX5Dstream_obj();
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BconstructorX5Dstream_obj();
   this->handle = wit::ResourceImportBase{ret}.into_handle();
 }
 symmetric::runtime::symmetric_stream::StreamObj
 symmetric::runtime::symmetric_stream::StreamObj::Clone(bool writing) const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclone(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclone(
           (*this).get_handle(), static_cast<int32_t>(writing));
   return wit::ResourceImportBase{ret};
 }
 bool symmetric::runtime::symmetric_stream::StreamObj::IsWriteClosed() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_write_closed(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_write_closed(
           (*this).get_handle());
   return static_cast<bool>(ret);
 }
@@ -163,7 +180,7 @@ symmetric::runtime::symmetric_stream::StreamObj::StartReading(
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
   uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_reading(
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_reading(
       (*this).get_handle(), buffer.into_handle(), std::move(ptr0));
   std::optional<std::expected<void, symmetric_stream::Buffer>> result1_opt;
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
@@ -181,28 +198,39 @@ symmetric::runtime::symmetric_stream::StreamObj::StartReading(
 symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_stream::StreamObj::ReadReadySubscribe() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_ready_subscribe(
           (*this).get_handle());
   return wit::ResourceImportBase{ret};
 }
-wit::vector<symmetric::runtime::symmetric_stream::Buffer>
+std::optional<symmetric::runtime::symmetric_stream::Buffer>
+symmetric::runtime::symmetric_stream::StreamObj::CancelRead() const {
+  uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
+                     sizeof(uintptr_t)];
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_read(
+      (*this).get_handle(), std::move(ptr0));
+  std::optional<symmetric_stream::Buffer> option1;
+  if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0))) {
+
+    option1.emplace(wit::ResourceImportBase{
+        *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))});
+  }
+  return (option1);
+}
+std::optional<symmetric::runtime::symmetric_stream::Buffer>
 symmetric::runtime::symmetric_stream::StreamObj::CloseRead() const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
   uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eclose_read(
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eclose_read(
       (*this).get_handle(), std::move(ptr0));
-  auto _base1 = *reinterpret_cast<uint8_t *const *>(ptr0 + 0);
-  auto _len1 = *reinterpret_cast<size_t const *>(ptr0 + sizeof(void *));
-  auto _result1 = wit::vector<symmetric_stream::Buffer>::allocate(_len1);
-  for (unsigned i = 0; i < _len1; ++i) {
-    auto _base = _base1 + i * sizeof(void *);
-    auto _e1 =
-        wit::ResourceImportBase{*reinterpret_cast<uint8_t *const *>(_base + 0)};
-    _result1.initialize(i, std::move(_e1));
+  std::optional<symmetric_stream::Buffer> option1;
+  if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0))) {
+
+    option1.emplace(wit::ResourceImportBase{
+        *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))});
   }
-  free(_base1);
-  return (_result1);
+  return (option1);
 }
 std::expected<symmetric::runtime::symmetric_stream::Buffer,
               symmetric::runtime::symmetric_stream::StreamState>
@@ -210,7 +238,7 @@ symmetric::runtime::symmetric_stream::StreamObj::ReadResult() const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
   uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eread_result(
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eread_result(
       (*this).get_handle(), std::move(ptr0));
   std::optional<
       std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
@@ -233,7 +261,7 @@ symmetric::runtime::symmetric_stream::StreamObj::ReadResult() const {
 }
 bool symmetric::runtime::symmetric_stream::StreamObj::IsReadClosed() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Eis_read_closed(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eis_read_closed(
           (*this).get_handle());
   return static_cast<bool>(ret);
 }
@@ -243,7 +271,7 @@ symmetric::runtime::symmetric_stream::StreamObj::StartWriting() const {
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
   uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Estart_writing(
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Estart_writing(
       (*this).get_handle(), std::move(ptr0));
   std::optional<
       std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
@@ -267,7 +295,7 @@ symmetric::runtime::symmetric_stream::StreamObj::StartWriting() const {
 symmetric::runtime::symmetric_executor::EventSubscription
 symmetric::runtime::symmetric_stream::StreamObj::WriteReadySubscribe() const {
   auto ret =
-      symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(
+      symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_ready_subscribe(
           (*this).get_handle());
   return wit::ResourceImportBase{ret};
 }
@@ -277,7 +305,7 @@ symmetric::runtime::symmetric_stream::StreamObj::FinishWriting(
   uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
                      sizeof(uintptr_t)];
   uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
-  symmetricX3AruntimeX2Fsymmetric_streamX400X2E3X2E1X00X5BmethodX5Dstream_objX2Efinish_writing(
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Efinish_writing(
       (*this).get_handle(), buffer.into_handle(), std::move(ptr0));
   std::optional<std::expected<void, symmetric_stream::Buffer>> result1_opt;
   if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
@@ -290,6 +318,74 @@ symmetric::runtime::symmetric_stream::StreamObj::FinishWriting(
   }
   std::expected<void, symmetric_stream::Buffer> result1 =
       std::move(*result1_opt);
+  return (result1);
+}
+std::expected<void, symmetric::runtime::symmetric_stream::Buffer>
+symmetric::runtime::symmetric_stream::StreamObj::OfferWrite(
+    symmetric_stream::Buffer &&buffer) const {
+  uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
+                     sizeof(uintptr_t)];
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Eoffer_write(
+      (*this).get_handle(), buffer.into_handle(), std::move(ptr0));
+  std::optional<std::expected<void, symmetric_stream::Buffer>> result1_opt;
+  if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
+
+    result1_opt.emplace(std::expected<void, symmetric_stream::Buffer>());
+  } else {
+
+    result1_opt.emplace(std::unexpected{wit::ResourceImportBase{
+        *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))}});
+  }
+  std::expected<void, symmetric_stream::Buffer> result1 =
+      std::move(*result1_opt);
+  return (result1);
+}
+void symmetric::runtime::symmetric_stream::StreamObj::WriteDetached(
+    symmetric_stream::Buffer &&buffer) const {
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_detached(
+      (*this).get_handle(), buffer.into_handle());
+}
+std::optional<symmetric::runtime::symmetric_stream::Buffer>
+symmetric::runtime::symmetric_stream::StreamObj::CancelWrite() const {
+  uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
+                     sizeof(uintptr_t)];
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ecancel_write(
+      (*this).get_handle(), std::move(ptr0));
+  std::optional<symmetric_stream::Buffer> option1;
+  if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0))) {
+
+    option1.emplace(wit::ResourceImportBase{
+        *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))});
+  }
+  return (option1);
+}
+std::expected<symmetric::runtime::symmetric_stream::Buffer,
+              symmetric::runtime::symmetric_stream::StreamState>
+symmetric::runtime::symmetric_stream::StreamObj::WriteResult() const {
+  uintptr_t ret_area[((2 * sizeof(void *)) + sizeof(uintptr_t) - 1) /
+                     sizeof(uintptr_t)];
+  uint8_t *ptr0 = reinterpret_cast<uint8_t *>(&ret_area);
+  symmetricX3AruntimeX2Fsymmetric_streamX400X2E4X2E0X00X5BmethodX5Dstream_objX2Ewrite_result(
+      (*this).get_handle(), std::move(ptr0));
+  std::optional<
+      std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>>
+      result1_opt;
+  if (static_cast<int32_t>(*reinterpret_cast<uint8_t const *>(ptr0 + 0)) == 0) {
+
+    result1_opt.emplace(
+        std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>(
+            wit::ResourceImportBase{
+                *reinterpret_cast<uint8_t *const *>(ptr0 + sizeof(void *))}));
+  } else {
+
+    result1_opt.emplace(std::unexpected{
+        static_cast<symmetric_stream::StreamState>(static_cast<int32_t>(
+            *reinterpret_cast<uint8_t const *>(ptr0 + sizeof(void *))))});
+  }
+  std::expected<symmetric_stream::Buffer, symmetric_stream::StreamState>
+      result1 = std::move(*result1_opt);
   return (result1);
 }
 symmetric::runtime::symmetric_stream::StreamObj::StreamObj(

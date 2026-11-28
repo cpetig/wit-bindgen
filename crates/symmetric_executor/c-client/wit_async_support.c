@@ -50,8 +50,8 @@ static void ex_block_on(handle_t trigger) {
   EXE(block_on)((EXE(own_event_subscription_t)){trigger});
 }
 
-static handle_t buf_new(void *addr, uint64_t capacity) {
-  return STR(constructor_buffer)((STR(own_address_t)){(uint8_t *)addr}, capacity).__handle;
+static handle_t buf_new(void *addr, uint64_t capacity, uint64_t elem_size) {
+  return STR(constructor_buffer)((STR(own_address_t)){(uint8_t *)addr}, capacity, elem_size).__handle;
 }
 static void *buf_address(handle_t buf) {
   return STR(method_buffer_get_address)((STR(borrow_buffer_t)){buf}).__handle;
@@ -764,7 +764,7 @@ uint32_t wit_stream_read(uintptr_t reader, void *buf, size_t amt, size_t elem_si
   uint8_t *scratch = elem_size > 0 ? malloc(amt * elem_size) : &no_payload;
   if (!scratch) abort();
   handle_t rejected;
-  if (!stream_start_reading(stream, buf_new(scratch, amt), &rejected)) {
+  if (!stream_start_reading(stream, buf_new(scratch, amt, elem_size), &rejected)) {
     // an earlier offer is still open (which is as good)
     buf_drop(rejected);
     if (elem_size > 0) free(scratch);

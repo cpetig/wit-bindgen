@@ -49,9 +49,9 @@ typedef struct {
 typedef symmetric_runtime_symmetric_executor_own_event_subscription_t symmetric_runtime_symmetric_stream_own_event_subscription_t;
 
 typedef struct {
-  symmetric_runtime_symmetric_stream_own_buffer_t *ptr;
-  size_t len;
-} symmetric_runtime_symmetric_stream_list_own_buffer_t;
+  bool is_some;
+  symmetric_runtime_symmetric_stream_own_buffer_t val;
+} symmetric_runtime_symmetric_stream_option_own_buffer_t;
 
 typedef struct {
   bool is_err;
@@ -61,9 +61,11 @@ typedef struct {
   } val;
 } symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_t;
 
-// Imported Functions from `symmetric:runtime/symmetric-stream@0.3.1`
-extern symmetric_runtime_symmetric_stream_own_buffer_t symmetric_runtime_symmetric_stream_constructor_buffer(symmetric_runtime_symmetric_stream_own_address_t addr, uint64_t capacity);
+// Imported Functions from `symmetric:runtime/symmetric-stream@0.4.0`
+// `capacity` elements of `element-size` bytes each at `addr`
+extern symmetric_runtime_symmetric_stream_own_buffer_t symmetric_runtime_symmetric_stream_constructor_buffer(symmetric_runtime_symmetric_stream_own_address_t addr, uint64_t capacity, uint64_t element_size);
 extern symmetric_runtime_symmetric_stream_own_address_t symmetric_runtime_symmetric_stream_method_buffer_get_address(symmetric_runtime_symmetric_stream_borrow_buffer_t self);
+// number of elements: offered (writer, set before offering) or transferred (completed)
 extern uint64_t symmetric_runtime_symmetric_stream_method_buffer_get_size(symmetric_runtime_symmetric_stream_borrow_buffer_t self);
 extern void symmetric_runtime_symmetric_stream_method_buffer_set_size(symmetric_runtime_symmetric_stream_borrow_buffer_t self, uint64_t size);
 extern uint64_t symmetric_runtime_symmetric_stream_method_buffer_capacity(symmetric_runtime_symmetric_stream_borrow_buffer_t self);
@@ -74,16 +76,34 @@ extern symmetric_runtime_symmetric_stream_own_stream_obj_t symmetric_runtime_sym
 // reading (in roughly chronological order)
 // indicates EOF
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_is_write_closed(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self);
+// offer a buffer to read into, completes immediately if a writer is
+// waiting. Returns the buffer if a read is still in flight.
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_start_reading(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer, symmetric_runtime_symmetric_stream_own_buffer_t *err);
 extern symmetric_runtime_symmetric_stream_own_event_subscription_t symmetric_runtime_symmetric_stream_method_stream_obj_read_ready_subscribe(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self);
-// close the reading side, returning any in-flight buffer(s)
-extern void symmetric_runtime_symmetric_stream_method_stream_obj_close_read(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_list_own_buffer_t *ret);
+// cancel the pending read, see above
+extern bool symmetric_runtime_symmetric_stream_method_stream_obj_cancel_read(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret);
+// close the reading side now (as dropping the last reader does),
+// returning the buffer of a read in flight (like `cancel-read`)
+extern bool symmetric_runtime_symmetric_stream_method_stream_obj_close_read(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret);
+// the completed read, `get-size` is the number of elements read
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_read_result(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret, symmetric_runtime_symmetric_stream_stream_state_t *err);
 // writing
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_is_read_closed(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self);
+// borrow the buffer a reader has offered (fill it, then finish-writing)
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_start_writing(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret, symmetric_runtime_symmetric_stream_stream_state_t *err);
 extern symmetric_runtime_symmetric_stream_own_event_subscription_t symmetric_runtime_symmetric_stream_method_stream_obj_write_ready_subscribe(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self);
+// complete the read of the borrowed buffer with `get-size` elements
 extern bool symmetric_runtime_symmetric_stream_method_stream_obj_finish_writing(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer, symmetric_runtime_symmetric_stream_own_buffer_t *err);
+// offer `get-size` elements to read, completes immediately if a reader
+// is waiting. Returns the buffer if a write is still in flight.
+extern bool symmetric_runtime_symmetric_stream_method_stream_obj_offer_write(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer, symmetric_runtime_symmetric_stream_own_buffer_t *err);
+// like offer-write, but the elements are copied, there is no
+// result and nothing to cancel
+extern void symmetric_runtime_symmetric_stream_method_stream_obj_write_detached(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t buffer);
+// cancel the pending write, see above
+extern bool symmetric_runtime_symmetric_stream_method_stream_obj_cancel_write(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret);
+// the completed write, `get-size` is the number of elements consumed
+extern bool symmetric_runtime_symmetric_stream_method_stream_obj_write_result(symmetric_runtime_symmetric_stream_borrow_stream_obj_t self, symmetric_runtime_symmetric_stream_own_buffer_t *ret, symmetric_runtime_symmetric_stream_stream_state_t *err);
 
 // Helper Functions
 
@@ -107,7 +127,7 @@ extern symmetric_runtime_symmetric_stream_borrow_stream_obj_t symmetric_runtime_
 
 void symmetric_runtime_symmetric_stream_result_void_own_buffer_free(symmetric_runtime_symmetric_stream_result_void_own_buffer_t *ptr);
 
-void symmetric_runtime_symmetric_stream_list_own_buffer_free(symmetric_runtime_symmetric_stream_list_own_buffer_t *ptr);
+void symmetric_runtime_symmetric_stream_option_own_buffer_free(symmetric_runtime_symmetric_stream_option_own_buffer_t *ptr);
 
 void symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_free(symmetric_runtime_symmetric_stream_result_own_buffer_stream_state_t *ptr);
 

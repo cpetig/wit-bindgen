@@ -202,8 +202,6 @@ struct wit_stream_op {
   const void *mem;
   uint8_t *dup;
   size_t count;
-  size_t done;  // elements taken by the reader so far (a partial transfer
-                // keeps the write pending, as in the canonical ABI)
   void (*disown)(void *, size_t);
 };
 
@@ -675,7 +673,9 @@ static void write_release(struct wit_stream_op *op, size_t n) {
   }
 }
 
-// (Re-)offer the elements of the write, returns whether it is accepted
+// Offer the elements of the write, returns whether it is accepted. The
+// runtime keeps the offset of a partly consumed write, the write stays
+// pending until all is taken, the reader is gone or it is cancelled.
 static bool write_offer(handle_t stream, const void *mem, size_t count, size_t elem_size) {
   handle_t buf = buf_new((void *)mem, count, elem_size);
   buf_set_size(buf, count);
@@ -692,6 +692,16 @@ uintptr_t wit_stream_new(uintptr_t *writer) {
   handle_t reader = stream_clone(stream, false);
   *writer = (uintptr_t)stream;
   return (uintptr_t)reader;
+}
+
+// The status of a write which is over (everything taken or the reader gone),
+// `n` is the number of elements taken in total. As in the canonical ABI the
+// state is determined when the write is observed: a reader which is gone by
+// then is reported (DROPPED with the count), even if everything was taken.
+static uint32_t write_final_status(struct wit_stream_op *op, size_t n, bool eof) {
+  bool closed = eof || stream_is_read_closed((handle_t)op->handle);
+  return WAITABLE_STATUS(closed && (eof || !op->is_future) ? WAITABLE_DROPPED : WAITABLE_COMPLETED,
+                         op->is_future ? 0 : n);
 }
 
 // Offer the caller's buffer to the stream. If a writer is waiting it completes
@@ -723,9 +733,9 @@ uint32_t wit_stream_read(uintptr_t reader, void *buf, size_t amt, size_t elem_si
   return WAITABLE_BLOCKED;
 }
 
-// Offer the elements of the caller's buffer, if a reader is waiting this
-// completes right away with as many as it takes (the caller offers the rest
-// again).
+// Offer the elements of the caller's buffer. If a reader is waiting and takes
+// all of them this completes right away, otherwise the write is pending until
+// all are consumed (the rest is offered to the next reads by the runtime).
 uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t elem_size,
                           bool is_future, void (*own)(void *, size_t),
                           void (*disown)(void *, size_t)) {
@@ -737,6 +747,9 @@ uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t 
     return WAITABLE_STATUS(WAITABLE_DROPPED, 0);
   }
   struct wit_stream_op local = {0};
+  local.handle = writer;
+  local.is_write = true;
+  local.is_future = is_future;
   local.elem_size = elem_size;
   local.count = amt;
   local.disown = disown;
@@ -757,13 +770,9 @@ uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t 
   handle_t result = stream_write_result(stream, &eof);
   if (result) {
     size_t n = buf_take_count(result);
-    if (n == 0) {
-      // completed without a transfer (zero capacity), offer again
-      write_offer(stream, local.mem, amt, elem_size);
-    } else {
-      write_release(&local, n);
-      return op_status(is_future, WAITABLE_COMPLETED, n);
-    }
+    uint32_t status = write_final_status(&local, n, false);
+    write_release(&local, n);
+    return status;
   } else if (eof) {
     write_release(&local, 0);
     return WAITABLE_STATUS(WAITABLE_DROPPED, 0);
@@ -775,15 +784,6 @@ uint32_t wit_stream_write(uintptr_t writer, const void *buf, size_t amt, size_t 
   op->count = amt;
   op->disown = disown;
   return WAITABLE_BLOCKED;
-}
-
-// The status of a write which is over (everything taken or the reader gone).
-// A reader which is gone by the time the write is looked at is reported,
-// even if everything was taken.
-static uint32_t write_final_status(struct wit_stream_op *op, size_t n, bool eof) {
-  bool closed = eof || stream_is_read_closed((handle_t)op->handle);
-  return WAITABLE_STATUS(closed && (eof || !op->is_future) ? WAITABLE_DROPPED : WAITABLE_COMPLETED,
-                         op->is_future ? 0 : n);
 }
 
 // The event of a waiting read or write, if it is there
@@ -808,27 +808,19 @@ static uint32_t op_poll(uintptr_t handle, uint32_t *code) {
     return event;
   }
   uint32_t event = op->is_future ? EVENT_FUTURE_WRITE : EVENT_STREAM_WRITE;
-  for (;;) {
-    handle_t result = stream_write_result(stream, &eof);
-    if (result) {
-      op->done += buf_take_count(result);
-      if (op->done < op->count) {
-        // The reader took some, the write is pending until all is taken (or
-        // the reader is gone), so offer the rest.
-        write_offer(stream, (const uint8_t *)op->mem + op->done * op->elem_size,
-                    op->count - op->done, op->elem_size);
-        continue;
-      }
-      *code = write_final_status(op, op->done, false);
-    } else if (eof) {
-      *code = write_final_status(op, op->done, true);
-    } else {
-      return EVENT_NONE;
-    }
-    write_release(op, op->done);
-    op_free(op);
-    return event;
+  size_t n = 0;
+  handle_t result = stream_write_result(stream, &eof);
+  if (result) {
+    n = buf_take_count(result);
+    *code = write_final_status(op, n, false);
+  } else if (eof) {
+    *code = write_final_status(op, 0, true);
+  } else {
+    return EVENT_NONE;
   }
+  write_release(op, n);
+  op_free(op);
+  return event;
 }
 
 uint32_t wit_stream_cancel_read(uintptr_t reader) {
@@ -859,7 +851,7 @@ uint32_t wit_stream_cancel_write(uintptr_t writer) {
     return code;
   }
   handle_t buf = stream_cancel_write((handle_t)writer);
-  size_t n = op->done + (buf ? buf_take_count(buf) : 0);
+  size_t n = buf ? buf_take_count(buf) : 0;
   bool is_future = op->is_future;
   bool all = n == op->count;
   write_release(op, n);
